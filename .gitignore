@@ -1,0 +1,22 @@
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Node
+node_modules/
+dist/
+coverage/
+
+# Playwright
+web/test-results/
+web/playwright-report/
+web/blob-report/
+
+# Java / Maven
+server/target/
+
+# Env & OS
+.env
+.env.local
+.DS_Store
