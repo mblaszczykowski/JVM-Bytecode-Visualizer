@@ -1,0 +1,27 @@
+{
+  "name": "jvm-bytecode-visualizer",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Wizualizator wykonania bajtkodu JVM krok po kroku",
+  "license": "MIT",
+  "type": "module",
+  "workspaces": [
+    "web"
+  ],
+  "engines": {
+    "node": ">=20.18.1",
+    "npm": ">=10"
+  },
+  "scripts": {
+    "dev": "npm run dev -w web",
+    "lint": "npm run lint -w web",
+    "typecheck": "npm run typecheck -w web",
+    "test": "npm run test -w web",
+    "build": "npm run build -w web",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "prettier": "3.9.6"
+  }
+}
