@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "examples": [
+    {
+      "id": "factorial",
+      "title": "Silnia — rekurencja",
+      "description": "Rekurencyjne 4! = 24. Stos wywołań rośnie do pięciu ramek (main + cztery wywołania), a przy powrotach zwija się mnożąc wyniki — najprostszy sposób, żeby zobaczyć, jak JVM wznawia metodę dokładnie w miejscu wywołania.",
+      "classFile": "Factorial.class",
+      "sourceFile": "Factorial.java",
+      "entryMethod": "main",
+      "resultVariable": "result",
+      "expectedResult": 24
+    },
+    {
+      "id": "fibonacci",
+      "title": "Fibonacci — rekurencja rozgałęziona",
+      "description": "Naiwne fib(7) = 13. Każde wywołanie rozgałęzia się na dwa kolejne, więc stos rośnie i zwija się kilkadziesiąt razy. Dobrze widać tu koszt naiwnej rekurencji: te same podproblemy liczone są wielokrotnie od zera.",
+      "classFile": "Fibonacci.class",
+      "sourceFile": "Fibonacci.java",
+      "entryMethod": "main",
+      "resultVariable": "result",
+      "expectedResult": 13
+    },
+    {
+      "id": "sum-of-squares",
+      "title": "Suma iloczynów — zagnieżdżone pętle for",
+      "description": "Suma i*j po siatce 6x6 (na przekątnej są kwadraty, stąd nazwa). Płaski stos wywołań, za to setki kroków: pokazuje instrukcję iinc (inkrementacja licznika w miejscu, bez ruszania stosu operandów), warunek if_icmpgt i skok wsteczny goto.",
+      "classFile": "SumOfSquares.class",
+      "sourceFile": "SumOfSquares.java",
+      "entryMethod": "main",
+      "resultVariable": "result",
+      "expectedResult": 441
+    },
+    {
+      "id": "gcd",
+      "title": "NWD — pętla while i reszta z dzielenia",
+      "description": "Algorytm Euklidesa dla (1071, 462) = 21. Pętla sterowana warunkiem, nie licznikiem: zamiast iinc mamy ifne na reszcie z dzielenia (irem) i przepisywanie wartości między slotami zmiennych lokalnych.",
+      "classFile": "Gcd.class",
+      "sourceFile": "Gcd.java",
+      "entryMethod": "main",
+      "resultVariable": "result",
+      "expectedResult": 21
+    }
+  ]
+}

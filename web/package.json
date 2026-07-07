@@ -13,7 +13,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "e2e": "playwright test"
+    "e2e": "playwright test",
+    "fixtures": "node fixtures/build-fixtures.mjs"
   },
   "dependencies": {
     "framer-motion": "13.0.0",
