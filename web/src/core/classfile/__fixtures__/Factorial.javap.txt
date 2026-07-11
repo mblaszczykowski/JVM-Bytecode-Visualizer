@@ -1,10 +1,10 @@
-# Zrzut `javap -v -p Factorial.class` (JDK 25-ea, klasa skompilowana `javac -g --release 21`).
-# Źródło prawdy dla asercji w parser.test.ts i materiał dla recenzenta (plan.md §9 Faza 1).
-# Jedyna zmiana względem wyjścia javap: ścieżka bezwzględna w pierwszej linii
-# zastąpiona nazwą pliku.
+# Dump of `javap -v -p Factorial.class` (JDK 25-ea, class compiled with `javac -g --release 21`).
+# Source of truth for the assertions in parser.test.ts and reference material for reviewers.
+# The only change from the raw javap output: the absolute path on the first line is
+# replaced with the bare file name.
 
 Classfile Factorial.class
-  Last modified 5 sie 2026; size 540 bytes
+  Last modified Aug 5, 2026; size 540 bytes
   SHA-256 checksum fdd2adcf6f4dd708185429791889dffb7903fc780138dcf62b40f5d3201fa06f
   Compiled from "Factorial.java"
 public class Factorial

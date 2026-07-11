@@ -1,24 +1,24 @@
 #!/usr/bin/env node
 /**
- * Buduje fixtures fazy 4 (plan.md §7, §9 Faza 4).
+ * Builds the example fixtures shipped in `public/examples/`.
  *
- * Przebieg:
- *  1. `javac -g --release 21` do katalogu tymczasowego (`-g` daje LocalVariableTable,
- *     czyli nazwy zmiennych w UI; `--release 21` przypina major version 65 niezależnie
- *     od tego, jak nowy JDK ma deweloper — plan.md §13).
- *  2. Walidacja zakresu MVP: `javap -c -p` na każdej klasie, każdy mnemonik musi należeć
- *     do listy z plan.md §6. Instrukcja spoza listy wywala build — dzięki temu przykłady
- *     nie mogą po cichu wyjść poza to, co potrafi interpreter.
- *  3. Wyniki referencyjne z prawdziwej JVM: harness `ExpectedResults` woła metody
- *     obliczeniowe przykładów i wypisuje wyniki; trafiają do manifestu jako
- *     `expectedResult` i napędzają test różnicowy interpretera.
- *  4. Kopiowanie `.class` + `.java` do `public/examples/` i generacja `manifest.json`.
+ * Steps:
+ *  1. `javac -g --release 21` into a temporary directory (`-g` produces a LocalVariableTable,
+ *     i.e. variable names in the UI; `--release 21` pins major version 65 regardless of how
+ *     new the developer's JDK is).
+ *  2. Instruction scope validation: `javap -c -p` on every class, and every mnemonic must
+ *     belong to the supported instruction set. An instruction outside that set fails the
+ *     build, so an example can never silently drift beyond what the interpreter can run.
+ *  3. Reference results from a real JVM: the `ExpectedResults` harness calls the compute
+ *     methods of the examples and prints the results; they land in the manifest as
+ *     `expectedResult` and drive the interpreter's differential test.
+ *  4. Copying `.class` + `.java` into `public/examples/` and generating `manifest.json`.
  *
- * Skrypt jest deterministyczny i idempotentny: katalog wyjściowy jest odtwarzany od zera,
- * kolejność wpisów manifestu wynika z tablicy EXAMPLES, a `.class` z javac nie zawiera
- * znaczników czasu — drugi przebieg daje bajt w bajt te same artefakty.
+ * The script is deterministic and idempotent: the output directory is recreated from scratch,
+ * the manifest order follows the EXAMPLES array, and javac output carries no timestamps —
+ * a second run produces byte-for-byte identical artifacts.
  *
- * Uruchomienie: `npm run fixtures -w web` (wymaga lokalnego JDK >= 21).
+ * Usage: `npm run fixtures -w web` (requires a local JDK >= 21).
  */
 
 import { execFileSync } from 'node:child_process';
@@ -32,23 +32,22 @@ const SOURCE_DIR = join(FIXTURES_DIR, 'src');
 const HARNESS_DIR = join(FIXTURES_DIR, 'harness');
 const OUTPUT_DIR = join(FIXTURES_DIR, '..', 'public', 'examples');
 
-/** Harness liczy wyniki referencyjne; celowo NIE trafia do public/examples. */
+/** The harness computes the reference results; it is deliberately NOT copied to public/examples. */
 const HARNESS_CLASS = 'ExpectedResults';
 
-/** Java 21 (LTS) — plan.md §13. `--release` gwarantuje ten major version na każdym JDK >= 21. */
+/** Java 21 (LTS). `--release` guarantees this major version on every JDK >= 21. */
 const JAVA_RELEASE = '21';
 const EXPECTED_MAJOR_VERSION = 65;
 
-/** Wersja formatu manifestu; konsumenci walidują ją schematem w src/services/manifest.ts. */
+/** Manifest format version; consumers validate it with the schema in src/services/manifest.ts. */
 const MANIFEST_VERSION = 1;
 
 /**
- * Zakres instrukcji MVP — dokładna kopia tabeli z plan.md §6.
- * Rozbicie na rodziny jest po to, żeby komunikat błędu mógł powiedzieć nie tylko
- * "ten mnemonik jest zabroniony", ale też jakie rodziny są w ogóle dostępne.
+ * The supported instruction set. Grouping by family lets an error message say not only
+ * "this mnemonic is not allowed" but also which families are available at all.
  */
-const MVP_INSTRUCTION_SET = Object.freeze({
-  stałe: [
+const SUPPORTED_INSTRUCTION_SET = Object.freeze({
+  constants: [
     'nop',
     'iconst_m1',
     'iconst_0',
@@ -72,10 +71,10 @@ const MVP_INSTRUCTION_SET = Object.freeze({
     'istore_2',
     'istore_3',
   ],
-  inkrementacja: ['iinc'],
-  stos: ['dup', 'pop'],
-  arytmetyka: ['iadd', 'isub', 'imul', 'idiv', 'irem', 'ineg'],
-  'porównania ze skokiem': [
+  increment: ['iinc'],
+  stack: ['dup', 'pop'],
+  arithmetic: ['iadd', 'isub', 'imul', 'idiv', 'irem', 'ineg'],
+  'comparison branches': [
     'if_icmpeq',
     'if_icmpne',
     'if_icmplt',
@@ -89,70 +88,70 @@ const MVP_INSTRUCTION_SET = Object.freeze({
     'ifgt',
     'ifle',
   ],
-  skok: ['goto'],
-  wywołania: ['invokestatic', 'ireturn', 'return'],
+  jump: ['goto'],
+  calls: ['invokestatic', 'ireturn', 'return'],
 });
 
-const ALLOWED_MNEMONICS = new Set(Object.values(MVP_INSTRUCTION_SET).flat());
+const ALLOWED_MNEMONICS = new Set(Object.values(SUPPORTED_INSTRUCTION_SET).flat());
 
 /**
- * Sam mnemonik nie wystarczy: `invokestatic` jest w zakresie, ale plan.md §6 dopuszcza
- * wyłącznie wywołania metod TEJ SAMEJ klasy, a §8 pkt 6 — wyłącznie deskryptory z parametrami
- * `I` i zwrotką `I`/`V`. javap wypisuje w komentarzu docelową metodę bez nazwy klasy, gdy
- * należy ona do klasy dekompilowanej ("Method gcd:(II)I"), i z nazwą klasy w przeciwnym
- * wypadku ("Method java/lang/Math.max:(II)I") — po tym je odróżniamy.
+ * The mnemonic alone is not enough: `invokestatic` is in scope, but only calls to methods of
+ * THE SAME class are supported, and only descriptors with `I` parameters and an `I`/`V` return
+ * type. javap prints the call target without a class name when it belongs to the class being
+ * disassembled ("Method gcd:(II)I") and with one otherwise ("Method java/lang/Math.max:(II)I"),
+ * which is how the two are told apart.
  */
 const METHOD_REFERENCE = /^Method\s+(\S+):(\(\S*\)\S+)$/;
 const SUPPORTED_DESCRIPTOR = /^\(I*\)[IV]$/;
 
-/** javap wypisuje sygnatury w składni Javy, nie w postaci deskryptorów. */
+/** javap prints signatures in Java syntax, not as descriptors. */
 const MAIN_SIGNATURE = 'public static void main(java.lang.String[])';
 const SUPPORTED_SIGNATURE = /^(?:\w+\s+)*?(?:int|void)\s+\w+\(\s*(?:int(?:\s*,\s*int)*)?\s*\)$/;
 
 /**
- * Przykłady w kolejności prezentacji w UI. `id` musi zgadzać się z kluczem wypisywanym
- * przez harness — skrypt to sprawdza, więc rozjazd nazw wywali build, a nie test.
+ * Examples in the order they are presented in the UI. Each `id` must match the key printed by
+ * the harness — the script checks this, so a name mismatch fails the build, not a test.
  */
 const EXAMPLES = Object.freeze([
   {
     id: 'factorial',
     className: 'Factorial',
-    title: 'Silnia — rekurencja',
+    title: 'Factorial — recursion',
     description:
-      'Rekurencyjne 4! = 24. Stos wywołań rośnie do pięciu ramek (main + cztery wywołania), ' +
-      'a przy powrotach zwija się mnożąc wyniki — najprostszy sposób, żeby zobaczyć, ' +
-      'jak JVM wznawia metodę dokładnie w miejscu wywołania.',
+      'Recursive 4! = 24. Watch the call stack grow to five frames (main plus four calls) ' +
+      'and unwind again, multiplying results on the way back — the clearest way to see how ' +
+      'the JVM resumes a method exactly where it left off.',
   },
   {
     id: 'fibonacci',
     className: 'Fibonacci',
-    title: 'Fibonacci — rekurencja rozgałęziona',
+    title: 'Fibonacci — branching recursion',
     description:
-      'Naiwne fib(7) = 13. Każde wywołanie rozgałęzia się na dwa kolejne, więc stos rośnie ' +
-      'i zwija się kilkadziesiąt razy. Dobrze widać tu koszt naiwnej rekurencji: te same ' +
-      'podproblemy liczone są wielokrotnie od zera.',
+      'Naive fib(7) = 13. Every call branches into two more, so the stack grows and unwinds ' +
+      'dozens of times. A vivid look at the cost of naive recursion: the same subproblems ' +
+      'are recomputed from scratch again and again.',
   },
   {
     id: 'sum-of-squares',
     className: 'SumOfSquares',
-    title: 'Suma iloczynów — zagnieżdżone pętle for',
+    title: 'Sum of products — nested for loops',
     description:
-      'Suma i*j po siatce 6x6 (na przekątnej są kwadraty, stąd nazwa). Płaski stos wywołań, ' +
-      'za to setki kroków: pokazuje instrukcję iinc (inkrementacja licznika w miejscu, ' +
-      'bez ruszania stosu operandów), warunek if_icmpgt i skok wsteczny goto.',
+      'Sum of i*j over a 6x6 grid (the diagonal holds the squares, hence the name). A flat ' +
+      'call stack but hundreds of steps: it showcases iinc (incrementing a counter in place, ' +
+      'without touching the operand stack), the if_icmpgt condition and the backward goto.',
   },
   {
     id: 'gcd',
     className: 'Gcd',
-    title: 'NWD — pętla while i reszta z dzielenia',
+    title: 'GCD — while loop and remainder',
     description:
-      'Algorytm Euklidesa dla (1071, 462) = 21. Pętla sterowana warunkiem, nie licznikiem: ' +
-      'zamiast iinc mamy ifne na reszcie z dzielenia (irem) i przepisywanie wartości ' +
-      'między slotami zmiennych lokalnych.',
+      "Euclid's algorithm for (1071, 462) = 21. A loop driven by a condition rather than a " +
+      'counter: instead of iinc there is ifne on the remainder (irem), plus values being ' +
+      'copied between local variable slots.',
   },
 ]);
 
-/** Błąd builda z komunikatem gotowym do pokazania człowiekowi (bez stack trace'u). */
+/** Build failure carrying a message ready to show a human (no stack trace). */
 class FixtureBuildError extends Error {
   constructor(message) {
     super(message);
@@ -161,8 +160,8 @@ class FixtureBuildError extends Error {
 }
 
 /**
- * Uruchamia narzędzie JDK i zwraca jego stdout. Błąd narzędzia zamieniamy na
- * FixtureBuildError z jego wyjściem — goły `execFileSync` gubi stderr w komunikacie.
+ * Runs a JDK tool and returns its stdout. A tool failure is turned into a FixtureBuildError
+ * carrying its output — a bare `execFileSync` loses stderr from the message.
  */
 function runTool(command, args) {
   try {
@@ -172,7 +171,7 @@ function runTool(command, args) {
     const stdout = typeof cause?.stdout === 'string' ? cause.stdout.trim() : '';
     const details = [stderr, stdout].filter(Boolean).join('\n');
     throw new FixtureBuildError(
-      `Polecenie "${command} ${args.join(' ')}" zakończyło się błędem.` +
+      `Command "${command} ${args.join(' ')}" failed.` +
         (details ? `\n${details}` : `\n${String(cause?.message ?? cause)}`),
     );
   }
@@ -187,13 +186,13 @@ function compileAll(classesDir) {
 }
 
 /**
- * Rozbija wyjście `javap -c -p` na metody i ich instrukcje.
+ * Splits `javap -c -p` output into methods and their instructions.
  *
- * Format javap jest stabilny i prosty: nagłówek metody to wcięta linia zakończona
- * średnikiem, a instrukcja to `<offset>: <mnemonik> [operandy]`. Konstruktory javap
- * wypisuje bez typu zwracanego (`private Factorial();`), a inicjalizator statyczny
- * jako `static {};` — obie formy rozpoznajemy, bo interpreter ich nigdy nie wykonuje
- * (plan.md §5.4), więc nie podlegają walidacji zakresu.
+ * The javap format is stable and simple: a method header is an indented line ending with a
+ * semicolon, and an instruction is `<offset>: <mnemonic> [operands]`. javap prints constructors
+ * without a return type (`private Factorial();`) and the static initialiser as `static {};` —
+ * both forms are recognised because the interpreter never executes them, so they are exempt
+ * from scope validation.
  */
 function parseDisassembly(javapOutput, className) {
   const constructorPattern = new RegExp(`(?:^|\\s)${className}\\s*\\(`);
@@ -204,11 +203,11 @@ function parseDisassembly(javapOutput, className) {
     const instruction = /^\s+(\d+):\s+([a-z][a-z0-9_]*)\s*(.*)$/.exec(line);
     if (instruction) {
       if (current === null) {
-        // Instrukcja przed nagłówkiem metody = javap zmienił format. Lepiej wywalić build,
-        // niż po cichu przepuścić niezwalidowany bajtkod.
+        // An instruction before any method header means javap changed its format. Better to
+        // fail the build than to silently let unvalidated bytecode through.
         throw new FixtureBuildError(
-          `Nieoczekiwany format wyjścia javap dla klasy ${className}: instrukcja "${line.trim()}" ` +
-            'pojawiła się przed nagłówkiem jakiejkolwiek metody.',
+          `Unexpected javap output format for class ${className}: instruction "${line.trim()}" ` +
+            'appeared before any method header.',
         );
       }
       const operands = instruction[3];
@@ -241,62 +240,62 @@ function readMajorVersion(classesDir, className) {
   const verbose = runTool('javap', ['-v', '-p', '-classpath', classesDir, className]);
   const match = /^\s*major version:\s*(\d+)\s*$/m.exec(verbose);
   if (!match) {
-    throw new FixtureBuildError(`Nie udało się odczytać major version klasy ${className}.`);
+    throw new FixtureBuildError(`Could not read the major version of class ${className}.`);
   }
   return Number(match[1]);
 }
 
 /**
- * Sprawdza, czy pojedyncze `invokestatic` mieści się w zakresie MVP: cel musi być metodą
- * tej samej klasy (plan.md §6) o deskryptorze z parametrami `I` i zwrotką `I`/`V` (§8 pkt 6).
+ * Checks whether a single `invokestatic` is in scope: the target must be a method of the same
+ * class with a descriptor made of `I` parameters and an `I`/`V` return type.
  *
- * @returns {string | null} opis naruszenia albo null, gdy wywołanie jest w zakresie
+ * @returns {string | null} a description of the violation, or null when the call is in scope
  */
 function checkInvokeStatic(comment) {
   const reference = METHOD_REFERENCE.exec(comment);
   if (!reference) {
-    return `nie udało się odczytać celu wywołania z komentarza javap ("${comment}")`;
+    return `could not read the call target from the javap comment ("${comment}")`;
   }
 
   const [, target, descriptor] = reference;
   if (target.includes('.') || target.includes('/')) {
     return (
-      `invokestatic do innej klasy (${target}) — MVP obsługuje wyłącznie wywołania ` +
-      'metod tej samej klasy (plan.md §6)'
+      `invokestatic into another class (${target}) — only calls to methods of the same ` +
+      'class are supported'
     );
   }
   if (!SUPPORTED_DESCRIPTOR.test(descriptor)) {
     return (
-      `invokestatic ${target} o deskryptorze ${descriptor} — MVP obsługuje wyłącznie ` +
-      'parametry I i zwrotkę I/V (plan.md §8 pkt 6)'
+      `invokestatic ${target} with descriptor ${descriptor} — only I parameters and an ` +
+      'I/V return type are supported'
     );
   }
   return null;
 }
 
 /**
- * Sprawdza, że wykonywalne metody klasy mieszczą się w zakresie MVP: statyczne, o sygnaturze
- * na `int`ach, złożone wyłącznie z instrukcji z §6. Metody `<init>`/`<clinit>` pomijamy —
- * interpreter nigdy ich nie wykonuje (plan.md §5.4) — ale sama obecność `<clinit>` jest
- * błędem, bo oznacza pole statyczne.
+ * Checks that the executable methods of a class are in scope: static, with `int`-only
+ * signatures, built exclusively from supported instructions. `<init>`/`<clinit>` methods are
+ * skipped because the interpreter never executes them — but the mere presence of `<clinit>`
+ * is an error, since it means the class has a static field.
  *
- * Wszystkie naruszenia zbieramy i raportujemy naraz: poprawianie przykładu po jednym
- * komunikacie na przebieg byłoby uciążliwe.
+ * All violations are collected and reported at once: fixing an example one message per run
+ * would be tedious.
  */
 function validateScope(className, methods) {
   if (methods.some((method) => method.kind === 'class-init')) {
     throw new FixtureBuildError(
-      `Klasa ${className} ma inicjalizator statyczny <clinit>. ` +
-        'Przykłady nie mogą używać pól statycznych (plan.md §5.4) — interpreter nigdy nie ' +
-        'wykonuje <clinit>, więc program zobaczyłby niezainicjalizowany stan.',
+      `Class ${className} has a static initialiser <clinit>. ` +
+        'Examples must not use static fields — the interpreter never executes <clinit>, so ' +
+        'the program would observe uninitialised state.',
     );
   }
 
   const mainMethods = methods.filter((method) => method.signature === MAIN_SIGNATURE);
   if (mainMethods.length !== 1) {
     throw new FixtureBuildError(
-      `Klasa ${className} musi mieć dokładnie jedną metodę "${MAIN_SIGNATURE}" ` +
-        `(znaleziono ${mainMethods.length}) — to punkt wejścia interpretera (plan.md §5.4).`,
+      `Class ${className} must have exactly one "${MAIN_SIGNATURE}" method ` +
+        `(found ${mainMethods.length}) — it is the interpreter's entry point.`,
     );
   }
 
@@ -310,19 +309,19 @@ function validateScope(className, methods) {
 
     const where = `${className}::${method.signature}`;
     if (!/(?:^|\s)static\s/.test(method.signature)) {
-      violations.push(`${where} — metoda niestatyczna; MVP zna tylko invokestatic (plan.md §6)`);
+      violations.push(`${where} — non-static method; only invokestatic is supported`);
     }
     if (method.signature !== MAIN_SIGNATURE && !SUPPORTED_SIGNATURE.test(method.signature)) {
       violations.push(
-        `${where} — sygnatura poza MVP; dozwolone są parametry int i zwrotka int/void ` +
-          `(plan.md §8 pkt 6) albo dokładnie "${MAIN_SIGNATURE}"`,
+        `${where} — unsupported signature; allowed are int parameters with an int/void ` +
+          `return type, or exactly "${MAIN_SIGNATURE}"`,
       );
     }
 
     for (const { offset, mnemonic, comment } of method.instructions) {
       instructionCount += 1;
       if (!ALLOWED_MNEMONICS.has(mnemonic)) {
-        violations.push(`${where}  offset ${offset}: ${mnemonic} — instrukcja spoza tabeli §6`);
+        violations.push(`${where}  offset ${offset}: ${mnemonic} — unsupported instruction`);
         continue;
       }
       if (mnemonic === 'invokestatic') {
@@ -336,21 +335,21 @@ function validateScope(className, methods) {
 
   if (violations.length > 0) {
     const details = violations.map((violation) => `  • ${violation}`).join('\n');
-    const families = Object.entries(MVP_INSTRUCTION_SET)
+    const families = Object.entries(SUPPORTED_INSTRUCTION_SET)
       .map(([family, mnemonics]) => `  ${family}: ${mnemonics.join(', ')}`)
       .join('\n');
     throw new FixtureBuildError(
-      `Przykład wychodzi poza zakres MVP (plan.md §6):\n${details}\n\n` +
-        `Dozwolone instrukcje:\n${families}\n\n` +
-        'Popraw źródło przykładu (np. zakresy pętli albo użyte konstrukcje Javy) — ' +
-        'zakresu interpretera nie rozszerzamy bez aktualizacji plan.md §6.',
+      `The example goes beyond the supported instruction set:\n${details}\n\n` +
+        `Allowed instructions:\n${families}\n\n` +
+        'Fix the example source (e.g. the loop bounds or the Java constructs it uses) — ' +
+        'the interpreter scope is not widened to accommodate an example.',
     );
   }
 
   return instructionCount;
 }
 
-/** Uruchamia harness na prawdziwej JVM i zwraca mapę id → wynik. */
+/** Runs the harness on a real JVM and returns a map of id → result. */
 function readExpectedResults(classesDir) {
   const stdout = runTool('java', ['-classpath', classesDir, HARNESS_CLASS]);
   const results = new Map();
@@ -363,8 +362,8 @@ function readExpectedResults(classesDir) {
     const match = /^([a-z0-9-]+)=(-?\d+)$/.exec(trimmed);
     if (!match) {
       throw new FixtureBuildError(
-        `Harness ${HARNESS_CLASS} wypisał linię w nieoczekiwanym formacie: "${trimmed}". ` +
-          'Oczekiwany format to "<id>=<liczba całkowita>".',
+        `Harness ${HARNESS_CLASS} printed a line in an unexpected format: "${trimmed}". ` +
+          'The expected format is "<id>=<integer>".',
       );
     }
     results.set(match[1], Number(match[2]));
@@ -374,9 +373,9 @@ function readExpectedResults(classesDir) {
   const reported = [...results.keys()].sort();
   if (declared.join(',') !== reported.join(',')) {
     throw new FixtureBuildError(
-      `Harness ${HARNESS_CLASS} raportuje inne przykłady niż deklaruje build-fixtures.mjs.\n` +
-        `  zadeklarowane: ${declared.join(', ')}\n` +
-        `  z harnessu:    ${reported.join(', ')}`,
+      `Harness ${HARNESS_CLASS} reports different examples than build-fixtures.mjs declares.\n` +
+        `  declared: ${declared.join(', ')}\n` +
+        `  reported: ${reported.join(', ')}`,
     );
   }
 
@@ -384,7 +383,7 @@ function readExpectedResults(classesDir) {
 }
 
 function writeArtifacts(classesDir, expectedResults) {
-  // Katalog odtwarzany od zera: bez tego usunięty przykład zostawiłby osierocony .class.
+  // The directory is recreated from scratch: otherwise a removed example would leave an orphaned .class.
   rmSync(OUTPUT_DIR, { recursive: true, force: true });
   mkdirSync(OUTPUT_DIR, { recursive: true });
 
@@ -428,8 +427,8 @@ function main() {
       const majorVersion = readMajorVersion(classesDir, className);
       if (majorVersion !== EXPECTED_MAJOR_VERSION) {
         throw new FixtureBuildError(
-          `${className}.class ma major version ${majorVersion}, oczekiwano ` +
-            `${EXPECTED_MAJOR_VERSION} (Java ${JAVA_RELEASE}). Sprawdź flagę --release javac.`,
+          `${className}.class has major version ${majorVersion}, expected ` +
+            `${EXPECTED_MAJOR_VERSION} (Java ${JAVA_RELEASE}). Check the javac --release flag.`,
         );
       }
 
@@ -445,7 +444,7 @@ function main() {
         .map((method) => `${method.signature} = ${method.instructions.length}`)
         .join(', ');
       console.log(
-        `  ✓ ${className}  major=${majorVersion}, instrukcje w zakresie §6: ` +
+        `  ✓ ${className}  major=${majorVersion}, in-scope instructions: ` +
           `${instructionCount} (${perMethod})`,
       );
     }
@@ -453,13 +452,13 @@ function main() {
     const expectedResults = readExpectedResults(classesDir);
     const manifest = writeArtifacts(classesDir, expectedResults);
 
-    console.log(`\nWyniki referencyjne z prawdziwej JVM (harness ${HARNESS_CLASS}):`);
+    console.log(`\nReference results from a real JVM (harness ${HARNESS_CLASS}):`);
     for (const entry of manifest.examples) {
       console.log(`  ${entry.id} → ${entry.expectedResult}`);
     }
     console.log(
-      `\nGotowe: ${manifest.examples.length} przykładów, ${totalInstructions} instrukcji ` +
-        `zwalidowanych względem plan.md §6.\nArtefakty: ${OUTPUT_DIR}`,
+      `\nDone: ${manifest.examples.length} examples, ${totalInstructions} instructions ` +
+        `validated against the supported instruction set.\nArtifacts: ${OUTPUT_DIR}`,
     );
   } finally {
     rmSync(classesDir, { recursive: true, force: true });

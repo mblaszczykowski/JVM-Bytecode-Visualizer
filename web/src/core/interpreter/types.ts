@@ -1,34 +1,31 @@
-/**
- * Kontrakt interpretera — plan.md §5.3–5.4. Zmiana kontraktu wymaga aktualizacji
- * plan.md i ADR-a w tym samym commicie.
- */
+/** Interpreter contract: execution snapshots, VM errors and the execution result. */
 
 import type { Instruction } from '../disassembler/types';
 
 export interface StackFrame {
   readonly methodName: string;
-  /** Razem z methodName jednoznacznie identyfikuje metodę (przeciążenia). */
+  /** Together with methodName it identifies the method unambiguously (overloads). */
   readonly methodDescriptor: string;
-  /** Offset bajtowy NASTĘPNEJ instrukcji tej ramki — konieczny do wznowienia po powrocie z wywołania. */
+  /** Byte offset of the NEXT instruction of this frame — required to resume after a call returns. */
   readonly pc: number;
-  /** [0] = dno stosu. */
+  /** [0] = bottom of the stack. */
   readonly operandStack: readonly number[];
-  /** Sloty 0..maxLocals-1; undefined = slot niezainicjalizowany. */
+  /** Slots 0..maxLocals-1; undefined = uninitialised slot. */
   readonly locals: readonly (number | undefined)[];
-  /** Nazwy z LocalVariableTable (javac -g); undefined, gdy tabela niedostępna. */
+  /** Names from the LocalVariableTable (javac -g); undefined when the table is absent. */
   readonly localNames: readonly (string | undefined)[];
 }
 
 /**
- * Snapshot[i] to stan PRZED wykonaniem snapshot[i].currentInstruction.
- * Ostatni snapshot jest terminalny: pusty callStack, bez currentInstruction.
+ * Snapshot[i] is the state BEFORE executing snapshot[i].currentInstruction.
+ * The last snapshot is terminal: an empty callStack and no currentInstruction.
  */
 export interface Snapshot {
   readonly step: number;
-  /** [0] = najstarsza ramka; głębokość stosu wywołań = length. */
+  /** [0] = oldest frame; the call stack depth equals length. */
   readonly callStack: readonly StackFrame[];
   readonly currentInstruction?: Instruction;
-  /** Z LineNumberTable: wpis o największym startPc <= pc (plan.md §8 pkt 11). */
+  /** From the LineNumberTable: the entry with the largest startPc <= pc. */
   readonly sourceLine?: number;
 }
 
@@ -41,14 +38,14 @@ export type VmError =
     }
   | { readonly kind: 'division-by-zero'; readonly offset: number; readonly methodName: string }
   | {
-      /** invokestatic poza bieżącą klasę albo nieobsługiwany deskryptor (plan.md §6, §8 pkt 6). */
+      /** invokestatic outside the current class, or an unsupported descriptor. */
       readonly kind: 'unsupported-call';
       readonly target: string;
       readonly offset: number;
       readonly methodName: string;
     }
   | {
-      /** Stan niemożliwy przy poprawnym bajtkodzie (np. pusty stos operandów przy iadd). */
+      /** A state impossible for valid bytecode (e.g. an empty operand stack at iadd). */
       readonly kind: 'invalid-state';
       readonly message: string;
       readonly offset: number;
@@ -61,9 +58,9 @@ export type ExecutionResult =
   | { readonly kind: 'step-limit'; readonly snapshots: readonly Snapshot[]; readonly limit: number };
 
 export interface ExecuteOptions {
-  /** Domyślnie "main" (konwencja startu — plan.md §5.4). */
+  /** Defaults to "main". */
   readonly entryMethod?: string;
-  /** Domyślnie DEFAULT_MAX_STEPS (plan.md §8 pkt 9). */
+  /** Defaults to DEFAULT_MAX_STEPS. */
   readonly maxSteps?: number;
 }
 

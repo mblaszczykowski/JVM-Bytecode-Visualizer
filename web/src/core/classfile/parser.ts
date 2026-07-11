@@ -13,22 +13,21 @@ import {
 } from './types';
 
 /**
- * Parser plików `.class` (JVMS §4). Zakres: nagłówek, constant pool, flagi, pola,
- * metody, atrybut `Code` wraz z `LineNumberTable` i `LocalVariableTable`
- * (plan.md §9 Faza 1).
+ * `.class` file parser (JVMS §4). Scope: header, constant pool, flags, fields, methods
+ * and the `Code` attribute together with `LineNumberTable` and `LocalVariableTable`.
  *
- * Zasady, które trzymają parser przy życiu na plikach z prawdziwego javaca:
- * - constant pool jest 1-indeksowany i ma `constant_pool_count - 1` wpisów, a `Long`/`Double`
- *   zajmują po dwa sloty (plan.md §8 pkt 3);
- * - tagi, których nie interpretujemy, i tak mają znane długości i są przeskakiwane (§8 pkt 5);
- * - każdy nieznany atrybut jest pomijany po `attribute_length` — na każdym poziomie (§8 pkt 4);
- * - jedyny wyjątek wychodzący z tego modułu to `ClassFileError`.
+ * The rules that keep the parser alive on files produced by a real javac:
+ * - the constant pool is 1-indexed and holds `constant_pool_count - 1` entries, with
+ *   `Long`/`Double` taking two slots each (JVMS §4.4.5);
+ * - tags we do not interpret still have known lengths and are skipped over;
+ * - every unknown attribute is skipped by `attribute_length` — at every level (JVMS §4.7);
+ * - the only exception leaving this module is `ClassFileError`.
  */
 
-/** JVMS §4.1: `magic` ma zawsze wartość 0xCAFEBABE. */
+/** JVMS §4.1: `magic` always equals 0xCAFEBABE. */
 const CLASS_FILE_MAGIC = 0xcafe_babe;
 
-/** JVMS §4.7.3: `code_length` musi być > 0 i < 65536. */
+/** JVMS §4.7.3: `code_length` must be > 0 and < 65536. */
 const MAX_CODE_LENGTH = 65_535;
 
 export function parseClassFile(buffer: ArrayBuffer): ClassFile {
@@ -50,7 +49,7 @@ export function parseClassFile(buffer: ArrayBuffer): ClassFile {
 
   const superClassAt = reader.offset;
   const superClassIndex = reader.readU2('super_class');
-  // super_class = 0 występuje wyłącznie w java/lang/Object (JVMS §4.1).
+  // super_class = 0 occurs only in java/lang/Object (JVMS §4.1).
   const superClassName =
     superClassIndex === 0
       ? ''
@@ -59,8 +58,8 @@ export function parseClassFile(buffer: ArrayBuffer): ClassFile {
   const interfaceNames = readInterfaces(reader, constantPool);
   const fields = readFields(reader, constantPool);
   const methods = readMethods(reader, constantPool);
-  // Atrybuty klasy (SourceFile, NestMembers, InnerClasses...) czytamy tylko po to,
-  // żeby potwierdzić spójność pliku — żaden z nich nie jest potrzebny w MVP.
+  // Class attributes (SourceFile, NestMembers, InnerClasses...) are read only to confirm
+  // the file is structurally consistent — none of them is needed by the MVP.
   readAttributes(reader, constantPool, 'ClassFile', () => undefined);
 
   return {
@@ -85,11 +84,11 @@ function readConstantPool(reader: ByteReader): ConstantPool {
     throw new ClassFileError({
       kind: 'malformed-structure',
       offset: countAt,
-      reason: 'constant_pool_count = 0, a pula jest 1-indeksowana (minimum to 1)',
+      reason: 'constant_pool_count = 0, but the pool is 1-indexed (the minimum is 1)',
     });
   }
 
-  // Indeks 0 jest nieużywany i zostaje `null` — tak samo drugi slot wpisów Long/Double.
+  // Index 0 is unused and stays `null` — so does the second slot of Long/Double entries.
   const pool: (ConstantPoolEntry | null)[] = new Array<ConstantPoolEntry | null>(count).fill(null);
 
   for (let index = 1; index < count; index += 1) {
@@ -98,7 +97,7 @@ function readConstantPool(reader: ByteReader): ConstantPool {
     pool[index] = readConstantEntry(reader, tag, index, tagAt);
 
     if (tag === ConstantTag.Long || tag === ConstantTag.Double) {
-      // JVMS §4.4.5: „ośmiobajtowe stałe zajmują dwa wpisy tablicy constant_pool”.
+      // JVMS §4.4.5: "eight-byte constants take up two entries in the constant_pool table".
       index += 1;
     }
   }
@@ -122,8 +121,8 @@ function readConstantEntry(
       return { tag: ConstantTag.Utf8, value: decodeModifiedUtf8(bytes, index, bytesAt) };
     }
     case ConstantTag.Integer:
-      // JVMS §4.4.4: CONSTANT_Integer trzyma int ze znakiem; `| 0` reinterpretuje
-      // odczytane u4 jako int32 (jedyna sensowna konwersja bez readI4 w ByteReaderze).
+      // JVMS §4.4.4: CONSTANT_Integer holds a signed int; `| 0` reinterprets the u4 just
+      // read as an int32 (the only sensible conversion without a readI4 on ByteReader).
       return { tag: ConstantTag.Integer, value: reader.readU4(field('bytes')) | 0 };
     case ConstantTag.Class:
       return { tag: ConstantTag.Class, nameIndex: reader.readU2(field('name_index')) };
@@ -148,8 +147,8 @@ function readConstantEntry(
         descriptorIndex: reader.readU2(field('descriptor_index')),
       };
 
-    // Tagi znane, ale nieinterpretowane — czytane wyłącznie po to, żeby kursor stanął
-    // na następnym wpisie (plan.md §8 pkt 5). Długości wg JVMS §4.4.
+    // Tags that are known but not interpreted — read only so the cursor lands on the next
+    // entry. Lengths per JVMS §4.4.
     case ConstantTag.Float:
       reader.skip(4, field('bytes'));
       return { tag: ConstantTag.Float };
@@ -182,8 +181,8 @@ function readConstantEntry(
       return { tag: ConstantTag.Package };
 
     default:
-      // Wpisy puli mają różne długości — bez znajomości tagu nie da się przejść
-      // do następnego wpisu, więc dalszy odczyt nie miałby sensu.
+      // Pool entries have different lengths — without knowing the tag there is no way to
+      // advance to the next entry, so reading any further would be meaningless.
       throw new ClassFileError({
         kind: 'unknown-constant-tag',
         offset: tagAt,
@@ -194,15 +193,15 @@ function readConstantEntry(
 }
 
 /**
- * Dekoder zmodyfikowanego UTF-8 (JVMS §4.4.7): jak UTF-8, ale U+0000 zapisuje się
- * dwubajtowo (0xC0 0x80), a znaki spoza BMP dwiema sekwencjami trzybajtowymi
- * (parą surogatów), nie jedną czterobajtową.
+ * Modified UTF-8 decoder (JVMS §4.4.7): like UTF-8, except U+0000 is encoded on two bytes
+ * (0xC0 0x80) and characters outside the BMP use two three-byte sequences (a surrogate
+ * pair) instead of a single four-byte one.
  *
- * Ponieważ string w JS jest ciągiem jednostek UTF-16, para surogatów odtwarza się tu
- * sama z siebie — dekodowanie 1/2/3-bajtowych sekwencji pokrywa cały format, łącznie
- * ze znakami spoza BMP. Ograniczenie: nie weryfikujemy nadmiarowo długich kodowań
- * ani poprawnego sparowania surogatów (w plikach z javaca nie występują, a błąd i tak
- * nie prowadzi do niepoprawnego odczytu kolejnych struktur — długość wpisu znamy z góry).
+ * Because a JS string is a sequence of UTF-16 code units, the surrogate pair reassembles
+ * itself here — decoding 1/2/3-byte sequences covers the whole format, including
+ * supplementary characters. Limitation: overlong encodings and surrogate pairing are not
+ * validated (javac never emits them, and either way the entry length is known up front,
+ * so a bad string cannot desynchronise the reads that follow).
  */
 function decodeModifiedUtf8(bytes: Uint8Array, constantPoolIndex: number, bytesAt: number): string {
   const byteAt = (position: number): number => {
@@ -212,7 +211,7 @@ function decodeModifiedUtf8(bytes: Uint8Array, constantPoolIndex: number, bytesA
         kind: 'malformed-utf8',
         offset: bytesAt + position,
         constantPoolIndex,
-        reason: 'sekwencja wielobajtowa urwana na końcu wpisu',
+        reason: 'multi-byte sequence truncated at the end of the entry',
       });
     }
     return value;
@@ -229,10 +228,7 @@ function decodeModifiedUtf8(bytes: Uint8Array, constantPoolIndex: number, bytesA
   const continuation = (position: number): number => {
     const value = byteAt(position);
     if ((value & 0b1100_0000) !== 0b1000_0000) {
-      throw fail(
-        position,
-        `oczekiwano bajtu kontynuacji 10xxxxxx, znaleziono 0x${value.toString(16)}`,
-      );
+      throw fail(position, `expected a 10xxxxxx continuation byte, found 0x${value.toString(16)}`);
     }
     return value & 0b0011_1111;
   };
@@ -243,8 +239,8 @@ function decodeModifiedUtf8(bytes: Uint8Array, constantPoolIndex: number, bytesA
     const lead = byteAt(position);
 
     if (lead === 0x00) {
-      // U+0000 musi być zapisane jako 0xC0 0x80 — goły zerowy bajt jest niedozwolony.
-      throw fail(position, 'bajt 0x00 jest niedozwolony (U+0000 koduje się jako 0xc0 0x80)');
+      // U+0000 must be encoded as 0xC0 0x80 — a bare zero byte is not allowed.
+      throw fail(position, 'byte 0x00 is not allowed (U+0000 is encoded as 0xc0 0x80)');
     } else if (lead < 0x80) {
       result += String.fromCharCode(lead);
       position += 1;
@@ -259,14 +255,14 @@ function decodeModifiedUtf8(bytes: Uint8Array, constantPoolIndex: number, bytesA
       );
       position += 3;
     } else {
-      throw fail(position, `nieprawidłowy bajt wiodący 0x${lead.toString(16)}`);
+      throw fail(position, `invalid lead byte 0x${lead.toString(16)}`);
     }
   }
 
   return result;
 }
 
-// --- Rozwiązywanie odwołań do puli ------------------------------------------------------------
+// --- Resolving constant pool references -------------------------------------------------------
 
 function constantAt(
   pool: ConstantPool,
@@ -303,7 +299,7 @@ function resolveClassName(
   return resolveUtf8(pool, entry.nameIndex, offset, `${context} → Class.name_index`);
 }
 
-// --- Interfejsy, pola, metody (JVMS §4.1, §4.5, §4.6) -----------------------------------------
+// --- Interfaces, fields, methods (JVMS §4.1, §4.5, §4.6) --------------------------------------
 
 function readInterfaces(reader: ByteReader, pool: ConstantPool): readonly string[] {
   const count = reader.readU2('interfaces_count');
@@ -343,8 +339,8 @@ function readFields(reader: ByteReader, pool: ConstantPool): readonly FieldInfo[
   for (let i = 0; i < count; i += 1) {
     const owner = `fields[${String(i)}]`;
     const header = readMemberHeader(reader, pool, owner);
-    // MVP nie zna pól (ADR-0002: brak heapu) — czytamy je tylko strukturalnie,
-    // żeby kursor stanął na tablicy metod. Atrybuty pola pomijamy w całości.
+    // The MVP has no notion of fields (no heap) — they are read structurally only, so the
+    // cursor lands on the methods table. Field attributes are skipped entirely.
     readAttributes(reader, pool, owner, () => undefined);
     fields.push(header);
   }
@@ -362,7 +358,7 @@ function readMethods(reader: ByteReader, pool: ConstantPool): readonly MethodInf
 
     let code: CodeAttribute | undefined;
     readAttributes(reader, pool, owner, (name, body) => {
-      // JVMS §4.7.3: metoda ma najwyżej jeden atrybut Code; ewentualne kolejne ignorujemy.
+      // JVMS §4.7.3: a method has at most one Code attribute; any further ones are ignored.
       if (name === 'Code' && code === undefined) {
         code = readCodeAttribute(body, pool);
       }
@@ -374,13 +370,12 @@ function readMethods(reader: ByteReader, pool: ConstantPool): readonly MethodInf
   return methods;
 }
 
-// --- Atrybuty (JVMS §4.7) ---------------------------------------------------------------------
+// --- Attributes (JVMS §4.7) -------------------------------------------------------------------
 
 /**
- * Czyta tablicę atrybutów i woła `visit` dla każdego z nich, podając czytnik ograniczony
- * do ciała atrybutu. Kursor rodzica przeskakuje atrybut po `attribute_length` niezależnie
- * od tego, ile bajtów przeczytał `visit` — to jest realizacja plan.md §8 pkt 4 dla
- * wszystkich poziomów (klasa/pole/metoda/Code).
+ * Reads an attributes table and calls `visit` for each entry with a reader limited to the
+ * attribute body. The parent cursor skips the attribute by `attribute_length` no matter how
+ * many bytes `visit` consumed — this holds at every level (class/field/method/Code).
  */
 function readAttributes(
   reader: ByteReader,
@@ -410,12 +405,12 @@ function readCodeAttribute(body: ByteReader, pool: ConstantPool): CodeAttribute 
     throw new ClassFileError({
       kind: 'malformed-structure',
       offset: codeLengthAt,
-      reason: `code_length = ${String(codeLength)}, a JVMS §4.7.3 wymaga wartości z zakresu 1..${String(MAX_CODE_LENGTH)}`,
+      reason: `code_length = ${String(codeLength)}, but JVMS §4.7.3 requires a value in 1..${String(MAX_CODE_LENGTH)}`,
     });
   }
   const code = body.readBytes(codeLength, 'Code.code');
 
-  // Tablica wyjątków jest czytana i świadomie ignorowana — wyjątki są poza MVP (plan.md §10).
+  // The exception table is read and deliberately ignored — exceptions are out of MVP scope.
   const exceptionTableLength = body.readU2('Code.exception_table_length');
   for (let i = 0; i < exceptionTableLength; i += 1) {
     body.skip(8, `Code.exception_table[${String(i)}]`);
@@ -425,7 +420,7 @@ function readCodeAttribute(body: ByteReader, pool: ConstantPool): CodeAttribute 
   const localVariableTable: LocalVariableEntry[] = [];
 
   readAttributes(body, pool, 'Code', (name, nested) => {
-    // JVMS §4.7.12/§4.7.13 dopuszczają wiele takich atrybutów w jednym Code — sklejamy je.
+    // JVMS §4.7.12/§4.7.13 allow several such attributes in one Code — concatenate them.
     if (name === 'LineNumberTable') {
       lineNumberTable.push(...readLineNumberTable(nested));
     } else if (name === 'LocalVariableTable') {

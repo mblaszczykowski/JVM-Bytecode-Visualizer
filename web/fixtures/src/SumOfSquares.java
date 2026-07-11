@@ -1,27 +1,27 @@
 /**
- * Zagnieżdżone pętle {@code for} — przykład bez rekurencji, za to z płaskim stosem
- * i długą historią wykonania.
+ * Nested {@code for} loops — an example without recursion, with a flat stack and a long
+ * execution history instead.
  *
- * <p>Suma iloczynów {@code i * j} po kwadratowej siatce {@code n x n}; na przekątnej
- * ({@code i == j}) składnikami są kolejne kwadraty, stąd nazwa przykładu.
- * Dla {@code n = 6} siatka ma 36 pól, co daje ok. 470 kroków bajtkodu — wystarczająco
- * dużo, by zobaczyć w akcji {@code iinc} (inkrementacja licznika w miejscu, bez stosu
- * operandów), {@code if_icmpgt} (warunek pętli) i skok wsteczny {@code goto}.
+ * <p>It sums the products {@code i * j} over a square {@code n x n} grid; on the diagonal
+ * ({@code i == j}) the terms are consecutive squares, which is where the name comes from.
+ * For {@code n = 6} the grid has 36 cells, giving roughly 470 bytecode steps — enough to see
+ * {@code iinc} in action (incrementing the counter in place, without touching the operand
+ * stack), {@code if_icmpgt} (the loop condition) and the backward {@code goto} jump.
  *
- * <p>Program mieści się w podzbiorze instrukcji z plan.md §6 i respektuje ograniczenia §5.4
- * (bez {@code System.out.println}, bez pól statycznych, wynik do lokalnej {@code result}).
+ * <p>There is no {@code System.out.println} and no static field; the result is stored in the
+ * local variable {@code result}.
  */
 public final class SumOfSquares {
 
     private SumOfSquares() {
-        // Klasa narzędziowa — instancji nie tworzymy.
+        // Utility class — never instantiated.
     }
 
     /**
-     * Sumuje iloczyny {@code i * j} dla wszystkich par z zakresu {@code 1..n}.
+     * Sums the products {@code i * j} for every pair drawn from the range {@code 1..n}.
      *
-     * @param n rozmiar boku siatki; dla {@code n <= 0} pętle nie wykonują ani jednego obrotu
-     * @return suma wszystkich iloczynów, czyli kwadrat n-tej liczby trójkątnej
+     * @param n side of the grid; for {@code n <= 0} the loops do not run a single iteration
+     * @return the sum of all products, i.e. the square of the n-th triangular number
      */
     static int sumOfSquares(int n) {
         int sum = 0;
@@ -34,8 +34,8 @@ public final class SumOfSquares {
     }
 
     /**
-     * Punkt wejścia interpretera. Parametr {@code args} jest celowo nieużywany —
-     * slot 0 ramki {@code main} trzyma wartownika, którego żadna instrukcja z §6 nie czyta.
+     * Interpreter entry point. The {@code args} parameter is deliberately unused — slot 0 of
+     * the {@code main} frame holds a sentinel that no supported instruction can read.
      */
     public static void main(String[] args) {
         int result = sumOfSquares(6); // 441

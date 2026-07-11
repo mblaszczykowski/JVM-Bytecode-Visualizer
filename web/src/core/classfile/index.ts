@@ -1,6 +1,6 @@
 /**
- * Publiczne API warstwy parsera plików `.class` (plan.md §9 Faza 1).
- * Disassembler, interpreter i UI importują wyłącznie stąd.
+ * Public API of the `.class` parsing layer.
+ * The disassembler, interpreter and UI import from here only.
  */
 export { ByteReader } from './byte-reader';
 export {

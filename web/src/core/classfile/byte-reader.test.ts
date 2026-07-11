@@ -7,8 +7,8 @@ function readerOf(...bytes: number[]): ByteReader {
   return new ByteReader(Uint8Array.from(bytes).buffer);
 }
 
-describe('ByteReader — odczyty bez znaku', () => {
-  it('czyta u1, u2 i u4 big-endian (JVMS §4.1)', () => {
+describe('ByteReader — unsigned reads', () => {
+  it('reads u1, u2 and u4 big-endian (JVMS §4.1)', () => {
     const reader = readerOf(0x2a, 0x01, 0x02, 0xca, 0xfe, 0xba, 0xbe);
 
     expect(reader.readU1()).toBe(0x2a);
@@ -16,25 +16,25 @@ describe('ByteReader — odczyty bez znaku', () => {
     expect(reader.readU4()).toBe(0xcafe_babe);
   });
 
-  it('zwraca u4 jako liczbę bez znaku, także powyżej 2^31', () => {
+  it('returns u4 as an unsigned number, also above 2^31', () => {
     const reader = readerOf(0xff, 0xff, 0xff, 0xff);
 
     expect(reader.readU4()).toBe(4_294_967_295);
   });
 });
 
-describe('ByteReader — odczyty ze znakiem', () => {
-  it('czyta 0xFF jako -1 przez readI1 i jako 255 przez readU1', () => {
+describe('ByteReader — signed reads', () => {
+  it('reads 0xFF as -1 via readI1 and as 255 via readU1', () => {
     expect(readerOf(0xff).readI1()).toBe(-1);
     expect(readerOf(0xff).readU1()).toBe(255);
   });
 
-  it('czyta 0xFFFE jako -2 przez readI2 i jako 65534 przez readU2', () => {
+  it('reads 0xFFFE as -2 via readI2 and as 65534 via readU2', () => {
     expect(readerOf(0xff, 0xfe).readI2()).toBe(-2);
     expect(readerOf(0xff, 0xfe).readU2()).toBe(65_534);
   });
 
-  it('czyta wartości skrajne typów ze znakiem', () => {
+  it('reads the extreme values of the signed types', () => {
     expect(readerOf(0x80).readI1()).toBe(-128);
     expect(readerOf(0x7f).readI1()).toBe(127);
     expect(readerOf(0x80, 0x00).readI2()).toBe(-32_768);
@@ -42,8 +42,8 @@ describe('ByteReader — odczyty ze znakiem', () => {
   });
 });
 
-describe('ByteReader — kursor', () => {
-  it('przesuwa offset o rozmiar odczytu i zmniejsza remaining', () => {
+describe('ByteReader — cursor', () => {
+  it('advances the offset by the read size and decreases remaining', () => {
     const reader = readerOf(1, 2, 3, 4, 5, 6, 7);
     expect(reader.offset).toBe(0);
     expect(reader.remaining).toBe(7);
@@ -57,7 +57,7 @@ describe('ByteReader — kursor', () => {
     expect(reader.remaining).toBe(0);
   });
 
-  it('skip przeskakuje bajty bez ich odczytywania', () => {
+  it('skip jumps over bytes without reading them', () => {
     const reader = readerOf(1, 2, 3, 4);
     reader.skip(3);
 
@@ -65,7 +65,7 @@ describe('ByteReader — kursor', () => {
     expect(reader.readU1()).toBe(4);
   });
 
-  it('readBytes zwraca kopię — mutacja wyniku nie rusza bufora źródłowego', () => {
+  it('readBytes returns a copy — mutating the result leaves the source buffer alone', () => {
     const source = Uint8Array.from([0x0a, 0x0b, 0x0c]);
     const reader = new ByteReader(source.buffer);
 
@@ -76,7 +76,7 @@ describe('ByteReader — kursor', () => {
     expect(Array.from(source)).toEqual([0x0a, 0x0b, 0x0c]);
   });
 
-  it('readBytes(0) zwraca pustą tablicę i nie rusza kursora', () => {
+  it('readBytes(0) returns an empty array and does not move the cursor', () => {
     const reader = readerOf(1, 2);
 
     expect(reader.readBytes(0)).toHaveLength(0);
@@ -84,8 +84,8 @@ describe('ByteReader — kursor', () => {
   });
 });
 
-describe('ByteReader — przekroczenie bufora', () => {
-  it('zgłasza typowany błąd truncated zamiast RangeError z DataView', () => {
+describe('ByteReader — reading past the buffer', () => {
+  it('reports a typed truncated error instead of a DataView RangeError', () => {
     const reader = readerOf(0x01, 0x02);
 
     const detail = expectClassFileError(() => reader.readU4('major_version'));
@@ -99,7 +99,7 @@ describe('ByteReader — przekroczenie bufora', () => {
     });
   });
 
-  it('raportuje offset w miejscu, w którym kursor się zatrzymał', () => {
+  it('reports the offset where the cursor stopped', () => {
     const reader = readerOf(0x01, 0x02, 0x03);
     reader.readU2();
 
@@ -108,7 +108,7 @@ describe('ByteReader — przekroczenie bufora', () => {
     expect(detail).toMatchObject({ kind: 'truncated', offset: 2, bytesAvailable: 1 });
   });
 
-  it('nie przesuwa kursora, gdy odczyt się nie powiódł', () => {
+  it('leaves the cursor in place when a read fails', () => {
     const reader = readerOf(0x01);
     expectClassFileError(() => reader.readU2());
 
@@ -116,7 +116,7 @@ describe('ByteReader — przekroczenie bufora', () => {
     expect(reader.readU1()).toBe(0x01);
   });
 
-  it('odrzuca ujemną i niecałkowitą liczbę bajtów', () => {
+  it('rejects negative and non-integer byte counts', () => {
     expect(
       expectClassFileError(() => {
         readerOf(1, 2).skip(-1);
@@ -127,7 +127,7 @@ describe('ByteReader — przekroczenie bufora', () => {
     });
   });
 
-  it('odrzuca okno wykraczające poza bufor źródłowy', () => {
+  it('rejects a window reaching outside the source buffer', () => {
     const buffer = Uint8Array.from([1, 2, 3]).buffer;
 
     expect(expectClassFileError(() => new ByteReader(buffer, 2, 4))).toMatchObject({
@@ -137,10 +137,10 @@ describe('ByteReader — przekroczenie bufora', () => {
 });
 
 describe('ByteReader — subReader', () => {
-  it('ogranicza odczyt do zadanej długości i przesuwa kursor rodzica za blok', () => {
+  it('limits reads to the given length and moves the parent cursor past the block', () => {
     const reader = readerOf(0xaa, 0xbb, 0xcc, 0xdd);
 
-    const body = reader.subReader(2, 'atrybut');
+    const body = reader.subReader(2, 'attribute');
 
     expect(body.readU1()).toBe(0xaa);
     expect(body.remaining).toBe(1);
@@ -148,7 +148,7 @@ describe('ByteReader — subReader', () => {
     expect(reader.readU2()).toBe(0xccdd);
   });
 
-  it('nie pozwala ciału bloku sięgnąć poza jego długość', () => {
+  it('does not let a block body reach beyond its length', () => {
     const reader = readerOf(0xaa, 0xbb, 0xcc, 0xdd);
     const body = reader.subReader(2);
 
@@ -157,7 +157,7 @@ describe('ByteReader — subReader', () => {
     expect(detail).toMatchObject({ kind: 'truncated', bytesNeeded: 4, bytesAvailable: 2 });
   });
 
-  it('raportuje offsety bezwzględne w buforze, nie względem bloku', () => {
+  it('reports absolute buffer offsets, not offsets relative to the block', () => {
     const reader = readerOf(0x00, 0x00, 0xaa, 0xbb);
     reader.skip(2);
     const body = reader.subReader(2);
@@ -168,7 +168,7 @@ describe('ByteReader — subReader', () => {
     expect(expectClassFileError(() => body.readU2())).toMatchObject({ offset: 3 });
   });
 
-  it('zgłasza truncated, gdy deklarowana długość bloku przekracza bufor', () => {
+  it('reports truncated when the declared block length exceeds the buffer', () => {
     const reader = readerOf(0x01, 0x02);
 
     expect(expectClassFileError(() => reader.subReader(8, 'attribute_length'))).toMatchObject({

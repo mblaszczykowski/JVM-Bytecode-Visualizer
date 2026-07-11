@@ -1,12 +1,11 @@
 /**
- * Model wyniku parsera plików `.class` — kontrakt plan.md §5.1 (tu w pełnej wersji).
- * Zmiana kontraktu wymaga aktualizacji plan.md i ADR-a w tym samym commicie.
+ * Model of the `.class` parser result.
  *
- * Wszystko jest `readonly`: parser zwraca dane, na których disassembler i interpreter
- * tylko czytają (plan.md §11 pkt 2).
+ * Everything is `readonly`: the parser returns data that the disassembler and interpreter
+ * only read from.
  */
 
-/** Tagi wpisów constant poolu — JVMS §4.4, tabela 4.4-B. */
+/** Constant pool entry tags — JVMS §4.4, table 4.4-B. */
 export const ConstantTag = {
   Utf8: 1,
   Integer: 3,
@@ -29,7 +28,7 @@ export const ConstantTag = {
 
 export type ConstantTag = (typeof ConstantTag)[keyof typeof ConstantTag];
 
-/** Tagi czytane wyłącznie po to, żeby poprawnie przejść dalej (plan.md §8 pkt 5). */
+/** Tags read only so the parser can correctly advance past them. */
 export type UninterpretedConstantTag =
   | typeof ConstantTag.Float
   | typeof ConstantTag.Long
@@ -44,19 +43,19 @@ export type UninterpretedConstantTag =
 
 export interface Utf8Constant {
   readonly tag: typeof ConstantTag.Utf8;
-  /** Zdekodowany zmodyfikowany UTF-8 (JVMS §4.4.7). */
+  /** Decoded modified UTF-8 (JVMS §4.4.7). */
   readonly value: string;
 }
 
 export interface IntegerConstant {
   readonly tag: typeof ConstantTag.Integer;
-  /** Wartość ze znakiem (int32) — JVMS §4.4.4. */
+  /** Signed value (int32) — JVMS §4.4.4. */
   readonly value: number;
 }
 
 export interface ClassConstant {
   readonly tag: typeof ConstantTag.Class;
-  /** Indeks wpisu Utf8 z nazwą wewnętrzną, np. `java/lang/Object`. */
+  /** Index of the Utf8 entry holding the internal name, e.g. `java/lang/Object`. */
   readonly nameIndex: number;
 }
 
@@ -84,14 +83,14 @@ export interface NameAndTypeConstant {
 }
 
 /**
- * Wpis o znanej długości, którego treści MVP nie potrzebuje. Zachowujemy sam tag,
- * żeby indeksy puli się zgadzały i żeby UI mogło pokazać rodzaj wpisu.
+ * An entry of known length whose contents the MVP does not need. Only the tag is kept, so
+ * that pool indices stay correct and the UI can still show the entry kind.
  */
 export interface UninterpretedConstant {
   readonly tag: UninterpretedConstantTag;
 }
 
-/** Unia dyskryminowana po `tag` (JVMS §4.4). */
+/** Union discriminated by `tag` (JVMS §4.4). */
 export type ConstantPoolEntry =
   | Utf8Constant
   | IntegerConstant
@@ -103,8 +102,8 @@ export type ConstantPoolEntry =
   | UninterpretedConstant;
 
 /**
- * Pula 1-indeksowana: `[0]` zawsze `null`, tak samo drugi slot każdego wpisu
- * `Long`/`Double` (plan.md §8 pkt 3, JVMS §4.4.5).
+ * A 1-indexed pool: `[0]` is always `null`, and so is the second slot of every
+ * `Long`/`Double` entry (JVMS §4.4.5).
  */
 export type ConstantPool = readonly (ConstantPoolEntry | null)[];
 
@@ -118,7 +117,7 @@ export interface LocalVariableEntry {
   readonly length: number;
   readonly name: string;
   readonly descriptor: string;
-  /** Numer slotu zmiennych lokalnych ramki. */
+  /** Slot number in the frame's local variable array. */
   readonly index: number;
 }
 
@@ -126,9 +125,9 @@ export interface CodeAttribute {
   readonly maxStack: number;
   readonly maxLocals: number;
   readonly code: Uint8Array;
-  /** Obecna, gdy klasę skompilowano z informacją o liniach (javac domyślnie ją emituje). */
+  /** Present when the class was compiled with line information (javac emits it by default). */
   readonly lineNumberTable?: readonly LineNumberEntry[];
-  /** Obecna tylko przy `javac -g` — bez niej UI nie zna nazw zmiennych lokalnych. */
+  /** Present only with `javac -g` — without it the UI has no local variable names. */
   readonly localVariableTable?: readonly LocalVariableEntry[];
 }
 
@@ -142,26 +141,26 @@ export interface MethodInfo {
   readonly name: string;
   readonly descriptor: string;
   readonly accessFlags: number;
-  /** Brak dla metod `abstract`/`native` (JVMS §4.6). */
+  /** Absent for `abstract`/`native` methods (JVMS §4.6). */
   readonly code?: CodeAttribute;
 }
 
 export interface ClassFile {
   readonly minorVersion: number;
-  /** 65 = Java 21 (JVMS §4.1, tabela 4.1-A). */
+  /** 65 = Java 21 (JVMS §4.1, table 4.1-A). */
   readonly majorVersion: number;
   readonly constantPool: ConstantPool;
   readonly accessFlags: number;
-  /** Nazwa wewnętrzna, np. `Factorial` — rozwiązana z constant poolu. */
+  /** Internal name, e.g. `Factorial` — resolved from the constant pool. */
   readonly thisClassName: string;
-  /** Pusty string wyłącznie dla `java/lang/Object`, jedynej klasy bez nadklasy (JVMS §4.1). */
+  /** Empty only for `java/lang/Object`, the sole class without a superclass (JVMS §4.1). */
   readonly superClassName: string;
   readonly interfaceNames: readonly string[];
   readonly fields: readonly FieldInfo[];
   readonly methods: readonly MethodInfo[];
 }
 
-/** Podzbiór flag dostępu z JVMS §4.6, tabela 4.6-A, używany przez interpreter i UI. */
+/** Subset of the access flags from JVMS §4.6, table 4.6-A, used by the interpreter and UI. */
 export const AccessFlag = {
   Public: 0x0001,
   Private: 0x0002,

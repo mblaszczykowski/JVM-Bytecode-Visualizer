@@ -1,26 +1,26 @@
 /**
- * Rekurencyjna silnia — najprostszy przykład rosnącego i zwijającego się stosu wywołań.
+ * Recursive factorial — the simplest example of a call stack growing and unwinding.
  *
- * <p>Wykonanie {@code factorial(4)} tworzy pięć ramek ({@code main} + cztery wywołania
- * rekurencyjne), więc panel "call stack" pokazuje pełny cykl: zejście w dół rekurencji,
- * osiągnięcie przypadku bazowego i zwijanie stosu z mnożeniem wyników przy powrotach.
+ * <p>Running {@code factorial(4)} creates five frames ({@code main} plus four recursive
+ * calls), so the call stack panel shows the full cycle: descending into the recursion,
+ * hitting the base case and unwinding while multiplying the results on the way back.
  *
- * <p>Program mieści się w podzbiorze instrukcji JVM obsługiwanym przez interpreter
- * (plan.md §6): wyłącznie arytmetyka na {@code int} i statyczne metody tej samej klasy.
- * Zgodnie z plan.md §5.4 nie ma tu {@code System.out.println} ani pól statycznych —
- * wynik programu odkłada się do zmiennej lokalnej {@code result} w {@code main}.
+ * <p>The program stays inside the JVM instruction subset the interpreter supports: only
+ * {@code int} arithmetic and static methods of the same class. There is no
+ * {@code System.out.println} and no static field — the program result is stored in the
+ * local variable {@code result} in {@code main}.
  */
 public final class Factorial {
 
     private Factorial() {
-        // Klasa narzędziowa — instancji nie tworzymy.
+        // Utility class — never instantiated.
     }
 
     /**
-     * Liczy {@code n!} rekurencyjnie.
+     * Computes {@code n!} recursively.
      *
-     * @param n liczba nieujemna
-     * @return silnia z {@code n}; dla {@code n <= 1} przypadek bazowy równy 1
+     * @param n a non-negative number
+     * @return the factorial of {@code n}; for {@code n <= 1} the base case value 1
      */
     static int factorial(int n) {
         if (n <= 1) {
@@ -30,8 +30,8 @@ public final class Factorial {
     }
 
     /**
-     * Punkt wejścia interpretera. Parametr {@code args} jest celowo nieużywany —
-     * slot 0 ramki {@code main} trzyma wartownika, którego żadna instrukcja z §6 nie czyta.
+     * Interpreter entry point. The {@code args} parameter is deliberately unused — slot 0 of
+     * the {@code main} frame holds a sentinel that no supported instruction can read.
      */
     public static void main(String[] args) {
         int result = factorial(4); // 24

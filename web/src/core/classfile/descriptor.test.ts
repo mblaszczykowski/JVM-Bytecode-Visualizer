@@ -13,26 +13,26 @@ import { isClassFileError } from './errors';
 const int: JvmType = { kind: 'primitive', name: 'int' };
 
 describe('parseMethodDescriptor', () => {
-  it('parsuje deskryptor z fixture: (I)I', () => {
+  it('parses the fixture descriptor: (I)I', () => {
     expect(parseMethodDescriptor('(I)I')).toEqual({ params: [int], returnType: int });
   });
 
-  it('parsuje wiele parametrów: (II)I', () => {
+  it('parses multiple parameters: (II)I', () => {
     expect(parseMethodDescriptor('(II)I')).toEqual({ params: [int, int], returnType: int });
   });
 
-  it('parsuje brak parametrów i zwrotkę void: ()V', () => {
+  it('parses an empty parameter list and a void return type: ()V', () => {
     expect(parseMethodDescriptor('()V')).toEqual({ params: [], returnType: { kind: 'void' } });
   });
 
-  it('parsuje deskryptor main: ([Ljava/lang/String;)V', () => {
+  it('parses the main descriptor: ([Ljava/lang/String;)V', () => {
     expect(parseMethodDescriptor('([Ljava/lang/String;)V')).toEqual({
       params: [{ kind: 'array', elementType: { kind: 'class', className: 'java/lang/String' } }],
       returnType: { kind: 'void' },
     });
   });
 
-  it('zna pełną gramatykę typów bazowych (JVMS §4.3.2), nie tylko int', () => {
+  it('knows the full base type grammar (JVMS §4.3.2), not just int', () => {
     const { params, returnType } = parseMethodDescriptor('(BCDFIJSZ)J');
 
     expect(params.map((param) => formatJvmType(param))).toEqual([
@@ -48,14 +48,14 @@ describe('parseMethodDescriptor', () => {
     expect(returnType).toEqual({ kind: 'primitive', name: 'long' });
   });
 
-  it('parsuje tablice wielowymiarowe jako zagnieżdżone typy', () => {
+  it('parses multi-dimensional arrays as nested types', () => {
     const { params, returnType } = parseMethodDescriptor('([[I)[[[Ljava/lang/Object;');
 
     expect(params).toEqual([{ kind: 'array', elementType: { kind: 'array', elementType: int } }]);
     expect(formatJvmType(returnType)).toBe('java.lang.Object[][][]');
   });
 
-  it('rozróżnia typy obiektowe o nazwach zaczynających się od znaków typów bazowych', () => {
+  it('distinguishes object types whose names start with base type characters', () => {
     expect(parseMethodDescriptor('(LI;LJava;)LB;')).toEqual({
       params: [
         { kind: 'class', className: 'I' },
@@ -66,23 +66,23 @@ describe('parseMethodDescriptor', () => {
   });
 });
 
-describe('parseMethodDescriptor — błędy', () => {
+describe('parseMethodDescriptor — errors', () => {
   const cases = [
-    { descriptor: '', position: 0, why: 'pusty deskryptor' },
-    { descriptor: 'II)I', position: 0, why: 'brak nawiasu otwierającego' },
-    { descriptor: '(II', position: 3, why: 'brak nawiasu zamykającego' },
-    { descriptor: '(I)', position: 3, why: 'brak typu zwracanego' },
-    { descriptor: '(I)IJ', position: 4, why: 'nadmiarowe znaki na końcu' },
-    { descriptor: '(V)I', position: 1, why: 'void jako parametr' },
-    { descriptor: '(L)V', position: 1, why: 'typ obiektowy bez zamknięcia' },
-    { descriptor: '(L;)V', position: 1, why: 'pusta nazwa klasy' },
-    { descriptor: '(Ljava/lang/String)V', position: 1, why: 'typ obiektowy bez średnika' },
-    { descriptor: '(X)V', position: 1, why: 'nieznany znak typu' },
-    { descriptor: '([)V', position: 2, why: 'tablica bez typu komponentu' },
+    { descriptor: '', position: 0, why: 'empty descriptor' },
+    { descriptor: 'II)I', position: 0, why: 'missing opening parenthesis' },
+    { descriptor: '(II', position: 3, why: 'missing closing parenthesis' },
+    { descriptor: '(I)', position: 3, why: 'missing return type' },
+    { descriptor: '(I)IJ', position: 4, why: 'trailing characters' },
+    { descriptor: '(V)I', position: 1, why: 'void as a parameter' },
+    { descriptor: '(L)V', position: 1, why: 'unterminated object type' },
+    { descriptor: '(L;)V', position: 1, why: 'empty class name' },
+    { descriptor: '(Ljava/lang/String)V', position: 1, why: 'object type without a semicolon' },
+    { descriptor: '(X)V', position: 1, why: 'unknown type character' },
+    { descriptor: '([)V', position: 2, why: 'array without a component type' },
   ];
 
   for (const { descriptor, position, why } of cases) {
-    it(`odrzuca "${descriptor}" — ${why} (pozycja ${String(position)})`, () => {
+    it(`rejects "${descriptor}" — ${why} (position ${String(position)})`, () => {
       expect(expectClassFileError(() => parseMethodDescriptor(descriptor))).toMatchObject({
         kind: 'malformed-descriptor',
         descriptor,
@@ -91,7 +91,7 @@ describe('parseMethodDescriptor — błędy', () => {
     });
   }
 
-  it('odrzuca tablicę o więcej niż 255 wymiarach (JVMS §4.3.2)', () => {
+  it('rejects an array with more than 255 dimensions (JVMS §4.3.2)', () => {
     const tooDeep = `(${'['.repeat(256)}I)V`;
 
     expect(expectClassFileError(() => parseMethodDescriptor(tooDeep))).toMatchObject({
@@ -99,7 +99,7 @@ describe('parseMethodDescriptor — błędy', () => {
     });
   });
 
-  it('nie przewraca się na patologicznie głębokiej tablicy (brak rekurencji po wymiarach)', () => {
+  it('survives a pathologically deep array (dimensions are not counted recursively)', () => {
     expect(expectClassFileError(() => parseFieldDescriptor('['.repeat(100_000))).kind).toBe(
       'malformed-descriptor',
     );
@@ -107,7 +107,7 @@ describe('parseMethodDescriptor — błędy', () => {
 });
 
 describe('parseFieldDescriptor', () => {
-  it('parsuje deskryptory zmiennych lokalnych z LocalVariableTable', () => {
+  it('parses local variable descriptors from a LocalVariableTable', () => {
     expect(parseFieldDescriptor('I')).toEqual(int);
     expect(parseFieldDescriptor('LFactorial;')).toEqual({ kind: 'class', className: 'Factorial' });
     expect(parseFieldDescriptor('[Ljava/lang/String;')).toEqual({
@@ -116,7 +116,7 @@ describe('parseFieldDescriptor', () => {
     });
   });
 
-  it('odrzuca void i nadmiarowe znaki', () => {
+  it('rejects void and trailing characters', () => {
     expect(expectClassFileError(() => parseFieldDescriptor('V')).kind).toBe('malformed-descriptor');
     expect(expectClassFileError(() => parseFieldDescriptor('II')).kind).toBe(
       'malformed-descriptor',
@@ -125,7 +125,7 @@ describe('parseFieldDescriptor', () => {
 });
 
 describe('formatJvmType', () => {
-  it('tłumaczy nazwy wewnętrzne na zapis źródłowy Javy', () => {
+  it('translates internal names into Java source notation', () => {
     expect(formatJvmType({ kind: 'void' })).toBe('void');
     expect(formatJvmType(int)).toBe('int');
     expect(formatJvmType({ kind: 'class', className: 'java/lang/String' })).toBe(
@@ -136,7 +136,7 @@ describe('formatJvmType', () => {
 });
 
 describe('parseMethodDescriptor — property test', () => {
-  it('na dowolnym stringu kończy się wynikiem albo ClassFileError, nigdy innym wyjątkiem', () => {
+  it('on any string ends with a result or a ClassFileError, never another exception', () => {
     fc.assert(
       fc.property(fc.string({ maxLength: 40 }), (descriptor) => {
         try {

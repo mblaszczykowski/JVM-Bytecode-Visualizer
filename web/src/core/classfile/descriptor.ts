@@ -1,12 +1,13 @@
 import { ClassFileError } from './errors';
 
 /**
- * Parser deskryptorów pól i metod — JVMS §4.3.2 (FieldDescriptor) i §4.3.3 (MethodDescriptor).
+ * Field and method descriptor parser — JVMS §4.3.2 (FieldDescriptor) and §4.3.3
+ * (MethodDescriptor).
  *
- * Gramatyka jest zaimplementowana w całości (`B C D F I J S Z`, `L<nazwa>;`, `[`), mimo że
- * interpreter MVP dopuszcza wyłącznie parametry `I` i zwrotki `I`/`V` (plan.md §8 pkt 6).
- * Ograniczenie zakresu egzekwuje Faza 3 — parser ma mówić prawdę o pliku, a nie o MVP:
- * dzięki temu komunikat brzmi „nieobsługiwany typ parametru: long”, a nie „nieznany deskryptor”.
+ * The grammar is implemented in full (`B C D F I J S Z`, `L<name>;`, `[`) even though the
+ * interpreter only accepts `I` parameters and `I`/`V` return types. That restriction is
+ * enforced by the interpreter, not here: the parser tells the truth about the file, so the
+ * message can read "unsupported parameter type: long" instead of "unknown descriptor".
  */
 
 export type PrimitiveTypeName =
@@ -19,13 +20,13 @@ export interface PrimitiveType {
 
 export interface ClassType {
   readonly kind: 'class';
-  /** Nazwa wewnętrzna z deskryptora, np. `java/lang/String`. */
+  /** Internal name from the descriptor, e.g. `java/lang/String`. */
   readonly className: string;
 }
 
 export interface ArrayType {
   readonly kind: 'array';
-  /** Typ komponentu; tablice wielowymiarowe to zagnieżdżone `ArrayType`. */
+  /** Component type; multi-dimensional arrays are nested `ArrayType`s. */
   readonly elementType: JvmType;
 }
 
@@ -53,49 +54,45 @@ const PRIMITIVE_BY_TAG: Readonly<Record<string, PrimitiveTypeName | undefined>> 
   Z: 'boolean',
 };
 
-/** JVMS §4.3.2: deskryptor tablicy jest poprawny tylko do 255 wymiarów. */
+/** JVMS §4.3.2: an array descriptor is valid up to 255 dimensions. */
 const MAX_ARRAY_DIMENSIONS = 255;
 
-/** `"(II)I"` → dwa `int`-y i zwrotka `int`. */
+/** `"(II)I"` → two `int` parameters and an `int` return type. */
 export function parseMethodDescriptor(descriptor: string): MethodDescriptor {
   if (!descriptor.startsWith('(')) {
-    throw malformed(descriptor, 0, 'deskryptor metody musi zaczynać się od "("');
+    throw malformed(descriptor, 0, 'a method descriptor must start with "("');
   }
 
   const params: JvmType[] = [];
   let position = 1;
   while (descriptor[position] !== ')') {
     if (position >= descriptor.length) {
-      throw malformed(descriptor, position, 'brak nawiasu zamykającego ")" listy parametrów');
+      throw malformed(descriptor, position, 'missing closing ")" of the parameter list');
     }
     const parsed = parseFieldType(descriptor, position);
     params.push(parsed.type);
     position = parsed.next;
   }
-  position += 1; // znak ')'
+  position += 1; // the ')' character
 
   const returnType = parseReturnType(descriptor, position);
   if (returnType.next !== descriptor.length) {
-    throw malformed(
-      descriptor,
-      returnType.next,
-      'nadmiarowe znaki za deskryptorem zwracanego typu',
-    );
+    throw malformed(descriptor, returnType.next, 'trailing characters after the return type');
   }
 
   return { params, returnType: returnType.type };
 }
 
-/** Deskryptor pola / zmiennej lokalnej, np. `"[Ljava/lang/String;"` (JVMS §4.3.2). */
+/** Field / local variable descriptor, e.g. `"[Ljava/lang/String;"` (JVMS §4.3.2). */
 export function parseFieldDescriptor(descriptor: string): JvmType {
   const parsed = parseFieldType(descriptor, 0);
   if (parsed.next !== descriptor.length) {
-    throw malformed(descriptor, parsed.next, 'nadmiarowe znaki za deskryptorem pola');
+    throw malformed(descriptor, parsed.next, 'trailing characters after the field descriptor');
   }
   return parsed.type;
 }
 
-/** Nazwa typu w konwencji źródła Java — do listingów i komunikatów UI. */
+/** Type name in Java source notation — for listings and UI messages. */
 export function formatJvmType(type: JvmReturnType): string {
   switch (type.kind) {
     case 'void':
@@ -111,7 +108,7 @@ export function formatJvmType(type: JvmReturnType): string {
 
 interface ParsedType<T> {
   readonly type: T;
-  /** Pozycja pierwszego znaku za sparsowanym typem. */
+  /** Position of the first character after the parsed type. */
   readonly next: number;
 }
 
@@ -123,8 +120,8 @@ function parseReturnType(descriptor: string, position: number): ParsedType<JvmRe
 }
 
 function parseFieldType(descriptor: string, position: number): ParsedType<JvmType> {
-  // Wymiary zliczamy iteracyjnie (a nie rekurencyjnie), żeby patologiczny deskryptor
-  // z tysiącami "[" nie przewrócił parsera przepełnieniem stosu.
+  // Dimensions are counted iteratively (not recursively) so that a pathological descriptor
+  // with thousands of "[" cannot blow the call stack.
   let dimensions = 0;
   let cursor = position;
   while (descriptor[cursor] === '[') {
@@ -135,7 +132,7 @@ function parseFieldType(descriptor: string, position: number): ParsedType<JvmTyp
     throw malformed(
       descriptor,
       position,
-      `tablica ma ${String(dimensions)} wymiarów, maksimum to ${String(MAX_ARRAY_DIMENSIONS)}`,
+      `the array has ${String(dimensions)} dimensions, the maximum is ${String(MAX_ARRAY_DIMENSIONS)}`,
     );
   }
 
@@ -150,7 +147,7 @@ function parseFieldType(descriptor: string, position: number): ParsedType<JvmTyp
 function parseComponentType(descriptor: string, position: number): ParsedType<JvmType> {
   const tag = descriptor[position];
   if (tag === undefined) {
-    throw malformed(descriptor, position, 'nieoczekiwany koniec deskryptora');
+    throw malformed(descriptor, position, 'unexpected end of descriptor');
   }
 
   const primitive = PRIMITIVE_BY_TAG[tag];
@@ -161,16 +158,16 @@ function parseComponentType(descriptor: string, position: number): ParsedType<Jv
   if (tag === 'L') {
     const end = descriptor.indexOf(';', position + 1);
     if (end === -1) {
-      throw malformed(descriptor, position, 'deskryptor typu obiektowego bez zamykającego ";"');
+      throw malformed(descriptor, position, 'object type descriptor without a closing ";"');
     }
     const className = descriptor.slice(position + 1, end);
     if (className.length === 0) {
-      throw malformed(descriptor, position, 'pusta nazwa klasy w deskryptorze "L;"');
+      throw malformed(descriptor, position, 'empty class name in an "L;" descriptor');
     }
     return { type: { kind: 'class', className }, next: end + 1 };
   }
 
-  throw malformed(descriptor, position, `nieznany znak typu "${tag}"`);
+  throw malformed(descriptor, position, `unknown type character "${tag}"`);
 }
 
 function malformed(descriptor: string, position: number, reason: string): ClassFileError {

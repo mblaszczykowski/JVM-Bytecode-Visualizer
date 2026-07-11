@@ -1,23 +1,22 @@
 /**
- * Harness fazy 4: liczy wyniki referencyjne przykładów na PRAWDZIWEJ JVM.
+ * Build harness: computes the reference results of the examples on a REAL JVM.
  *
- * <p>Wypisuje po jednej linii {@code <id>=<wartość>} na przykład; {@code build-fixtures.mjs}
- * parsuje to wyjście i zapisuje wartości jako {@code expectedResult} w {@code manifest.json}.
- * To one napędzają test różnicowy interpretera (plan.md §7): interpreter musi zwrócić
- * dokładnie to, co zwróciła prawdziwa JVM — nie to, co wpisał człowiek.
+ * <p>It prints one {@code <id>=<value>} line per example; {@code build-fixtures.mjs} parses
+ * that output and stores the values as {@code expectedResult} in {@code manifest.json}. Those
+ * values drive the interpreter's differential test: the interpreter must return exactly what
+ * a real JVM returned — not what a human typed in.
  *
- * <p>Ten plik NIE jest kopiowany do {@code public/examples} — nie jest przykładem do
- * wizualizacji, tylko narzędziem builda. Może więc bez skrupułów używać {@code System.out},
- * którego przykłady używać nie mogą (plan.md §5.4).
+ * <p>This file is NOT copied into {@code public/examples} — it is a build tool, not an example
+ * to visualise. It may therefore freely use {@code System.out}, which the examples must not.
  *
- * <p><strong>Uwaga na synchronizację:</strong> argumenty poniżej muszą być identyczne
- * z tymi w metodach {@code main} przykładów — inaczej {@code expectedResult} w manifeście
- * opisywałby inne wykonanie niż to, które odtwarza interpreter.
+ * <p><strong>Keep in sync:</strong> the arguments below must match those in the {@code main}
+ * methods of the examples — otherwise {@code expectedResult} in the manifest would describe a
+ * different execution than the one the interpreter replays.
  */
 public final class ExpectedResults {
 
     private ExpectedResults() {
-        // Klasa narzędziowa — instancji nie tworzymy.
+        // Utility class — never instantiated.
     }
 
     public static void main(String[] args) {

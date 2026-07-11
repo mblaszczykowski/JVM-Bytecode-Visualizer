@@ -8,8 +8,8 @@ import { parseClassFile } from './parser';
 import { ConstantTag, isStatic, type ClassFile, type MethodInfo } from './types';
 
 /**
- * Źródło prawdy dla asercji: `javap -v -p Factorial.class`, pełny zrzut leży obok
- * w `__fixtures__/Factorial.javap.txt`. Fragmenty, na których opierają się testy:
+ * Source of truth for the assertions: `javap -v -p Factorial.class`; the full dump sits
+ * next to the fixture in `__fixtures__/Factorial.javap.txt`. The excerpts the tests rely on:
  *
  *   minor version: 0
  *   major version: 65
@@ -45,12 +45,12 @@ import { ConstantTag, isStatic, type ClassFile, type MethodInfo } from './types'
  *        7: iload_0 / iload_0 / iconst_1 / isub / invokestatic #7 / imul / ireturn
  *     LineNumberTable: line 19: 0 | line 20: 5 | line 22: 7
  *     LocalVariableTable: [0,16) slot 0 n I
- *     StackMapTable: number_of_entries = 1   <- atrybut nieznany parserowi, musi zostać pominięty
+ *     StackMapTable: number_of_entries = 1   <- attribute unknown to the parser, must be skipped
  */
 const FACTORIAL_CLASS = new URL('./__fixtures__/Factorial.class', import.meta.url);
 
 function factorialBytes(): Uint8Array<ArrayBuffer> {
-  // Kopia do świeżego bufora: Buffer z Node bywa widokiem na współdzieloną pulę pamięci.
+  // Copy into a fresh buffer: a Node Buffer can be a view onto a shared memory pool.
   return new Uint8Array(readFileSync(FACTORIAL_CLASS));
 }
 
@@ -61,33 +61,33 @@ function parseFactorial(): ClassFile {
 function methodOf(name: string): MethodInfo {
   const method = parseFactorial().methods.find((candidate) => candidate.name === name);
   if (method === undefined) {
-    throw new Error(`fixture nie zawiera metody ${name}`);
+    throw new Error(`the fixture has no method named ${name}`);
   }
   return method;
 }
 
-describe('parseClassFile — nagłówek fixture Factorial.class', () => {
-  it('czyta wersję 65.0 (Java 21, javac --release 21)', () => {
+describe('parseClassFile — Factorial.class fixture header', () => {
+  it('reads version 65.0 (Java 21, javac --release 21)', () => {
     const classFile = parseFactorial();
 
     expect(classFile.majorVersion).toBe(65);
     expect(classFile.minorVersion).toBe(0);
   });
 
-  it('rozwiązuje nazwy klasy i nadklasy przez constant pool', () => {
+  it('resolves the class and superclass names through the constant pool', () => {
     const classFile = parseFactorial();
 
     expect(classFile.thisClassName).toBe('Factorial');
     expect(classFile.superClassName).toBe('java/lang/Object');
     expect(classFile.interfaceNames).toEqual([]);
     expect(classFile.fields).toEqual([]);
-    // ACC_PUBLIC | ACC_SUPER = 0x0021 (javap: „flags: (0x0021)”).
+    // ACC_PUBLIC | ACC_SUPER = 0x0021 (javap: "flags: (0x0021)").
     expect(classFile.accessFlags).toBe(0x0021);
   });
 });
 
-describe('parseClassFile — constant pool fixture', () => {
-  it('jest 1-indeksowany i ma constant_pool_count wpisów (slot 0 pusty)', () => {
+describe('parseClassFile — fixture constant pool', () => {
+  it('is 1-indexed and holds constant_pool_count entries (slot 0 empty)', () => {
     const { constantPool } = parseFactorial();
 
     expect(constantPool).toHaveLength(28);
@@ -95,7 +95,7 @@ describe('parseClassFile — constant pool fixture', () => {
     expect(constantPool[27]).toEqual({ tag: ConstantTag.Utf8, value: 'Factorial.java' });
   });
 
-  it('interpretuje tagi wymagane przez MVP', () => {
+  it('interprets the tags the MVP requires', () => {
     const { constantPool } = parseFactorial();
 
     expect(constantPool[1]).toEqual({
@@ -114,8 +114,8 @@ describe('parseClassFile — constant pool fixture', () => {
   });
 });
 
-describe('parseClassFile — metody fixture', () => {
-  it('zna wszystkie trzy metody, łącznie z wygenerowanym <init>', () => {
+describe('parseClassFile — fixture methods', () => {
+  it('sees all three methods, including the generated <init>', () => {
     const methods = parseFactorial().methods;
 
     expect(methods.map((method) => [method.name, method.descriptor])).toEqual([
@@ -125,7 +125,7 @@ describe('parseClassFile — metody fixture', () => {
     ]);
   });
 
-  it('czyta flagi dostępu metod', () => {
+  it('reads method access flags', () => {
     // javap: main → (0x0009) ACC_PUBLIC, ACC_STATIC; factorial → (0x0008) ACC_STATIC.
     expect(methodOf('main').accessFlags).toBe(0x0009);
     expect(methodOf('factorial').accessFlags).toBe(0x0008);
@@ -133,7 +133,7 @@ describe('parseClassFile — metody fixture', () => {
     expect(isStatic(methodOf('<init>').accessFlags)).toBe(false);
   });
 
-  it('czyta Code metody main zgodnie z javap', () => {
+  it('reads the Code of main exactly as javap reports it', () => {
     const code = methodOf('main').code;
 
     expect(code?.maxStack).toBe(1);
@@ -141,18 +141,18 @@ describe('parseClassFile — metody fixture', () => {
     expect(Array.from(code?.code ?? [])).toEqual([0x07, 0xb8, 0x00, 0x07, 0x3c, 0xb1]);
   });
 
-  it('czyta Code metody factorial zgodnie z javap', () => {
+  it('reads the Code of factorial exactly as javap reports it', () => {
     const code = methodOf('factorial').code;
 
     expect(code?.maxStack).toBe(3);
     expect(code?.maxLocals).toBe(1);
     expect(code?.code).toHaveLength(16);
-    // iload_0, iconst_1, if_icmpgt +5 (skok liczony od offsetu opcode'u — plan.md §8 pkt 2).
+    // iload_0, iconst_1, if_icmpgt +5 (the branch delta is relative to the opcode offset).
     expect(Array.from(code?.code.slice(0, 5) ?? [])).toEqual([0x1a, 0x04, 0xa3, 0x00, 0x05]);
     expect(Array.from(code?.code.slice(-2) ?? [])).toEqual([0x68, 0xac]);
   });
 
-  it('czyta LineNumberTable obu metod', () => {
+  it('reads the LineNumberTable of both methods', () => {
     expect(methodOf('main').code?.lineNumberTable).toEqual([
       { startPc: 0, lineNumber: 15 },
       { startPc: 5, lineNumber: 16 },
@@ -164,7 +164,7 @@ describe('parseClassFile — metody fixture', () => {
     ]);
   });
 
-  it('czyta LocalVariableTable z nazwami zmiennych (javac -g)', () => {
+  it('reads the LocalVariableTable with variable names (javac -g)', () => {
     expect(methodOf('factorial').code?.localVariableTable).toEqual([
       { startPc: 0, length: 16, name: 'n', descriptor: 'I', index: 0 },
     ]);
@@ -174,9 +174,9 @@ describe('parseClassFile — metody fixture', () => {
     ]);
   });
 
-  it('pomija atrybuty spoza zakresu (StackMapTable w Code, SourceFile w klasie)', () => {
-    // Gdyby pomijanie po attribute_length nie działało, parser rozjechałby się już na
-    // StackMapTable w metodzie factorial i nie doczytałby atrybutów klasy (plan.md §8 pkt 4).
+  it('skips out-of-scope attributes (StackMapTable in Code, SourceFile in the class)', () => {
+    // If skipping by attribute_length were broken, the parser would already desynchronise
+    // on the StackMapTable of factorial and never reach the class attributes.
     const classFile = parseFactorial();
 
     expect(classFile.methods).toHaveLength(3);
@@ -184,7 +184,7 @@ describe('parseClassFile — metody fixture', () => {
   });
 });
 
-// --- Syntetyczne pliki .class dla przypadków, których fixture nie pokrywa ---------------------
+// --- Synthetic .class files for the cases the fixture does not cover -------------------------
 
 const u2 = (value: number): number[] => [(value >>> 8) & 0xff, value & 0xff];
 const u4 = (value: number): number[] => [...u2((value >>> 16) & 0xffff), ...u2(value & 0xffff)];
@@ -215,11 +215,11 @@ const member = (
 
 interface SyntheticClass {
   readonly constantPool: readonly (readonly number[])[];
-  /** Podawane jawnie — musi uwzględniać podwójne sloty Long/Double (plan.md §8 pkt 3). */
+  /** Given explicitly — must account for the double slots of Long/Double (JVMS §4.4.5). */
   readonly constantPoolCount: number;
   readonly thisClass: number;
   readonly superClass: number;
-  /** Indeksy wpisów Class w constant poolu. */
+  /** Indices of Class entries in the constant pool. */
   readonly interfaces?: readonly number[];
   readonly fields?: readonly (readonly number[])[];
   readonly methods?: readonly (readonly number[])[];
@@ -252,16 +252,16 @@ function buildClassFile(spec: SyntheticClass): ArrayBuffer {
   ]).buffer;
 }
 
-describe('parseClassFile — wpisy Long/Double i tagi nieinterpretowane', () => {
+describe('parseClassFile — Long/Double entries and uninterpreted tags', () => {
   /**
-   * Pula z wszystkimi tagami, których MVP nie interpretuje, ale musi umieć przeskoczyć
-   * (plan.md §8 pkt 5). Long (#1) i Double (#3) zajmują po dwa sloty — stąd numeracja.
+   * A pool holding every tag the MVP does not interpret but must be able to skip.
+   * Long (#1) and Double (#3) take two slots each — hence the numbering.
    */
   const kitchenSink = buildClassFile({
     constantPoolCount: 24,
     constantPool: [
-      filler(ConstantTag.Long, 8), // #1 (#2 = pusty slot)
-      filler(ConstantTag.Double, 8), // #3 (#4 = pusty slot)
+      filler(ConstantTag.Long, 8), // #1 (#2 = empty slot)
+      filler(ConstantTag.Double, 8), // #3 (#4 = empty slot)
       filler(ConstantTag.Float, 4), // #5
       filler(ConstantTag.MethodHandle, 3), // #6
       filler(ConstantTag.MethodType, 2), // #7
@@ -286,7 +286,7 @@ describe('parseClassFile — wpisy Long/Double i tagi nieinterpretowane', () => 
     superClass: 16,
   });
 
-  it('zostawia pusty slot po Long i Double, nie przesuwając kolejnych indeksów', () => {
+  it('leaves an empty slot after Long and Double without shifting later indices', () => {
     const { constantPool } = parseClassFile(kitchenSink);
 
     expect(constantPool).toHaveLength(24);
@@ -297,7 +297,7 @@ describe('parseClassFile — wpisy Long/Double i tagi nieinterpretowane', () => 
     expect(constantPool[5]).toEqual({ tag: ConstantTag.Float });
   });
 
-  it('przeskakuje tagi o znanej długości i trafia w kolejne wpisy', () => {
+  it('skips tags of known length and lands on the following entries', () => {
     const { constantPool, thisClassName, superClassName } = parseClassFile(kitchenSink);
 
     expect(constantPool[13]).toEqual({ tag: ConstantTag.Utf8, value: 'Synthetic' });
@@ -312,7 +312,7 @@ describe('parseClassFile — wpisy Long/Double i tagi nieinterpretowane', () => 
   });
 });
 
-describe('parseClassFile — pomijanie nieznanych atrybutów na każdym poziomie', () => {
+describe('parseClassFile — skipping unknown attributes at every level', () => {
   const BOGUS = 12;
   const codeBody = [
     ...u2(2), // max_stack
@@ -320,15 +320,15 @@ describe('parseClassFile — pomijanie nieznanych atrybutów na każdym poziomie
     ...u4(2), // code_length
     0x03,
     0xb1, // iconst_0, return
-    ...u2(1), // exception_table_length — czytana i ignorowana
+    ...u2(1), // exception_table_length — read and ignored
     ...u2(0),
     ...u2(2),
     ...u2(0),
     ...u2(0),
-    ...u2(3), // attributes_count wewnątrz Code
+    ...u2(3), // attributes_count inside Code
     ...attribute(BOGUS, [0xff]),
-    ...attribute(10, [...u2(1), ...u2(0), ...u2(7)]), // LineNumberTable: pc 0 → linia 7
-    ...attribute(11, [...u2(1), ...u2(0), ...u2(2), ...u2(13), ...u2(6), ...u2(0)]), // LocalVariableTable: x/I w slocie 0
+    ...attribute(10, [...u2(1), ...u2(0), ...u2(7)]), // LineNumberTable: pc 0 → line 7
+    ...attribute(11, [...u2(1), ...u2(0), ...u2(2), ...u2(13), ...u2(6), ...u2(0)]), // LocalVariableTable: x/I in slot 0
   ];
 
   const withBogusAttributes = buildClassFile({
@@ -361,13 +361,13 @@ describe('parseClassFile — pomijanie nieznanych atrybutów na każdym poziomie
     attributes: [attribute(BOGUS, [1, 2, 3, 4])],
   });
 
-  it('czyta pole strukturalnie i pomija jego atrybuty', () => {
+  it('reads a field structurally and skips its attributes', () => {
     expect(parseClassFile(withBogusAttributes).fields).toEqual([
       { name: 'f', descriptor: 'I', accessFlags: 0x0002 },
     ]);
   });
 
-  it('znajduje Code między nieznanymi atrybutami metody', () => {
+  it('finds Code among unknown method attributes', () => {
     const [method] = parseClassFile(withBogusAttributes).methods;
 
     expect(method?.name).toBe('m');
@@ -376,7 +376,7 @@ describe('parseClassFile — pomijanie nieznanych atrybutów na każdym poziomie
     expect(Array.from(method?.code?.code ?? [])).toEqual([0x03, 0xb1]);
   });
 
-  it('czyta tabele wewnątrz Code mimo nieznanego atrybutu zagnieżdżonego', () => {
+  it('reads the tables inside Code despite an unknown nested attribute', () => {
     const [method] = parseClassFile(withBogusAttributes).methods;
 
     expect(method?.code?.lineNumberTable).toEqual([{ startPc: 0, lineNumber: 7 }]);
@@ -386,38 +386,38 @@ describe('parseClassFile — pomijanie nieznanych atrybutów na każdym poziomie
   });
 });
 
-describe('parseClassFile — metody bez Code i Code bez tablic debugowych', () => {
+describe('parseClassFile — methods without Code and Code without debug tables', () => {
   const buffer = buildClassFile({
     constantPoolCount: 7,
     constantPool: [
       utf8Entry('Synth'), // #1
       classEntry(1), // #2
-      utf8Entry('abstrakcyjna'), // #3
+      utf8Entry('abstractMethod'), // #3
       utf8Entry('()V'), // #4
       utf8Entry('Code'), // #5
-      utf8Entry('bezDebugu'), // #6
+      utf8Entry('noDebugInfo'), // #6
     ],
     thisClass: 2,
     superClass: 0,
     methods: [
-      // ACC_ABSTRACT — JVMS §4.6 zabrania takiej metodzie mieć atrybut Code.
+      // ACC_ABSTRACT — JVMS §4.6 forbids such a method from having a Code attribute.
       member(0x0400, 3, 4, []),
-      // Code bez LineNumberTable/LocalVariableTable, czyli klasa skompilowana bez -g.
+      // Code without LineNumberTable/LocalVariableTable, i.e. a class compiled without -g.
       member(0x0008, 6, 4, [
         attribute(5, [...u2(1), ...u2(0), ...u4(1), 0xb1, ...u2(0), ...u2(0)]),
       ]),
     ],
   });
 
-  it('zostawia code niezdefiniowane dla metody abstrakcyjnej', () => {
+  it('leaves code undefined for an abstract method', () => {
     const [abstractMethod] = parseClassFile(buffer).methods;
 
-    expect(abstractMethod?.name).toBe('abstrakcyjna');
+    expect(abstractMethod?.name).toBe('abstractMethod');
     expect(abstractMethod?.code).toBeUndefined();
     expect(abstractMethod && 'code' in abstractMethod).toBe(false);
   });
 
-  it('pomija opcjonalne tablice, gdy Code ich nie zawiera', () => {
+  it('omits the optional tables when Code does not contain them', () => {
     const method = parseClassFile(buffer).methods[1];
 
     expect(method?.code?.maxStack).toBe(1);
@@ -426,8 +426,8 @@ describe('parseClassFile — metody bez Code i Code bez tablic debugowych', () =
   });
 });
 
-describe('parseClassFile — interfejsy', () => {
-  it('rozwiązuje nazwy implementowanych interfejsów', () => {
+describe('parseClassFile — interfaces', () => {
+  it('resolves the names of implemented interfaces', () => {
     const buffer = buildClassFile({
       constantPoolCount: 7,
       constantPool: [
@@ -447,8 +447,8 @@ describe('parseClassFile — interfejsy', () => {
   });
 });
 
-describe('parseClassFile — błędy', () => {
-  it('odrzuca plik bez magic 0xCAFEBABE', () => {
+describe('parseClassFile — errors', () => {
+  it('rejects a file without the 0xCAFEBABE magic', () => {
     const buffer = Uint8Array.from([0xde, 0xad, 0xbe, 0xef, 0, 0, 0, 65]).buffer;
 
     expect(expectClassFileError(() => parseClassFile(buffer))).toEqual({
@@ -458,7 +458,7 @@ describe('parseClassFile — błędy', () => {
     });
   });
 
-  it('odrzuca pusty bufor jako truncated na magic', () => {
+  it('rejects an empty buffer as truncated on magic', () => {
     expect(expectClassFileError(() => parseClassFile(new ArrayBuffer(0)))).toMatchObject({
       kind: 'truncated',
       offset: 0,
@@ -466,8 +466,8 @@ describe('parseClassFile — błędy', () => {
     });
   });
 
-  it('zgłasza truncated z offsetem, gdy plik urywa się w środku constant poolu', () => {
-    // 12 bajtów = nagłówek (10 B) + tag wpisu #1 (Methodref) + jeden bajt class_index.
+  it('reports truncated with an offset when the file ends inside the constant pool', () => {
+    // 12 bytes = header (10 B) + the tag of entry #1 (Methodref) + one byte of class_index.
     const truncated = factorialBytes().slice(0, 12);
 
     expect(expectClassFileError(() => parseClassFile(truncated.buffer))).toEqual({
@@ -479,7 +479,7 @@ describe('parseClassFile — błędy', () => {
     });
   });
 
-  it('odrzuca constant_pool_count = 0 (pula jest 1-indeksowana)', () => {
+  it('rejects constant_pool_count = 0 (the pool is 1-indexed)', () => {
     const buffer = buildClassFile({
       constantPoolCount: 0,
       constantPool: [],
@@ -493,10 +493,10 @@ describe('parseClassFile — błędy', () => {
     });
   });
 
-  it('zgłasza unknown-constant-tag z offsetem i numerem wpisu', () => {
+  it('reports unknown-constant-tag with an offset and entry number', () => {
     const buffer = buildClassFile({
       constantPoolCount: 2,
-      constantPool: [[2]], // tag 2 nie istnieje w JVMS §4.4
+      constantPool: [[2]], // tag 2 does not exist in JVMS §4.4
       thisClass: 1,
       superClass: 0,
     });
@@ -509,7 +509,7 @@ describe('parseClassFile — błędy', () => {
     });
   });
 
-  it('zgłasza bad-index, gdy this_class nie wskazuje wpisu Class', () => {
+  it('reports bad-index when this_class does not point at a Class entry', () => {
     const buffer = buildClassFile({
       constantPoolCount: 2,
       constantPool: [utf8Entry('X')],
@@ -526,7 +526,7 @@ describe('parseClassFile — błędy', () => {
     });
   });
 
-  it('zgłasza bad-index dla indeksu spoza puli i dla pustego slotu', () => {
+  it('reports bad-index for an out-of-range index and for an empty slot', () => {
     const outOfRange = buildClassFile({
       constantPoolCount: 2,
       constantPool: [utf8Entry('X')],
@@ -536,7 +536,7 @@ describe('parseClassFile — błędy', () => {
     const emptySlot = buildClassFile({
       constantPoolCount: 3,
       constantPool: [filler(ConstantTag.Long, 8)],
-      thisClass: 2, // drugi slot wpisu Long — pusty
+      thisClass: 2, // the second slot of the Long entry — empty
       superClass: 0,
     });
 
@@ -544,7 +544,7 @@ describe('parseClassFile — błędy', () => {
     expect(expectClassFileError(() => parseClassFile(emptySlot)).kind).toBe('bad-index');
   });
 
-  it('zgłasza bad-index, gdy Class.name_index nie wskazuje Utf8', () => {
+  it('reports bad-index when Class.name_index does not point at a Utf8', () => {
     const buffer = buildClassFile({
       constantPoolCount: 3,
       constantPool: [classEntry(2), classEntry(1)],
@@ -559,7 +559,7 @@ describe('parseClassFile — błędy', () => {
     });
   });
 
-  it('odrzuca Code o zerowej długości kodu (JVMS §4.7.3)', () => {
+  it('rejects Code with a zero-length code array (JVMS §4.7.3)', () => {
     const emptyCode = buildClassFile({
       constantPoolCount: 7,
       constantPool: [
@@ -582,10 +582,10 @@ describe('parseClassFile — błędy', () => {
     });
   });
 
-  it('zgłasza malformed-utf8 na nieprawidłowej sekwencji bajtów', () => {
+  it('reports malformed-utf8 on an invalid byte sequence', () => {
     const buffer = buildClassFile({
       constantPoolCount: 2,
-      constantPool: [[ConstantTag.Utf8, ...u2(2), 0xf0, 0x9f]], // 4-bajtowa forma jest zakazana
+      constantPool: [[ConstantTag.Utf8, ...u2(2), 0xf0, 0x9f]], // the 4-byte form is forbidden
       thisClass: 1,
       superClass: 0,
     });
@@ -597,7 +597,7 @@ describe('parseClassFile — błędy', () => {
   });
 });
 
-describe('parseClassFile — dekodowanie zmodyfikowanego UTF-8 (JVMS §4.4.7)', () => {
+describe('parseClassFile — modified UTF-8 decoding (JVMS §4.4.7)', () => {
   function classWithName(nameBytes: readonly number[]): ArrayBuffer {
     return buildClassFile({
       constantPoolCount: 3,
@@ -607,36 +607,36 @@ describe('parseClassFile — dekodowanie zmodyfikowanego UTF-8 (JVMS §4.4.7)', 
     });
   }
 
-  it('dekoduje sekwencje dwu- i trzybajtowe', () => {
-    // 0xC0 0x80 = U+0000, 0xC5 0xBC = U+017C (ż), 0xE2 0x82 0xAC = U+20AC (€)
+  it('decodes two- and three-byte sequences', () => {
+    // 0xC0 0x80 = U+0000, 0xC5 0xBC = U+017C, 0xE2 0x82 0xAC = U+20AC (euro sign)
     const buffer = classWithName([0x41, 0xc0, 0x80, 0xc5, 0xbc, 0xe2, 0x82, 0xac]);
 
     expect(parseClassFile(buffer).thisClassName).toBe('A\u0000\u017c\u20ac');
   });
 
-  it('dekoduje znaki spoza BMP zapisane parą surogatów (forma sześciobajtowa)', () => {
-    // U+1F600 = surogaty D83D DE00 → 0xED 0xA0 0xBD 0xED 0xB8 0x80
+  it('decodes supplementary characters written as a surrogate pair (six-byte form)', () => {
+    // U+1F600 = surrogates D83D DE00 → 0xED 0xA0 0xBD 0xED 0xB8 0x80
     const buffer = classWithName([0xed, 0xa0, 0xbd, 0xed, 0xb8, 0x80]);
 
     expect(parseClassFile(buffer).thisClassName).toBe('\u{1f600}');
   });
 
-  it('odrzuca goły bajt 0x00 (U+0000 musi być zapisane jako 0xC0 0x80)', () => {
+  it('rejects a bare 0x00 byte (U+0000 must be encoded as 0xC0 0x80)', () => {
     expect(expectClassFileError(() => parseClassFile(classWithName([0x41, 0x00])))).toMatchObject({
       kind: 'malformed-utf8',
     });
   });
 
-  it('odrzuca sekwencję urwaną na końcu wpisu', () => {
-    // 0xC5 zapowiada dwa bajty, a wpis kończy się po pierwszym.
+  it('rejects a sequence truncated at the end of the entry', () => {
+    // 0xC5 announces two bytes, but the entry ends after the first one.
     expect(expectClassFileError(() => parseClassFile(classWithName([0xc5])))).toMatchObject({
       kind: 'malformed-utf8',
       offset: 14,
-      reason: 'sekwencja wielobajtowa urwana na końcu wpisu',
+      reason: 'multi-byte sequence truncated at the end of the entry',
     });
   });
 
-  it('odrzuca nieprawidłowy bajt kontynuacji', () => {
+  it('rejects an invalid continuation byte', () => {
     expect(expectClassFileError(() => parseClassFile(classWithName([0xc5, 0x41])))).toMatchObject({
       kind: 'malformed-utf8',
       offset: 14,
@@ -644,10 +644,10 @@ describe('parseClassFile — dekodowanie zmodyfikowanego UTF-8 (JVMS §4.4.7)', 
   });
 });
 
-describe('parseClassFile — property test odporności (plan.md §9 Faza 1)', () => {
+describe('parseClassFile — robustness property test', () => {
   function parseIsSafe(bytes: Uint8Array): void {
     try {
-      // slice() daje kopię we własnym ArrayBufferze — fast-check zwraca widoki współdzielone.
+      // slice() yields a copy in its own ArrayBuffer — fast-check returns shared views.
       parseClassFile(bytes.slice().buffer);
     } catch (error) {
       if (!isClassFileError(error)) {
@@ -656,7 +656,7 @@ describe('parseClassFile — property test odporności (plan.md §9 Faza 1)', ()
     }
   }
 
-  it('na losowych bajtach nie rzuca niczego poza ClassFileError', () => {
+  it('throws nothing but ClassFileError on random bytes', () => {
     fc.assert(
       fc.property(fc.uint8Array({ maxLength: 512 }), (bytes) => {
         parseIsSafe(bytes);
@@ -665,7 +665,7 @@ describe('parseClassFile — property test odporności (plan.md §9 Faza 1)', ()
     );
   });
 
-  it('na losowych bajtach z poprawnym magic nie rzuca niczego poza ClassFileError', () => {
+  it('throws nothing but ClassFileError on random bytes with a valid magic', () => {
     fc.assert(
       fc.property(fc.uint8Array({ maxLength: 512 }), (tail) => {
         parseIsSafe(Uint8Array.from([0xca, 0xfe, 0xba, 0xbe, ...tail]));
@@ -674,13 +674,13 @@ describe('parseClassFile — property test odporności (plan.md §9 Faza 1)', ()
     );
   });
 
-  it('każdy skrócony fixture kończy się ClassFileError, nigdy wyjątkiem środowiska', () => {
+  it('every truncated fixture ends in a ClassFileError, never a runtime exception', () => {
     const full = factorialBytes();
 
     fc.assert(
       fc.property(fc.integer({ min: 0, max: full.length - 1 }), (length) => {
-        // Każde obcięcie zabiera bajty jakiejś struktury — poprawny plik kończy się
-        // dokładnie na ostatnim atrybucie klasy, więc każdy prefiks musi być „truncated”.
+        // Every truncation removes bytes of some structure — a valid file ends exactly on
+        // the last class attribute, so every prefix must be reported as truncated.
         const detail = expectClassFileError(() => parseClassFile(full.slice(0, length).buffer));
         expect(detail.kind).toBe('truncated');
       }),

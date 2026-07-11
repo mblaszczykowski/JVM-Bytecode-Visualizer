@@ -1,11 +1,10 @@
 import { isClassFileError, type ClassFileErrorDetail } from '../errors';
 
 /**
- * Uruchamia `run` i zwraca `detail` rzuconego `ClassFileError`.
+ * Runs `run` and returns the `detail` of the thrown `ClassFileError`.
  *
- * Każdy inny wyjątek (np. `RangeError` z `DataView`) jest przepuszczany dalej, więc test
- * pada z oryginalnym stack trace — to właśnie ten przypadek chcemy w Fazie 1 wykluczyć
- * (plan.md §9 Faza 1: „typowany ClassFileError z offsetem, nie goły RangeError”).
+ * Any other exception (e.g. a `RangeError` from `DataView`) is rethrown so the test fails
+ * with the original stack trace — that is exactly the case the parser must never produce.
  */
 export function expectClassFileError(run: () => unknown): ClassFileErrorDetail {
   try {
@@ -17,5 +16,5 @@ export function expectClassFileError(run: () => unknown): ClassFileErrorDetail {
     throw error;
   }
 
-  throw new Error('oczekiwano ClassFileError, a wywołanie zakończyło się bez wyjątku');
+  throw new Error('expected a ClassFileError, but the call completed without throwing');
 }

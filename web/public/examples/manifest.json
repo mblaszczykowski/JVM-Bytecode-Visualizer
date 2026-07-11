@@ -3,8 +3,8 @@
   "examples": [
     {
       "id": "factorial",
-      "title": "Silnia — rekurencja",
-      "description": "Rekurencyjne 4! = 24. Stos wywołań rośnie do pięciu ramek (main + cztery wywołania), a przy powrotach zwija się mnożąc wyniki — najprostszy sposób, żeby zobaczyć, jak JVM wznawia metodę dokładnie w miejscu wywołania.",
+      "title": "Factorial — recursion",
+      "description": "Recursive 4! = 24. Watch the call stack grow to five frames (main plus four calls) and unwind again, multiplying results on the way back — the clearest way to see how the JVM resumes a method exactly where it left off.",
       "classFile": "Factorial.class",
       "sourceFile": "Factorial.java",
       "entryMethod": "main",
@@ -13,8 +13,8 @@
     },
     {
       "id": "fibonacci",
-      "title": "Fibonacci — rekurencja rozgałęziona",
-      "description": "Naiwne fib(7) = 13. Każde wywołanie rozgałęzia się na dwa kolejne, więc stos rośnie i zwija się kilkadziesiąt razy. Dobrze widać tu koszt naiwnej rekurencji: te same podproblemy liczone są wielokrotnie od zera.",
+      "title": "Fibonacci — branching recursion",
+      "description": "Naive fib(7) = 13. Every call branches into two more, so the stack grows and unwinds dozens of times. A vivid look at the cost of naive recursion: the same subproblems are recomputed from scratch again and again.",
       "classFile": "Fibonacci.class",
       "sourceFile": "Fibonacci.java",
       "entryMethod": "main",
@@ -23,8 +23,8 @@
     },
     {
       "id": "sum-of-squares",
-      "title": "Suma iloczynów — zagnieżdżone pętle for",
-      "description": "Suma i*j po siatce 6x6 (na przekątnej są kwadraty, stąd nazwa). Płaski stos wywołań, za to setki kroków: pokazuje instrukcję iinc (inkrementacja licznika w miejscu, bez ruszania stosu operandów), warunek if_icmpgt i skok wsteczny goto.",
+      "title": "Sum of products — nested for loops",
+      "description": "Sum of i*j over a 6x6 grid (the diagonal holds the squares, hence the name). A flat call stack but hundreds of steps: it showcases iinc (incrementing a counter in place, without touching the operand stack), the if_icmpgt condition and the backward goto.",
       "classFile": "SumOfSquares.class",
       "sourceFile": "SumOfSquares.java",
       "entryMethod": "main",
@@ -33,8 +33,8 @@
     },
     {
       "id": "gcd",
-      "title": "NWD — pętla while i reszta z dzielenia",
-      "description": "Algorytm Euklidesa dla (1071, 462) = 21. Pętla sterowana warunkiem, nie licznikiem: zamiast iinc mamy ifne na reszcie z dzielenia (irem) i przepisywanie wartości między slotami zmiennych lokalnych.",
+      "title": "GCD — while loop and remainder",
+      "description": "Euclid's algorithm for (1071, 462) = 21. A loop driven by a condition rather than a counter: instead of iinc there is ifne on the remainder (irem), plus values being copied between local variable slots.",
       "classFile": "Gcd.class",
       "sourceFile": "Gcd.java",
       "entryMethod": "main",

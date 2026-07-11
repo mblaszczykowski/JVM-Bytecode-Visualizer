@@ -1,21 +1,21 @@
 import { ClassFileError } from './errors';
 
 /**
- * Kursor nad fragmentem `ArrayBuffer` z big-endianowymi odczytami formatu `.class`
- * (JVMS §4.1: wszystkie wielobajtowe wartości są zapisane big-endian).
+ * Cursor over a slice of an `ArrayBuffer` with big-endian reads of the `.class` format
+ * (JVMS §4.1: all multi-byte values are stored big-endian).
  *
- * To jedyne miejsce w warstwie domenowej, które dotyka `DataView` — granica I/O
- * z plan.md §11 pkt 2. Każde przekroczenie okna kończy się `ClassFileError`
- * z rodzajem `truncated` (a nie gołym `RangeError` z `DataView`), dzięki czemu UI
- * dostaje offset bajtowy i nazwę pola, na którym plik się urwał.
+ * This is the only place in the domain layer that touches `DataView` — the I/O boundary.
+ * Every read past the window ends in a `ClassFileError` of kind `truncated` (rather than
+ * a bare `RangeError` from `DataView`), so the UI gets the byte offset and the name of
+ * the field the file was cut off at.
  */
 export class ByteReader {
   private readonly source: ArrayBuffer;
-  /** Absolutny offset początku okna w buforze źródłowym. */
+  /** Absolute offset of the window start within the source buffer. */
   private readonly base: number;
   private readonly view: DataView;
   private readonly bytes: Uint8Array;
-  /** Pozycja kursora względem początku okna. */
+  /** Cursor position relative to the window start. */
   private cursor = 0;
 
   constructor(
@@ -33,7 +33,7 @@ export class ByteReader {
       throw new ClassFileError({
         kind: 'malformed-structure',
         offset: byteOffset,
-        reason: `okno czytnika [${String(byteOffset)}, ${String(byteOffset + byteLength)}) wykracza poza bufor o rozmiarze ${String(buffer.byteLength)} B`,
+        reason: `reader window [${String(byteOffset)}, ${String(byteOffset + byteLength)}) exceeds the ${String(buffer.byteLength)} B buffer`,
       });
     }
 
@@ -43,12 +43,12 @@ export class ByteReader {
     this.bytes = new Uint8Array(buffer, byteOffset, byteLength);
   }
 
-  /** Absolutny offset kursora w buforze źródłowym — w komunikatach błędów. */
+  /** Absolute cursor offset within the source buffer — used in error messages. */
   get offset(): number {
     return this.base + this.cursor;
   }
 
-  /** Absolutny offset końca okna. */
+  /** Absolute offset of the window end. */
   get endOffset(): number {
     return this.base + this.view.byteLength;
   }
@@ -77,37 +77,37 @@ export class ByteReader {
     return this.view.getInt16(this.claim(2, context));
   }
 
-  /** Kopia `count` bajtów — wynik nie aliasuje bufora wejściowego, więc jest bezpieczny do trzymania w modelu. */
-  readBytes(count: number, context = 'bajty'): Uint8Array {
+  /** Copy of `count` bytes — the result does not alias the input buffer, so it is safe to keep in the model. */
+  readBytes(count: number, context = 'bytes'): Uint8Array {
     const start = this.claim(count, context);
     return this.bytes.slice(start, start + count);
   }
 
-  skip(count: number, context = 'pomijane bajty'): void {
+  skip(count: number, context = 'skipped bytes'): void {
     this.claim(count, context);
   }
 
   /**
-   * Wydziela czytnik ograniczony do kolejnych `length` bajtów i przesuwa kursor rodzica
-   * za nie. Tak realizowana jest reguła „każdy atrybut pomijamy po `attribute_length`”
-   * (plan.md §8 pkt 4, JVMS §4.7): parser atrybutu nie jest w stanie przeczytać ani
-   * bajtu spoza jego ciała, a rodzic i tak stoi w poprawnym miejscu.
+   * Carves out a reader limited to the next `length` bytes and advances the parent cursor
+   * past them. This implements the "skip every attribute by `attribute_length`" rule
+   * (JVMS §4.7): an attribute parser cannot read a single byte outside its own body, and
+   * the parent ends up in the right place regardless.
    */
-  subReader(length: number, context = 'blok'): ByteReader {
+  subReader(length: number, context = 'block'): ByteReader {
     const start = this.claim(length, context);
     return new ByteReader(this.source, this.base + start, length);
   }
 
   /**
-   * Rezerwuje `count` bajtów i zwraca ich pozycję względem okna; przesuwa kursor.
-   * Wszystkie kontrole zakresu są tutaj — metody odczytu nie mogą już rzucić `RangeError`.
+   * Reserves `count` bytes and returns their position relative to the window; advances the
+   * cursor. All range checks live here, so the read methods can no longer throw `RangeError`.
    */
   private claim(count: number, context: string): number {
     if (!Number.isInteger(count) || count < 0) {
       throw new ClassFileError({
         kind: 'malformed-structure',
         offset: this.offset,
-        reason: `liczba bajtów do odczytu (${context}) musi być nieujemną liczbą całkowitą, otrzymano ${String(count)}`,
+        reason: `the byte count to read (${context}) must be a non-negative integer, got ${String(count)}`,
       });
     }
     if (count > this.remaining) {

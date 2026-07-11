@@ -1,33 +1,33 @@
 /**
- * Typowane błędy parsowania plików `.class` (plan.md §9 Faza 1, §11 pkt 3).
+ * Typed `.class` parsing errors.
  *
- * Cała warstwa `classfile/` sygnalizuje awarie wyłącznie przez `ClassFileError` —
- * żadnych gołych `RangeError` z `DataView` ani `throw new Error(string)`. Wariant
- * błędu (`detail`) jest maszynowo czytelny (UI mapuje `kind` na komunikat w swoim
- * języku, plan.md §9 Faza 7), a `message` jest gotowym do pokazania opisem po polsku.
+ * The whole `classfile/` layer signals failures exclusively through `ClassFileError` —
+ * never a bare `RangeError` from `DataView` or `throw new Error(string)`. The error
+ * variant (`detail`) is machine-readable so the UI can map `kind` to its own wording,
+ * while `message` is a ready-to-display description.
  */
 
-/** Rodzaj awarii wraz z danymi potrzebnymi do zbudowania komunikatu. */
+/** Failure kind together with the data needed to build a message. */
 export type ClassFileErrorDetail =
   | {
-      /** Plik nie zaczyna się od 0xCAFEBABE, czyli nie jest plikiem `.class` (JVMS §4.1). */
+      /** The file does not start with 0xCAFEBABE, so it is not a `.class` file (JVMS §4.1). */
       readonly kind: 'bad-magic';
       readonly offset: number;
       readonly found: number;
     }
   | {
-      /** Struktura wymaga bajtów, których w buforze (albo w ciele atrybutu) już nie ma. */
+      /** A structure needs bytes that the buffer (or the attribute body) no longer has. */
       readonly kind: 'truncated';
       readonly offset: number;
-      /** Nazwa czytanego pola, np. `constant_pool[7].class_index`. */
+      /** Name of the field being read, e.g. `constant_pool[7].class_index`. */
       readonly context: string;
       readonly bytesNeeded: number;
       readonly bytesAvailable: number;
     }
   | {
       /**
-       * Tag spoza JVMS §4.4 — wpisy constant poolu mają różne długości, więc bez
-       * znajomości tagu nie da się przejść do następnego wpisu (plan.md §8 pkt 5).
+       * A tag outside JVMS §4.4 — constant pool entries have different lengths, so without
+       * knowing the tag there is no way to advance to the next entry.
        */
       readonly kind: 'unknown-constant-tag';
       readonly offset: number;
@@ -35,32 +35,32 @@ export type ClassFileErrorDetail =
       readonly constantPoolIndex: number;
     }
   | {
-      /** Indeks constant poolu poza zakresem, pusty (slot po Long/Double) albo złego rodzaju. */
+      /** Constant pool index out of range, empty (a slot after Long/Double) or of the wrong kind. */
       readonly kind: 'bad-index';
       readonly offset: number;
       readonly index: number;
-      /** Oczekiwany rodzaj wpisu, np. `Utf8`. */
+      /** Expected entry kind, e.g. `Utf8`. */
       readonly expected: string;
       readonly context: string;
     }
   | {
-      /** Ciąg łamiący gramatykę zmodyfikowanego UTF-8 (JVMS §4.4.7). */
+      /** A string violating the modified UTF-8 grammar (JVMS §4.4.7). */
       readonly kind: 'malformed-utf8';
       readonly offset: number;
       readonly constantPoolIndex: number;
       readonly reason: string;
     }
   | {
-      /** Liczności/rozmiary niespójne ze strukturą pliku (JVMS §4.1, §4.7.3). */
+      /** Counts/sizes inconsistent with the file structure (JVMS §4.1, §4.7.3). */
       readonly kind: 'malformed-structure';
       readonly offset: number;
       readonly reason: string;
     }
   | {
       /**
-       * Deskryptor pola/metody niezgodny z gramatyką JVMS §4.3. Jedyny wariant bez
-       * offsetu bajtowego: parser deskryptorów pracuje na stringu z constant poolu
-       * (albo na literale z testu), więc miejsce błędu wskazuje indeksem znaku.
+       * A field/method descriptor violating the JVMS §4.3 grammar. The only variant without
+       * a byte offset: the descriptor parser works on a string taken from the constant pool
+       * (or on a literal in a test), so it points at the failure with a character index.
        */
       readonly kind: 'malformed-descriptor';
       readonly descriptor: string;
@@ -82,23 +82,23 @@ export function isClassFileError(error: unknown): error is ClassFileError {
   return error instanceof ClassFileError;
 }
 
-/** Komunikat gotowy do pokazania użytkownikowi (ErrorBanner, plan.md §9 Faza 7). */
+/** Message ready to be shown to the user. */
 export function formatClassFileError(detail: ClassFileErrorDetail): string {
   switch (detail.kind) {
     case 'bad-magic':
-      return `To nie jest plik .class: oczekiwano nagłówka 0xcafebabe, znaleziono ${hex(detail.found, 8)} (offset ${String(detail.offset)}).`;
+      return `Not a .class file: expected the 0xcafebabe header, found ${hex(detail.found, 8)} (offset ${String(detail.offset)}).`;
     case 'truncated':
-      return `Plik urwany: ${detail.context} wymaga ${String(detail.bytesNeeded)} B, dostępne ${String(detail.bytesAvailable)} B (offset ${String(detail.offset)}).`;
+      return `Truncated file: ${detail.context} needs ${String(detail.bytesNeeded)} B, ${String(detail.bytesAvailable)} B available (offset ${String(detail.offset)}).`;
     case 'unknown-constant-tag':
-      return `Nieznany tag constant poolu ${String(detail.tag)} we wpisie #${String(detail.constantPoolIndex)} (offset ${String(detail.offset)}) — dalszego odczytu puli nie da się bezpiecznie kontynuować.`;
+      return `Unknown constant pool tag ${String(detail.tag)} in entry #${String(detail.constantPoolIndex)} (offset ${String(detail.offset)}) — the pool cannot be read any further safely.`;
     case 'bad-index':
-      return `Nieprawidłowy indeks constant poolu #${String(detail.index)} w ${detail.context}: oczekiwano wpisu ${detail.expected} (offset ${String(detail.offset)}).`;
+      return `Invalid constant pool index #${String(detail.index)} in ${detail.context}: expected a ${detail.expected} entry (offset ${String(detail.offset)}).`;
     case 'malformed-utf8':
-      return `Uszkodzony ciąg Utf8 we wpisie #${String(detail.constantPoolIndex)} (offset ${String(detail.offset)}): ${detail.reason}.`;
+      return `Malformed Utf8 string in entry #${String(detail.constantPoolIndex)} (offset ${String(detail.offset)}): ${detail.reason}.`;
     case 'malformed-structure':
-      return `Uszkodzona struktura pliku .class (offset ${String(detail.offset)}): ${detail.reason}.`;
+      return `Malformed .class file structure (offset ${String(detail.offset)}): ${detail.reason}.`;
     case 'malformed-descriptor':
-      return `Nieprawidłowy deskryptor "${detail.descriptor}" na pozycji ${String(detail.position)}: ${detail.reason}.`;
+      return `Invalid descriptor "${detail.descriptor}" at position ${String(detail.position)}: ${detail.reason}.`;
   }
 }
 

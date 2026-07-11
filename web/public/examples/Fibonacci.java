@@ -1,25 +1,25 @@
 /**
- * Naiwna, rozgałęziona rekurencja Fibonacciego — przykład o wykładniczej liczbie wywołań.
+ * Naive, branching Fibonacci recursion — an example with an exponential number of calls.
  *
- * <p>W przeciwieństwie do silni każda ramka wywołuje się <em>dwa</em> razy, więc stos rośnie
- * i zwija się wielokrotnie: {@code fib(7)} to 41 wywołań i kilkaset kroków bajtkodu.
- * Dzięki temu przykład dobrze pokazuje przewijanie (scrubbing) historii wykonania i to,
- * dlaczego naiwna rekurencja jest kosztowna — te same podproblemy liczone są od nowa.
+ * <p>Unlike factorial, every frame calls itself <em>twice</em>, so the stack grows and
+ * unwinds many times over: {@code fib(7)} is 41 calls and several hundred bytecode steps.
+ * That makes this example a good one for scrubbing through the execution history, and for
+ * seeing why naive recursion is expensive — the same subproblems are recomputed from scratch.
  *
- * <p>Program mieści się w podzbiorze instrukcji z plan.md §6 i respektuje ograniczenia §5.4
- * (bez {@code System.out.println}, bez pól statycznych, wynik do lokalnej {@code result}).
+ * <p>There is no {@code System.out.println} and no static field; the result is stored in the
+ * local variable {@code result}.
  */
 public final class Fibonacci {
 
     private Fibonacci() {
-        // Klasa narzędziowa — instancji nie tworzymy.
+        // Utility class — never instantiated.
     }
 
     /**
-     * Zwraca n-ty wyraz ciągu Fibonacciego liczony wprost z definicji.
+     * Returns the n-th Fibonacci number computed straight from the definition.
      *
-     * @param n indeks wyrazu, liczony od zera ({@code fib(0) == 0}, {@code fib(1) == 1})
-     * @return wartość n-tego wyrazu ciągu
+     * @param n zero-based index of the term ({@code fib(0) == 0}, {@code fib(1) == 1})
+     * @return the value of the n-th term of the sequence
      */
     static int fib(int n) {
         if (n < 2) {
@@ -29,8 +29,8 @@ public final class Fibonacci {
     }
 
     /**
-     * Punkt wejścia interpretera. Parametr {@code args} jest celowo nieużywany —
-     * slot 0 ramki {@code main} trzyma wartownika, którego żadna instrukcja z §6 nie czyta.
+     * Interpreter entry point. The {@code args} parameter is deliberately unused — slot 0 of
+     * the {@code main} frame holds a sentinel that no supported instruction can read.
      */
     public static void main(String[] args) {
         int result = fib(7); // 13

@@ -1,14 +1,14 @@
 /**
- * Fixture parsera (plan.md §9 Faza 1). Rekurencyjna silnia — celowo bez
- * System.out.println i bez pól statycznych (plan.md §5.4): wynik ląduje
- * w zmiennej lokalnej `result`, dzięki czemu program mieści się w zakresie
- * instrukcji MVP (plan.md §6) i nie generuje <clinit>.
+ * Parser fixture: recursive factorial. Deliberately free of System.out.println
+ * and of static fields — the result lands in the local variable `result`, which
+ * keeps the program inside the supported instruction subset and avoids
+ * generating a <clinit>.
  *
- * Kompilacja (dokładnie ta komenda produkuje commitowany Factorial.class):
+ * Compilation (this exact command produces the committed Factorial.class):
  *   javac -g --release 21 Factorial.java
  *
- * Flaga -g daje LocalVariableTable (nazwy zmiennych w UI), --release 21
- * przypina major version 65 — na tym opierają się asercje w parser.test.ts.
+ * The -g flag yields a LocalVariableTable (variable names in the UI) and
+ * --release 21 pins major version 65 — parser.test.ts asserts on both.
  */
 public class Factorial {
     public static void main(String[] args) {
