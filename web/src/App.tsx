@@ -1,7 +1,17 @@
 import { useState } from 'react';
 
+import { AppShell } from './components/AppShell';
 import {
-  findMockMethod,
+  commentsFor,
+  deadOffsetsOf,
+  describeNextInstruction,
+  describeOperandRoles,
+  lineMappingNote,
+  methodOf,
+  mockDepths,
+  offsetsForLine,
+} from './components/__fixtures__/mock-derivations';
+import {
   mockExamples,
   mockHistory,
   mockMainMethod,
@@ -10,16 +20,13 @@ import {
   mockSourceLines,
 } from './components/__fixtures__/mock-history';
 import { BytecodePanel } from './components/BytecodePanel';
-import { CallStackPanel } from './components/CallStackPanel';
 import { ErrorBanner } from './components/ErrorBanner';
-import { ExamplePicker } from './components/ExamplePicker';
-import { FileUpload } from './components/FileUpload';
-import { LocalsPanel } from './components/LocalsPanel';
-import { OperandStackPanel } from './components/OperandStackPanel';
 import { SourcePanel } from './components/SourcePanel';
-import { AMBIENT_BACKGROUND, SHELL } from './components/theme';
+import { StateColumn } from './components/StateColumn';
+import { Toolbar } from './components/Toolbar';
 import { TransportControls } from './components/TransportControls';
 
+const APP_NAME = 'JVM Bytecode Visualizer';
 const LAST_STEP = mockHistory.length - 1;
 
 function clampStep(index: number): number {
@@ -27,9 +34,9 @@ function clampStep(index: number): number {
 }
 
 /**
- * Faza 5 (plan §9): docelowy layout renderowany na zahardkodowanej historii z `__fixtures__`.
- * Zamiana mocka na `execute()` i timer odtwarzania to Faza 6 (`useExecutionPlayer`) — dlatego
- * `isPlaying` jest tu wyłącznie stanem wizualnym przycisku, bez `setInterval`.
+ * The target layout rendered against the hand-written history in `__fixtures__`.
+ * `isPlaying` is purely the visual state of the button — the playback timer arrives with the
+ * execution player, which is why there is deliberately no `setInterval` here.
  */
 export function App() {
   const [stepIndex, setStepIndex] = useState(0);
@@ -39,63 +46,40 @@ export function App() {
 
   const snapshot = mockSnapshotAt(stepIndex);
   const topFrame = snapshot.callStack.at(-1);
-  const method =
-    topFrame === undefined
-      ? mockMainMethod
-      : (findMockMethod(topFrame.methodName, topFrame.methodDescriptor) ?? mockMainMethod);
+  const method = topFrame === undefined ? mockMainMethod : methodOf(topFrame);
+
+  const comments = commentsFor(method);
+  const deadOffsets = deadOffsetsOf(method);
+
+  const pcRange =
+    snapshot.sourceLine === undefined ? undefined : offsetsForLine(method, snapshot.sourceLine);
+  const mappingNote = topFrame === undefined ? undefined : lineMappingNote(method, topFrame.pc);
 
   return (
-    <div
-      className="h-dvh bg-[#0b0d13] p-3 text-slate-100 sm:p-[14px]"
-      style={{ backgroundImage: AMBIENT_BACKGROUND, backgroundAttachment: 'fixed' }}
-    >
-      <div className={`flex h-full min-h-0 flex-col ${SHELL}`}>
-        <header className="flex shrink-0 flex-wrap items-center gap-3 px-[18px] py-[13px]">
-          <h1 className="text-[13.5px] font-semibold tracking-[-0.015em] text-white/95">
-            JVM Bytecode Visualizer
-          </h1>
-          <ExamplePicker
-            examples={mockExamples}
-            selectedId={selectedExampleId}
-            onExampleSelected={(id) => {
-              setSelectedExampleId(id);
-              setStepIndex(0);
-              setIsPlaying(false);
-            }}
-          />
-          <div className="ml-auto">
-            <FileUpload
-              onFileSelected={() => {
-                // Wczytywanie i walidacja pliku to Faza 7 — w Fazie 5 komponent jest stubem.
-              }}
-            />
-          </div>
-        </header>
-
-        <main className="grid min-h-0 flex-1 grid-cols-1 gap-[14px] px-[14px] md:grid-cols-2 xl:grid-cols-[1fr_1fr_340px]">
-          <SourcePanel
-            fileName={mockSourceFileName}
-            lines={mockSourceLines}
-            currentLine={snapshot.sourceLine}
-          />
-          <BytecodePanel
-            methodName={method.name}
-            methodDescriptor={method.descriptor}
-            instructions={method.instructions}
-            currentOffset={topFrame?.pc}
-          />
-          <div className="flex min-h-0 flex-col gap-[14px] md:col-span-2 md:flex-row xl:col-span-1 xl:flex-col">
-            <CallStackPanel frames={snapshot.callStack} />
-            <OperandStackPanel frame={topFrame} />
-            <LocalsPanel frame={topFrame} />
-          </div>
-        </main>
-
-        <footer className="shrink-0">
+    <AppShell
+      toolbar={
+        <Toolbar
+          appName={APP_NAME}
+          examples={mockExamples}
+          selectedExampleId={selectedExampleId}
+          onExampleSelected={(id) => {
+            setSelectedExampleId(id);
+            setStepIndex(0);
+            setIsPlaying(false);
+          }}
+          onFileSelected={() => {
+            // Reading and validating the file belongs to the upload path, not to this stage.
+          }}
+          // No compile backend exists yet, so the badge stays out of the toolbar.
+          compilerStatus="hidden"
+        />
+      }
+      footer={
+        <>
           <div className="px-[18px] pt-[14px]">
             <ErrorBanner
               severity="info"
-              message="Dane demonstracyjne: ręcznie zbudowana historia wykonania Factorial.factorial(2). Prawdziwy interpreter podłączamy w Fazie 6."
+              message="Demo data — a hand-written execution history of Factorial.factorial(2). The interpreter is not wired up yet."
             />
           </div>
           <TransportControls
@@ -103,6 +87,7 @@ export function App() {
             stepCount={mockHistory.length}
             isPlaying={isPlaying}
             speed={speed}
+            depths={mockDepths}
             onSeek={(index) => {
               setStepIndex(clampStep(index));
             }}
@@ -117,8 +102,32 @@ export function App() {
             }}
             onSpeedChange={setSpeed}
           />
-        </footer>
-      </div>
-    </div>
+        </>
+      }
+    >
+      <SourcePanel
+        fileName={mockSourceFileName}
+        lines={mockSourceLines}
+        currentLine={snapshot.sourceLine}
+        pcRange={pcRange}
+        lineMappingNote={mappingNote}
+      />
+      <BytecodePanel
+        methodName={method.name}
+        methodDescriptor={method.descriptor}
+        maxStack={method.maxStack}
+        maxLocals={method.maxLocals}
+        instructions={method.instructions}
+        currentOffset={topFrame?.pc}
+        comments={comments}
+        deadOffsets={deadOffsets}
+        next={describeNextInstruction(snapshot)}
+      />
+      <StateColumn
+        frames={snapshot.callStack}
+        operandAnnotations={describeOperandRoles(snapshot)}
+        className="md:col-span-2 lg:col-span-1"
+      />
+    </AppShell>
   );
 }

@@ -1,28 +1,41 @@
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
+
+import type { StackFrame } from '../core/interpreter/types';
 
 import { mockSnapshotAt } from './__fixtures__/mock-history';
 import { CallStackPanel } from './CallStackPanel';
 
-/** Krok 10 mocka: main → factorial(2) → factorial(1), czyli maksymalna głębokość. */
+/** Step 10 of the mock: main → factorial(2) → factorial(1), the deepest point of the run. */
 const deepestFrames = mockSnapshotAt(10).callStack;
+
+function deepStack(depth: number): readonly StackFrame[] {
+  return Array.from({ length: depth }, (_, index) => ({
+    methodName: 'fib',
+    methodDescriptor: '(I)I',
+    pc: index,
+    operandStack: [],
+    locals: [depth - index],
+    localNames: ['n'],
+  }));
+}
 
 function frameAt(position: number): HTMLElement {
   const frame = screen.getAllByTestId('call-frame')[position];
   if (frame === undefined) {
-    throw new Error(`Brak wyrenderowanej ramki na pozycji ${String(position)}`);
+    throw new Error(`No frame rendered at position ${String(position)}`);
   }
   return frame;
 }
 
 describe('CallStackPanel', () => {
-  it('renderuje ramki od najnowszej u góry', () => {
+  it('puts the top frame at the bottom, next to the locals that describe it', () => {
     render(<CallStackPanel frames={deepestFrames} />);
 
-    const rendered = screen.getAllByTestId('call-frame');
-
-    expect(rendered).toHaveLength(3);
-    expect(rendered.map((frame) => frame.getAttribute('data-frame-index'))).toEqual([
+    // `flex-col-reverse` flips the DOM order, so the newest frame is first in the DOM
+    // and last on screen.
+    expect(screen.getByTestId('call-frame-list')).toHaveClass('flex-col-reverse');
+    expect(screen.getAllByTestId('call-frame').map((frame) => frame.dataset.frameIndex)).toEqual([
       '2',
       '1',
       '0',
@@ -31,29 +44,47 @@ describe('CallStackPanel', () => {
     expect(frameAt(2)).not.toHaveAttribute('aria-current');
   });
 
-  it('pokazuje nazwę metody, deskryptor i pc ramki', () => {
+  it('shows the method name, its first argument and the pc of the top frame', () => {
     render(<CallStackPanel frames={deepestFrames} />);
 
-    const oldest = within(frameAt(2));
+    const top = within(frameAt(0));
+    expect(top.getByText('factorial')).toBeInTheDocument();
+    expect(top.getByText('n=1')).toBeInTheDocument();
+    expect(top.getByText('pc 0')).toBeInTheDocument();
 
-    expect(oldest.getByText('main')).toBeInTheDocument();
-    expect(oldest.getByText('([Ljava/lang/String;)V')).toBeInTheDocument();
-    expect(oldest.getByText('pc 4')).toBeInTheDocument();
+    // Only the top frame carries a pc pill; the descriptor moves out of the row into `title`.
+    const oldest = frameAt(2);
+    expect(within(oldest).getByText('main')).toBeInTheDocument();
+    expect(oldest).toHaveAttribute('title', 'main([Ljava/lang/String;)V');
+    expect(within(oldest).queryByText(/^pc /)).not.toBeInTheDocument();
   });
 
-  it('przygasza starsze ramki gradacyjnie według pozycji w tablicy', () => {
+  it('fades older frames by depth instead of indenting them', () => {
     render(<CallStackPanel frames={deepestFrames} />);
 
     expect(frameAt(0)).toHaveStyle({ opacity: '1' });
-    expect(frameAt(1)).toHaveStyle({ opacity: '0.72' });
-    expect(frameAt(2)).toHaveStyle({ opacity: '0.54' });
+    expect(frameAt(1)).toHaveStyle({ opacity: '0.76' });
+    expect(frameAt(2)).toHaveStyle({ opacity: '0.58' });
   });
 
-  it('pokazuje czytelny stan pusty dla snapshotu terminalnego', () => {
+  it('folds the middle of a deep stack into one expandable row', () => {
+    render(<CallStackPanel frames={deepStack(12)} />);
+
+    expect(screen.getAllByTestId('call-frame')).toHaveLength(7);
+    const collapsed = screen.getByTestId('collapsed-frames');
+    expect(collapsed).toHaveTextContent('… 5 more frames');
+
+    fireEvent.click(collapsed);
+
+    expect(screen.getAllByTestId('call-frame')).toHaveLength(12);
+    expect(screen.queryByTestId('collapsed-frames')).not.toBeInTheDocument();
+  });
+
+  it('shows a readable empty state for the terminal snapshot', () => {
     render(<CallStackPanel frames={[]} />);
 
     expect(screen.queryByTestId('call-frame')).not.toBeInTheDocument();
-    expect(screen.getByText(/Brak aktywnej ramki/)).toBeInTheDocument();
-    expect(screen.getByText('głębokość 0')).toBeInTheDocument();
+    expect(screen.getByText(/No active frame/)).toBeInTheDocument();
+    expect(screen.getByText('depth 0')).toBeInTheDocument();
   });
 });

@@ -1,21 +1,20 @@
 import type { StackFrame } from '../core/interpreter/types';
 
 import { Panel } from './Panel';
-import { EMPTY_STATE } from './theme';
 
 interface LocalsPanelProps {
-  /** Ramka wierzchnia bieżącego snapshotu; `undefined`, gdy stos wywołań jest pusty. */
+  /** Top frame of the current snapshot; `undefined` when the call stack is empty. */
   readonly frame: StackFrame | undefined;
 }
 
-/** Slot bez wartości — `undefined` w kontrakcie oznacza „niezainicjalizowany", nie zero. */
-const UNINITIALIZED = '—';
+/** `undefined` in the contract means "not initialised yet", not zero. */
+const UNINITIALISED = '·';
 
 export function LocalsPanel({ frame }: LocalsPanelProps) {
   if (frame === undefined) {
     return (
-      <Panel title="Zmienne lokalne" meta="—">
-        <p className={EMPTY_STATE}>Brak aktywnej ramki.</p>
+      <Panel title="Locals" meta="—" variant="state" contentClassName="shrink-0">
+        <p className="px-[18px] py-3 text-[12px] text-white/30">No active frame.</p>
       </Panel>
     );
   }
@@ -23,50 +22,48 @@ export function LocalsPanel({ frame }: LocalsPanelProps) {
   const { locals, localNames } = frame;
 
   return (
-    <Panel title="Zmienne lokalne" meta={`${String(locals.length)} slotów`}>
+    <Panel
+      title="Locals"
+      meta={`${String(locals.length)} slots`}
+      variant="state"
+      contentClassName="shrink-0"
+    >
       {locals.length === 0 ? (
-        <p className={EMPTY_STATE}>Metoda nie ma slotów lokalnych.</p>
+        <p className="px-[23px] py-2 text-[12px] text-white/30">no local slots</p>
       ) : (
-        <table className="w-full px-[10px] text-[12px]">
-          <thead>
-            <tr className="text-left text-[10px] text-white/35">
-              <th scope="col" className="px-[13px] pb-1 font-normal">
-                slot
-              </th>
-              <th scope="col" className="px-[13px] pb-1 font-normal">
-                nazwa
-              </th>
-              <th scope="col" className="px-[13px] pb-1 text-right font-normal">
-                wartość
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {locals.map((value, slot) => {
-              // Nazwa pochodzi z LocalVariableTable (javac -g); bez niej zostaje sam numer slotu.
-              const name = localNames[slot] ?? `slot ${String(slot)}`;
-              const isInitialized = value !== undefined;
+        <ul className="flex flex-col gap-[5px] px-[10px] pb-[2px]">
+          {locals.map((value, slot) => {
+            // Names come from the LocalVariableTable (javac -g); without it only the slot is left.
+            const name = localNames[slot] ?? `slot ${String(slot)}`;
+            const isInitialised = value !== undefined;
 
-              return (
-                <tr key={slot} data-testid="local-slot" data-slot={slot}>
-                  <td className="px-[13px] py-1 font-mono text-white/30">{slot}</td>
-                  <td
-                    className={`px-[13px] py-1 ${isInitialized ? 'text-white/75' : 'text-white/30'}`}
-                  >
-                    {name}
-                  </td>
-                  <td
-                    className={`px-[13px] py-1 text-right font-mono text-[14px] ${
-                      isInitialized ? 'text-white/90' : 'text-white/30'
-                    }`}
-                  >
-                    {isInitialized ? value : UNINITIALIZED}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+            return (
+              <li
+                key={slot}
+                data-testid="local-slot"
+                data-slot={slot}
+                className={`flex items-center gap-2 rounded-row px-[13px] py-[8px] text-[12px] ${
+                  isInitialised ? 'bg-white/5' : 'shadow-[inset_0_0_0_1px_rgb(255_255_255/0.08)]'
+                }`}
+              >
+                <span className="w-3 shrink-0 font-mono text-[10px] text-white/32">{slot}</span>
+                <span className={isInitialised ? 'text-white/75' : 'text-white/30'}>{name}</span>
+                {/* The supported instruction subset only models int locals. */}
+                {isInitialised ? (
+                  <span className="font-mono text-[11px] text-white/35">: I</span>
+                ) : null}
+                <span className="grow" />
+                <span
+                  className={`font-mono text-[14px] ${
+                    isInitialised ? 'text-white/90' : 'text-white/30'
+                  }`}
+                >
+                  {isInitialised ? value : UNINITIALISED}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
       )}
     </Panel>
   );

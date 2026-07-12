@@ -6,10 +6,10 @@ import type { StackFrame } from '../core/interpreter/types';
 import { mockSnapshotAt } from './__fixtures__/mock-history';
 import { LocalsPanel } from './LocalsPanel';
 
-/** Krok 0 mocka: ramka `main`, slot 0 = wartownik `args`, slot 1 = jeszcze nieprzypisany. */
+/** Step 0 of the mock: frame `main`, slot 0 is the `args` sentinel, slot 1 not assigned yet. */
 const mainFrame = mockSnapshotAt(0).callStack.at(-1);
 
-/** Plik skompilowany bez `-g` nie ma LocalVariableTable — zostają same numery slotów. */
+/** A file compiled without `-g` has no LocalVariableTable, so only slot numbers remain. */
 const frameWithoutNames: StackFrame = {
   methodName: 'factorial',
   methodDescriptor: '(I)I',
@@ -22,30 +22,32 @@ const frameWithoutNames: StackFrame = {
 function slotAt(index: number): HTMLElement {
   const slot = screen.getAllByTestId('local-slot')[index];
   if (slot === undefined) {
-    throw new Error(`Brak wyrenderowanego slotu ${String(index)}`);
+    throw new Error(`No slot rendered at index ${String(index)}`);
   }
   return slot;
 }
 
 describe('LocalsPanel', () => {
-  it('renderuje slot, nazwę z LocalVariableTable i wartość', () => {
+  it('renders the slot number, the name from the LocalVariableTable and the value', () => {
     render(<LocalsPanel frame={mockSnapshotAt(18).callStack.at(-1)} />);
 
     const row = within(slotAt(1));
 
     expect(row.getByText('result')).toBeInTheDocument();
+    expect(row.getByText(': I')).toBeInTheDocument();
     expect(row.getByText('2')).toBeInTheDocument();
-    expect(screen.getByRole('region', { name: 'Zmienne lokalne' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Locals' })).toBeInTheDocument();
   });
 
-  it('pokazuje "—" dla slotu niezainicjalizowanego', () => {
+  it('marks an uninitialised slot without a value and without a type', () => {
     render(<LocalsPanel frame={mainFrame} />);
 
     expect(screen.getAllByTestId('local-slot')).toHaveLength(2);
-    expect(within(slotAt(1)).getByText('—')).toBeInTheDocument();
+    expect(within(slotAt(1)).getByText('·')).toBeInTheDocument();
+    expect(within(slotAt(1)).queryByText(': I')).not.toBeInTheDocument();
   });
 
-  it('używa fallbacku "slot N", gdy nazwa zmiennej jest niedostępna', () => {
+  it('falls back to "slot N" when the variable name is unavailable', () => {
     render(<LocalsPanel frame={frameWithoutNames} />);
 
     expect(within(slotAt(0)).getByText('slot 0')).toBeInTheDocument();
@@ -53,10 +55,10 @@ describe('LocalsPanel', () => {
     expect(within(slotAt(1)).getByText('slot 1')).toBeInTheDocument();
   });
 
-  it('pokazuje brak ramki dla snapshotu terminalnego', () => {
+  it('shows the missing frame of the terminal snapshot', () => {
     render(<LocalsPanel frame={undefined} />);
 
     expect(screen.queryByTestId('local-slot')).not.toBeInTheDocument();
-    expect(screen.getByText('Brak aktywnej ramki.')).toBeInTheDocument();
+    expect(screen.getByText('No active frame.')).toBeInTheDocument();
   });
 });

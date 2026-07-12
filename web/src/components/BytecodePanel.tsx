@@ -1,99 +1,136 @@
+import { useState } from 'react';
+
 import type { Instruction } from '../core/disassembler/types';
 
+import { BranchGutter } from './BranchGutter';
+import { formatOperands } from './bytecode-format';
+import { NextInstructionCard, type NextInstructionCardProps } from './NextInstructionCard';
 import { Panel } from './Panel';
-import { CODE, CURRENT_ROW, GUTTER, GUTTER_CURRENT, IDLE_ROW, PILL_ERROR, ROW } from './theme';
+import { CODE_ROW } from './rhythm';
+import { Pill } from './ui/Pill';
+import { useScrollFollow } from './useScrollFollow';
 
 interface BytecodePanelProps {
   readonly methodName: string;
   readonly methodDescriptor: string;
+  readonly maxStack: number;
+  readonly maxLocals: number;
   readonly instructions: readonly Instruction[];
   /**
-   * `pc` ramki wierzchniej — offset instrukcji, która zaraz zostanie wykonana.
-   * `undefined`, gdy stos wywołań jest pusty (snapshot terminalny).
+   * `pc` of the top frame — the offset of the instruction about to run.
+   * `undefined` when the call stack is empty (terminal snapshot).
    */
   readonly currentOffset: number | undefined;
-}
-
-/**
- * Mnemoniki, których operandem jest indeks constant poolu — renderowane jako `#7`,
- * a nie jako goła liczba (kolejność wg tabeli opcode'ów z plan §6).
- */
-const CONSTANT_POOL_OPERANDS = new Set([
-  'invokestatic',
-  'invokevirtual',
-  'invokespecial',
-  'invokeinterface',
-  'getstatic',
-  'putstatic',
-  'getfield',
-  'putfield',
-  'ldc',
-  'ldc_w',
-  'new',
-  'checkcast',
-  'instanceof',
-]);
-
-function formatOperands(instruction: Instruction): string {
-  // Dla skoków pokazujemy offset absolutny, nie surową deltę — tak samo robi `javap -c`.
-  if (instruction.branchTarget !== undefined) {
-    return String(instruction.branchTarget);
-  }
-  if (CONSTANT_POOL_OPERANDS.has(instruction.mnemonic)) {
-    return instruction.operands.map((operand) => `#${String(operand)}`).join(', ');
-  }
-  return instruction.operands.join(', ');
+  /** javap-style trailing comments, keyed by instruction offset. */
+  readonly comments?: ReadonlyMap<number, string> | undefined;
+  /** Offsets never reached in this run — dimmed, because they did not shape the result. */
+  readonly deadOffsets?: ReadonlySet<number> | undefined;
+  /**
+   * Offset where decoding stopped. Variable-length instructions cannot be skipped reliably,
+   * so the rest of the method is reported as undecoded instead of being guessed at.
+   */
+  readonly truncatedAtOffset?: number | undefined;
+  readonly next?: NextInstructionCardProps | undefined;
 }
 
 export function BytecodePanel({
   methodName,
   methodDescriptor,
+  maxStack,
+  maxLocals,
   instructions,
   currentOffset,
+  comments,
+  deadOffsets,
+  truncatedAtOffset,
+  next,
 }: BytecodePanelProps) {
-  const current = instructions.find((instruction) => instruction.offset === currentOffset);
+  const [hoveredIndex, setHoveredIndex] = useState<number | undefined>(undefined);
+
+  const currentIndex = instructions.findIndex(
+    (instruction) => instruction.offset === currentOffset,
+  );
+  const current = currentIndex < 0 ? undefined : instructions[currentIndex];
+  const contentRef = useScrollFollow(currentIndex < 0 ? undefined : currentIndex);
+
+  const meta = `${methodName}${methodDescriptor} · max ${String(maxStack)}/${String(maxLocals)}`;
+  const currentOperands = current === undefined ? '' : formatOperands(current);
 
   return (
-    <Panel title="Bajtkod" meta={`${methodName}${methodDescriptor}`}>
-      {/* Podświetlenie nie może być jedynym nośnikiem informacji o bieżącym kroku (design.md §9). */}
+    <Panel
+      title="Bytecode"
+      meta={meta}
+      contentRef={contentRef}
+      footer={next === undefined ? undefined : <NextInstructionCard {...next} />}
+    >
+      {/* The highlight must not be the only carrier of "which step is this". */}
       <p className="sr-only" aria-live="polite">
         {current === undefined
-          ? 'Brak aktywnej instrukcji.'
-          : `Bieżąca instrukcja: pc ${String(current.offset)}, ${current.mnemonic}`}
+          ? 'No active instruction.'
+          : `pc ${String(current.offset)} · ${current.mnemonic}${currentOperands === '' ? '' : ` ${currentOperands}`}`}
       </p>
-      <ol className="px-[10px]">
-        {instructions.map((instruction) => {
-          const isCurrent = instruction.offset === currentOffset;
-          const operands = formatOperands(instruction);
 
-          return (
-            <li
-              key={instruction.offset}
-              aria-current={isCurrent ? 'step' : undefined}
-              data-testid={isCurrent ? 'current-instruction' : 'instruction'}
-              data-offset={instruction.offset}
-              className={`${ROW} ${CODE} ${isCurrent ? CURRENT_ROW : IDLE_ROW} ${
-                instruction.unsupported === true ? 'opacity-75' : ''
-              }`}
-            >
-              <span className={isCurrent ? GUTTER_CURRENT : GUTTER}>{instruction.offset}</span>
-              <span
-                className={
-                  instruction.unsupported === true
-                    ? 'w-28 shrink-0 text-[#ff8a80]'
-                    : 'w-28 shrink-0'
-                }
+      <div
+        className="relative px-[10px]"
+        onMouseLeave={() => {
+          setHoveredIndex(undefined);
+        }}
+      >
+        <BranchGutter
+          instructions={instructions}
+          currentIndex={currentIndex < 0 ? undefined : currentIndex}
+          hoveredIndex={hoveredIndex}
+        />
+
+        <ol className="pl-[26px]">
+          {instructions.map((instruction, index) => {
+            const isCurrent = index === currentIndex;
+            const isUnsupported = instruction.unsupported === true;
+            const isDead = deadOffsets?.has(instruction.offset) === true;
+            const operands = formatOperands(instruction);
+            const comment = comments?.get(instruction.offset);
+
+            return (
+              <li
+                key={instruction.offset}
+                aria-current={isCurrent ? 'step' : undefined}
+                data-testid={isCurrent ? 'current-instruction' : 'instruction'}
+                data-offset={instruction.offset}
+                onMouseEnter={() => {
+                  setHoveredIndex(index);
+                }}
+                className={`${CODE_ROW} ${
+                  isCurrent ? 'bg-accent/[0.22] text-accent-text shadow-current' : 'text-white/60'
+                } ${isUnsupported ? 'opacity-75' : isDead ? 'opacity-45' : ''}`}
               >
-                {instruction.mnemonic}
-              </span>
-              <span className="grow text-[#6cb2ff]">{operands}</span>
-              {instruction.unsupported === true ? (
-                <span className={PILL_ERROR}>unsupported</span>
-              ) : null}
-            </li>
-          );
-        })}
-      </ol>
+                <span
+                  className={`w-7 shrink-0 text-right select-none ${
+                    isCurrent ? 'text-accent-dim' : 'text-white/24'
+                  }`}
+                >
+                  {instruction.offset}
+                </span>
+                {/* Mnemonics are never colour-coded: the listing has to read as one block. */}
+                <span className={`w-[106px] shrink-0 ${isUnsupported ? 'text-error' : ''}`}>
+                  {instruction.mnemonic}
+                </span>
+                {operands === '' ? null : (
+                  <span className={isCurrent ? undefined : 'text-accent-dim'}>{operands}</span>
+                )}
+                {comment === undefined ? null : (
+                  <span className={isCurrent ? 'opacity-70' : 'text-white/32'}>{comment}</span>
+                )}
+                <span className="grow" />
+                {isUnsupported ? <Pill tone="error">unsupported</Pill> : null}
+              </li>
+            );
+          })}
+
+          {truncatedAtOffset === undefined ? null : (
+            <li className={`${CODE_ROW} text-white/24`}>… not decoded</li>
+          )}
+        </ol>
+      </div>
     </Panel>
   );
 }

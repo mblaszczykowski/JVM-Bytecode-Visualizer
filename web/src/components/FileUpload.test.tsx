@@ -8,17 +8,17 @@ function classFile(): File {
 }
 
 describe('FileUpload', () => {
-  it('zgłasza plik wybrany przez okno systemowe', () => {
+  it('reports a file chosen through the system dialog', () => {
     const onFileSelected = vi.fn();
     render(<FileUpload onFileSelected={onFileSelected} />);
 
     const file = classFile();
-    fireEvent.change(screen.getByLabelText('Otwórz plik .class…'), { target: { files: [file] } });
+    fireEvent.change(screen.getByLabelText('Open .class…'), { target: { files: [file] } });
 
     expect(onFileSelected).toHaveBeenCalledWith(file);
   });
 
-  it('zgłasza plik upuszczony na strefę drop', () => {
+  it('reports a file dropped on the drop zone', () => {
     const onFileSelected = vi.fn();
     render(<FileUpload onFileSelected={onFileSelected} />);
 
@@ -28,7 +28,7 @@ describe('FileUpload', () => {
     expect(onFileSelected).toHaveBeenCalledWith(file);
   });
 
-  it('podświetla strefę drop w trakcie przeciągania', () => {
+  it('highlights the drop zone while a file is dragged over it', () => {
     const onFileSelected = vi.fn();
     render(<FileUpload onFileSelected={onFileSelected} />);
 

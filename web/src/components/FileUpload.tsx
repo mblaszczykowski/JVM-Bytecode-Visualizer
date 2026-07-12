@@ -1,9 +1,7 @@
 import { type ChangeEvent, type DragEvent, useId, useState } from 'react';
 
-import { CONTROL, FOCUS_RING } from './theme';
-
 interface FileUploadProps {
-  /** Sam wybór pliku. Walidacja i parsowanie to Faza 7 — komponent niczego nie czyta. */
+  /** Only the choice of file. Validation and parsing happen upstream. */
   readonly onFileSelected: (file: File) => void;
 }
 
@@ -43,20 +41,23 @@ export function FileUpload({ onFileSelected }: FileUploadProps) {
       onDrop={handleDrop}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
-      className={`flex items-center gap-2 rounded-full px-1 py-1 transition-colors ${
-        isDragging ? 'bg-[rgb(10_132_255/0.22)]' : ''
+      className={`flex items-center gap-2 rounded-full p-1 transition-colors ${
+        isDragging ? 'bg-accent/[0.22]' : ''
       }`}
     >
-      <label htmlFor={inputId} className={`${CONTROL} cursor-pointer`}>
-        Otwórz plik .class…
+      <label
+        htmlFor={inputId}
+        className="cursor-pointer rounded-full bg-white/9 px-3 py-1.5 text-[12px] text-white/80 shadow-control-raised transition-colors hover:bg-white/15"
+      >
+        Open .class…
       </label>
-      <span className="hidden text-[11px] text-white/35 lg:inline">albo upuść tutaj</span>
+      <span className="hidden text-[11px] text-white/32 lg:inline">or drop it here</span>
       <input
         id={inputId}
         type="file"
         accept=".class,application/java-vm"
         onChange={handleInputChange}
-        className={`sr-only ${FOCUS_RING}`}
+        className="focus-ring sr-only"
       />
     </div>
   );

@@ -1,1 +1,116 @@
 @import 'tailwindcss';
+
+/*
+ * Design tokens. Defined once here and consumed through Tailwind utilities — no raw
+ * rgba() literals scattered across components.
+ *
+ * The accent (#0a84ff) means exactly one thing: "this is the current state" — current
+ * source line, current instruction, top frame, top of the operand stack. Everything that
+ * does not answer "you are here" or "this just changed" is grey.
+ */
+
+@theme static {
+  --color-app: var(--app-bg);
+  /* Alpha lives in the token so the no-backdrop-filter fallback can turn the glass opaque. */
+  --color-shell: rgb(var(--shell-rgb) / var(--shell-alpha));
+  --color-panel: rgb(255 255 255);
+
+  --color-accent: rgb(var(--accent-rgb));
+  --color-accent-soft: #9ccaff;
+  --color-accent-dim: #6cb2ff;
+  --color-accent-text: #eaf2ff;
+
+  --color-ok: #30d158;
+  --color-warn: #ffd60a;
+  --color-error: #ff453a;
+
+  /* Source syntax: keywords, method names, type names, number literals. */
+  --color-syntax-keyword: #c58af9;
+  --color-syntax-method: #7ab8ff;
+  --color-syntax-type: #ffd479;
+  --color-syntax-number: #ffb86b;
+
+  /* Concentric radii: inner radius = outer radius − padding. */
+  --radius-shell: 28px;
+  --radius-panel: 20px;
+  --radius-card: 14px;
+  --radius-row: 12px;
+  --radius-code: 10px;
+
+  /*
+   * Four layers make the glass read as glass: far shadow, near shadow, lit top edge,
+   * dark bottom edge. Collapsing this into a single shadow flattens the whole shell.
+   */
+  --shadow-shell:
+    0 32px 80px rgb(0 0 0 / 0.55), 0 2px 8px rgb(0 0 0 / 0.4),
+    inset 0 1px 0 rgb(255 255 255 / 0.16), inset 0 -1px 0 rgb(255 255 255 / 0.04);
+  /* Panel outlines are inset shadows, not borders — they take no pixel from the layout. */
+  --shadow-panel: inset 0 0 0 1px rgb(255 255 255 / 0.07), inset 0 1px 0 rgb(255 255 255 / 0.08);
+  --shadow-panel-raised:
+    inset 0 0 0 1px rgb(255 255 255 / 0.09), inset 0 1px 0 rgb(255 255 255 / 0.1);
+  --shadow-control-inset:
+    inset 0 1px 2px rgb(0 0 0 / 0.28), inset 0 0 0 1px rgb(255 255 255 / 0.06);
+  --shadow-control-raised: 0 1px 4px rgb(0 0 0 / 0.35), inset 0 1px 0 rgb(255 255 255 / 0.28);
+  --shadow-current: inset 0 0 0 1px rgb(10 132 255 / 0.45), 0 4px 14px rgb(10 132 255 / 0.18);
+  --shadow-current-strong:
+    inset 0 0 0 1px rgb(10 132 255 / 0.48), 0 4px 14px rgb(10 132 255 / 0.18);
+  --shadow-scrubber: 0 0 12px rgb(10 132 255 / 0.6);
+  --shadow-handle: 0 2px 8px rgb(0 0 0 / 0.5), inset 0 -1px 0 rgb(0 0 0 / 0.06);
+  --shadow-glow-ok: 0 0 10px var(--color-ok);
+
+  --font-ui: system-ui, -apple-system, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+  --font-sans: system-ui, -apple-system, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+}
+
+@layer base {
+  :root {
+    --app-bg: #0b0d13;
+    --shell-rgb: 22 26 37;
+    --shell-alpha: 0.52;
+    --accent-rgb: 10 132 255;
+  }
+
+  /* Without backdrop-filter there is nothing to blur, so the glass turns near-opaque. */
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    :root {
+      --shell-rgb: 26 30 41;
+      --shell-alpha: 0.94;
+    }
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  /*
+   * Three fixed radial lights under the shell. They are not decoration: backdrop-filter
+   * has nothing to blur without them and the whole screen reads flat. Attached to the
+   * body rather than a scroll container so the gradient never drifts.
+   */
+  body {
+    background-color: var(--app-bg);
+    background-image:
+      radial-gradient(90% 70% at 12% -10%, rgb(90 130 255 / 0.3) 0%, rgb(90 130 255 / 0) 60%),
+      radial-gradient(70% 60% at 95% 8%, rgb(180 120 255 / 0.18) 0%, rgb(180 120 255 / 0) 62%),
+      radial-gradient(120% 120% at 50% 120%, rgb(0 140 255 / 0.1) 0%, rgb(0 0 0 / 0) 60%);
+    background-attachment: fixed;
+    color: rgb(255 255 255 / 0.85);
+    -webkit-font-smoothing: antialiased;
+  }
+}
+
+/* On glass a plain box-shadow ring is invisible, so focus has to be a full-colour outline. */
+@utility focus-ring {
+  &:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+}
+
+@utility scroll-slim {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(255 255 255 / 0.18) transparent;
+}

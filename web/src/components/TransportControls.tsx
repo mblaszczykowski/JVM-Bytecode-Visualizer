@@ -1,13 +1,14 @@
-import { type ChangeEvent, useId } from 'react';
-
-import { FOCUS_RING } from './theme';
+import { DepthTrack } from './DepthTrack';
+import { Segment, SegmentedControl } from './ui/SegmentedControl';
 
 interface TransportControlsProps {
-  /** Indeks bieżącego snapshotu w historii (0-indeksowany). */
+  /** Index of the current snapshot in the history (0-based). */
   readonly stepIndex: number;
   readonly stepCount: number;
   readonly isPlaying: boolean;
   readonly speed: number;
+  /** Call stack depth per step — the background chart of the scrubber. */
+  readonly depths: readonly number[];
   readonly onSeek: (index: number) => void;
   readonly onTogglePlay: () => void;
   readonly onStepForward: () => void;
@@ -15,10 +16,12 @@ interface TransportControlsProps {
   readonly onSpeedChange: (speed: number) => void;
 }
 
-/** Prędkości odtwarzania z plan §9 Faza 6 — tu wyłącznie jako wartości selektora. */
-const SPEEDS = [0.5, 1, 2, 4, 8];
+const SPEEDS = [0.5, 1, 2, 4, 8] as const;
 
-const BUTTON_BASE = `flex items-center justify-center rounded-full text-white/85 transition-colors disabled:opacity-30 ${FOCUS_RING}`;
+function nextSpeed(current: number): number {
+  const index = SPEEDS.indexOf(current as (typeof SPEEDS)[number]);
+  return SPEEDS[(index + 1) % SPEEDS.length] ?? 1;
+}
 
 function StepBackIcon() {
   return (
@@ -53,101 +56,81 @@ function PauseIcon() {
 }
 
 /**
- * Komponent jest w pełni sterowany: cały stan (indeks, play/pause, prędkość) mieszka wyżej.
- * Timer odtwarzania to zadanie `useExecutionPlayer` z Fazy 6 — tutaj świadomie go nie ma.
+ * Fully controlled: index, play state and speed all live above this component. It sits
+ * directly on the glass — no background of its own and no hairline above it.
  */
 export function TransportControls({
   stepIndex,
   stepCount,
   isPlaying,
   speed,
+  depths,
   onSeek,
   onTogglePlay,
   onStepForward,
   onStepBack,
   onSpeedChange,
 }: TransportControlsProps) {
-  const speedId = useId();
   const lastIndex = Math.max(stepCount - 1, 0);
 
-  function handleSeek(event: ChangeEvent<HTMLInputElement>): void {
-    onSeek(Number(event.target.value));
-  }
-
-  function handleSpeed(event: ChangeEvent<HTMLSelectElement>): void {
-    onSpeedChange(Number(event.target.value));
-  }
-
   return (
-    <div className="flex items-center gap-4 px-[18px] pt-[14px] pb-[18px]">
-      <div className="flex shrink-0 items-center gap-1 rounded-full bg-white/10 p-1 shadow-[inset_0_1px_2px_rgb(0_0_0/0.28)]">
-        <button
-          type="button"
-          aria-label="Krok wstecz"
-          title="Krok wstecz (←)"
+    <div className="flex shrink-0 items-center gap-[14px] px-[18px] pt-[14px] pb-[18px]">
+      <SegmentedControl label="Playback" className="p-1">
+        <Segment
+          label="Step back"
+          title="Step back (←)"
           disabled={stepIndex <= 0}
           onClick={onStepBack}
-          className={`${BUTTON_BASE} h-8 w-[38px] hover:bg-white/10`}
+          className="h-8 w-[38px]"
         >
           <StepBackIcon />
-        </button>
-        <button
-          type="button"
-          aria-label={isPlaying ? 'Wstrzymaj' : 'Odtwórz'}
-          aria-pressed={isPlaying}
-          title="Odtwarzanie (spacja)"
+        </Segment>
+        <Segment
+          label={isPlaying ? 'Pause' : 'Play'}
+          title="Play / pause (space)"
+          selected={isPlaying}
+          tone="inverted"
           onClick={onTogglePlay}
-          className={`${BUTTON_BASE} h-8 w-[46px] ${
-            isPlaying ? 'bg-white/90 text-slate-900' : 'hover:bg-white/10'
-          }`}
+          className="h-8 w-[46px]"
         >
           {isPlaying ? <PauseIcon /> : <PlayIcon />}
-        </button>
-        <button
-          type="button"
-          aria-label="Krok naprzód"
-          title="Krok naprzód (→)"
+        </Segment>
+        <Segment
+          label="Step forward"
+          title="Step forward (→)"
           disabled={stepIndex >= lastIndex}
           onClick={onStepForward}
-          className={`${BUTTON_BASE} h-8 w-[38px] hover:bg-white/10`}
+          className="h-8 w-[38px]"
         >
           <StepForwardIcon />
-        </button>
-      </div>
+        </Segment>
+      </SegmentedControl>
 
-      <input
-        type="range"
-        min={0}
-        max={lastIndex}
-        step={1}
-        value={stepIndex}
-        onChange={handleSeek}
-        aria-label="Pozycja w historii wykonania"
-        aria-valuetext={`krok ${String(stepIndex + 1)} z ${String(stepCount)}`}
-        className={`h-1.5 grow cursor-pointer appearance-none rounded-full bg-white/15 accent-[#0a84ff] ${FOCUS_RING}`}
+      <button
+        type="button"
+        aria-label="Playback speed"
+        title="Playback speed — click to cycle 0.5× to 8×"
+        onClick={() => {
+          onSpeedChange(nextSpeed(speed));
+        }}
+        className="focus-ring shrink-0 rounded-full bg-white/9 px-[11px] py-[6px] font-mono text-[12px] text-white/80 shadow-control-raised"
+      >
+        {speed}×
+      </button>
+
+      <DepthTrack
+        depths={depths}
+        stepIndex={stepIndex}
+        onSeek={onSeek}
+        label="Execution history position"
       />
 
-      <output data-testid="step-counter" className="shrink-0 font-mono text-[12px] text-white/70">
-        krok {stepIndex + 1} / {stepCount}
+      <output
+        data-testid="step-counter"
+        className="shrink-0 font-mono text-[12px] text-white/60 tabular-nums"
+      >
+        step {stepIndex + 1} / {stepCount}
       </output>
-
-      <div className="flex shrink-0 items-center gap-2">
-        <label htmlFor={speedId} className="text-[11px] text-white/45">
-          Prędkość
-        </label>
-        <select
-          id={speedId}
-          value={speed}
-          onChange={handleSpeed}
-          className={`rounded-full bg-white/10 px-2 py-1 font-mono text-[12px] text-white/80 ${FOCUS_RING}`}
-        >
-          {SPEEDS.map((option) => (
-            <option key={option} value={option} className="bg-slate-900">
-              {option}×
-            </option>
-          ))}
-        </select>
-      </div>
     </div>
   );
 }
