@@ -1,0 +1,414 @@
+import { readFileSync } from 'node:fs';
+import { describe, expect, it } from 'vitest';
+
+import { parseClassFile, type ClassFile } from '../classfile';
+import { OPCODES } from '../disassembler';
+import {
+  expectCompleted,
+  expectVmError,
+  lastFrameOf,
+  localValue,
+  maxCallStackDepth,
+} from './__fixtures__/expect-execution';
+import {
+  ConstantPoolBuilder,
+  syntheticClass,
+  SYNTHETIC_CLASS_NAME,
+} from './__fixtures__/synthetic-class';
+import { EXECUTABLE_OPCODES, execute } from './interpreter';
+import type { Snapshot } from './types';
+
+/**
+ * Bytecode of the fixtures used below, from `javap -c -p` (the full dump lives in
+ * `../classfile/__fixtures__/Factorial.javap.txt`):
+ *
+ *   main([Ljava/lang/String;)V         factorial(I)I
+ *      0: iconst_4                        0: iload_0        7: iload_0
+ *      1: invokestatic factorial          1: iconst_1       8: iload_0
+ *      4: istore_1        // result       2: if_icmpgt 7    9: iconst_1
+ *      5: return                          5: iconst_1      10: isub
+ *                                         6: ireturn       11: invokestatic factorial
+ *   LineNumberTable main: 0→15, 5→16                       14: imul
+ *   LineNumberTable factorial: 0→19, 5→20, 7→22            15: ireturn
+ */
+const FACTORIAL_CLASS = new URL('../classfile/__fixtures__/Factorial.class', import.meta.url);
+const GCD_CLASS = new URL('../../../public/examples/Gcd.class', import.meta.url);
+
+function parse(location: URL): ClassFile {
+  // Copy into a fresh buffer: Node's Buffer can be a view into a shared pool.
+  return parseClassFile(new Uint8Array(readFileSync(location)).buffer);
+}
+
+function runFactorial(): readonly Snapshot[] {
+  return expectCompleted(execute(parse(FACTORIAL_CLASS))).snapshots;
+}
+
+/** Runs `code` as the body of a static `()I` entry method and returns what it puts on the stack. */
+function evaluate(code: readonly number[], maxLocals = 4): number | undefined {
+  const classFile = syntheticClass({
+    methods: [{ name: 'main', descriptor: '()I', code, maxLocals }],
+  });
+  return expectCompleted(execute(classFile)).returnValue;
+}
+
+describe('execute — Factorial fixture', () => {
+  it('runs main to completion without a return value', () => {
+    const result = expectCompleted(execute(parse(FACTORIAL_CLASS)));
+
+    expect(result.returnValue).toBeUndefined();
+    expect(result.snapshots.length).toBeGreaterThanOrEqual(30);
+    expect(result.snapshots.length).toBeLessThanOrEqual(200);
+  });
+
+  it('leaves 24 in the local named result', () => {
+    const main = lastFrameOf(runFactorial(), 'main');
+
+    expect(localValue(main, 'result')).toBe(24);
+  });
+
+  it('grows the call stack to exactly five frames (main plus factorial(4..1))', () => {
+    const snapshots = runFactorial();
+
+    expect(maxCallStackDepth(snapshots)).toBe(5);
+    const deepest = snapshots.find((snapshot) => snapshot.callStack.length === 5);
+    expect(deepest?.callStack.map((frame) => frame.methodName)).toEqual([
+      'main',
+      'factorial',
+      'factorial',
+      'factorial',
+      'factorial',
+    ]);
+    expect(deepest?.callStack.map((frame) => frame.locals[0])).toEqual([undefined, 4, 3, 2, 1]);
+  });
+
+  it('starts with the state before the first instruction', () => {
+    const first = runFactorial()[0];
+
+    expect(first).toMatchObject({
+      step: 0,
+      sourceLine: 15,
+      currentInstruction: { offset: 0, mnemonic: 'iconst_4' },
+    });
+    expect(first?.callStack).toHaveLength(1);
+    expect(first?.callStack[0]).toMatchObject({
+      methodName: 'main',
+      methodDescriptor: '([Ljava/lang/String;)V',
+      pc: 0,
+      operandStack: [],
+      locals: [undefined, undefined],
+      localNames: ['args', 'result'],
+    });
+  });
+
+  it('ends with a terminal snapshot', () => {
+    const snapshots = runFactorial();
+    const terminal = snapshots.at(-1);
+
+    expect(terminal).toEqual({ step: snapshots.length - 1, callStack: [] });
+    expect(snapshots.at(-2)?.currentInstruction?.mnemonic).toBe('return');
+  });
+
+  it('keeps the caller pointing at the instruction after the call', () => {
+    const entered = runFactorial().find((snapshot) => snapshot.callStack.length === 2);
+
+    // main resumes at offset 4 (istore_1), the callee starts at 0 with the argument in slot 0.
+    expect(entered?.callStack[0]).toMatchObject({ methodName: 'main', pc: 4, operandStack: [] });
+    expect(entered?.callStack[1]).toMatchObject({ methodName: 'factorial', pc: 0, locals: [4] });
+  });
+
+  it('maps each pc to the last LineNumberTable entry that starts at or before it', () => {
+    const snapshots = runFactorial();
+    const lineAt = (methodName: string, pc: number): number | undefined =>
+      snapshots.find(
+        (snapshot) =>
+          snapshot.currentInstruction?.offset === pc &&
+          snapshot.callStack.at(-1)?.methodName === methodName,
+      )?.sourceLine;
+
+    expect(lineAt('main', 5)).toBe(16);
+    expect(lineAt('factorial', 0)).toBe(19);
+    expect(lineAt('factorial', 5)).toBe(20);
+    expect(lineAt('factorial', 7)).toBe(22);
+    // 14 has no entry of its own; the one at 7 is still in force.
+    expect(lineAt('factorial', 14)).toBe(22);
+  });
+
+  it('never creates a frame for <init>', () => {
+    const constructors = runFactorial().flatMap((snapshot) =>
+      snapshot.callStack.filter((frame) => frame.methodName.startsWith('<')),
+    );
+
+    expect(constructors).toEqual([]);
+  });
+
+  it('freezes the whole history', () => {
+    const snapshots = runFactorial();
+    const snapshot = snapshots[0];
+    const frame = snapshot?.callStack[0];
+
+    expect(Object.isFrozen(snapshots)).toBe(true);
+    expect(Object.isFrozen(snapshot)).toBe(true);
+    expect(Object.isFrozen(snapshot?.callStack)).toBe(true);
+    expect(Object.isFrozen(snapshot?.currentInstruction)).toBe(true);
+    expect(Object.isFrozen(snapshot?.currentInstruction?.operands)).toBe(true);
+    expect(Object.isFrozen(frame)).toBe(true);
+    expect(Object.isFrozen(frame?.operandStack)).toBe(true);
+    expect(Object.isFrozen(frame?.locals)).toBe(true);
+    expect(Object.isFrozen(frame?.localNames)).toBe(true);
+    expect(() => Object.assign(frame ?? {}, { pc: 99 })).toThrow(TypeError);
+  });
+});
+
+describe('execute — Gcd fixture', () => {
+  it('runs the while loop backwards through goto and leaves 21 in result', () => {
+    const snapshots = expectCompleted(execute(parse(GCD_CLASS))).snapshots;
+    const backwardJumps = snapshots.filter(
+      (snapshot) =>
+        snapshot.currentInstruction?.mnemonic === 'goto' &&
+        (snapshot.currentInstruction.branchTarget ?? 0) < snapshot.currentInstruction.offset,
+    );
+
+    expect(localValue(lastFrameOf(snapshots, 'main'), 'result')).toBe(21);
+    expect(maxCallStackDepth(snapshots)).toBe(2);
+    // gcd(1071, 462) needs three iterations: 1071%462=147, 462%147=21, 147%21=0.
+    expect(backwardJumps).toHaveLength(3);
+  });
+});
+
+describe('execute — entry point', () => {
+  it('returns the value of an ()I entry method', () => {
+    expect(evaluate([0x08, 0xac])).toBe(5); // iconst_5; ireturn
+  });
+
+  it('runs the method named by options.entryMethod', () => {
+    const classFile = syntheticClass({
+      methods: [
+        { name: 'main', descriptor: '()I', code: [0x03, 0xac] }, // iconst_0; ireturn
+        { name: 'other', descriptor: '()I', code: [0x04, 0xac] }, // iconst_1; ireturn
+      ],
+    });
+
+    expect(expectCompleted(execute(classFile, { entryMethod: 'other' })).returnValue).toBe(1);
+  });
+
+  it.each([
+    { case: 'no such method', methods: [{ name: 'other', descriptor: '()V', code: [0xb1] }] },
+    {
+      case: 'not static',
+      methods: [{ name: 'main', descriptor: '()V', code: [0xb1], accessFlags: 0 }],
+    },
+    { case: 'no Code attribute', methods: [{ name: 'main', descriptor: '()V' }] },
+    {
+      case: 'descriptor outside the supported set',
+      methods: [{ name: 'main', descriptor: '(I)V', code: [0xb1] }],
+    },
+  ])('rejects an entry point that is $case', ({ methods }) => {
+    const result = execute(syntheticClass({ methods }));
+
+    expect(result.snapshots).toEqual([]);
+    expect(expectVmError(result)).toEqual({
+      kind: 'unsupported-call',
+      target: `${SYNTHETIC_CLASS_NAME}.main`,
+      offset: 0,
+      methodName: 'main',
+    });
+  });
+
+  it('reports the args slot of main as uninitialised when it is read', () => {
+    const classFile = syntheticClass({
+      methods: [
+        // iload_0 on the String[] argument — no supported instruction can read a reference.
+        { name: 'main', descriptor: '([Ljava/lang/String;)V', code: [0x1a, 0x57, 0xb1] },
+      ],
+    });
+
+    const error = expectVmError(execute(classFile));
+
+    expect(error.kind).toBe('invalid-state');
+    expect(error).toMatchObject({ offset: 0, methodName: 'main' });
+    expect(error.kind === 'invalid-state' && error.message).toContain('uninitialised');
+  });
+});
+
+describe('execute — instruction semantics', () => {
+  it.each([
+    { mnemonic: 'iconst_m1', opcode: 0x02, value: -1 },
+    { mnemonic: 'iconst_0', opcode: 0x03, value: 0 },
+    { mnemonic: 'iconst_1', opcode: 0x04, value: 1 },
+    { mnemonic: 'iconst_2', opcode: 0x05, value: 2 },
+    { mnemonic: 'iconst_3', opcode: 0x06, value: 3 },
+    { mnemonic: 'iconst_4', opcode: 0x07, value: 4 },
+    { mnemonic: 'iconst_5', opcode: 0x08, value: 5 },
+  ])('pushes $value for $mnemonic', ({ opcode, value }) => {
+    expect(evaluate([opcode, 0xac])).toBe(value);
+  });
+
+  it('reads bipush and sipush operands as signed', () => {
+    expect(evaluate([0x10, 0xff, 0xac])).toBe(-1); // bipush -1
+    expect(evaluate([0x10, 0x7f, 0xac])).toBe(127); // bipush 127
+    expect(evaluate([0x11, 0x80, 0x00, 0xac])).toBe(-32_768); // sipush -32768
+    expect(evaluate([0x11, 0x7f, 0xff, 0xac])).toBe(32_767); // sipush 32767
+  });
+
+  it('applies binary arithmetic to value1 <op> value2', () => {
+    expect(evaluate([0x05, 0x06, 0x60, 0xac])).toBe(5); // 2 + 3
+    expect(evaluate([0x06, 0x05, 0x64, 0xac])).toBe(1); // 3 - 2
+    expect(evaluate([0x10, 0xf9, 0x05, 0x6c, 0xac])).toBe(-3); // -7 / 2, truncated toward zero
+    expect(evaluate([0x10, 0xf9, 0x06, 0x70, 0xac])).toBe(-1); // -7 % 3
+    expect(evaluate([0x08, 0x74, 0xac])).toBe(-5); // -(5)
+  });
+
+  it('wraps imul around 32 bits', () => {
+    // 30000 * 30000 * 3 = 2_700_000_000, which does not fit in an int.
+    const code = [0x11, 0x75, 0x30, 0x11, 0x75, 0x30, 0x68, 0x06, 0x68, 0xac];
+
+    expect(evaluate(code)).toBe(-1_594_967_296);
+  });
+
+  it('duplicates and drops the top of the stack', () => {
+    // iconst_5; dup; iadd; iconst_1; pop; ireturn
+    expect(evaluate([0x08, 0x59, 0x60, 0x04, 0x57, 0xac])).toBe(10);
+  });
+
+  it('moves values through local slots', () => {
+    // iconst_4; istore_0; iconst_5; istore_1; iload_0; iload_1; isub; ireturn
+    expect(evaluate([0x07, 0x3b, 0x08, 0x3c, 0x1a, 0x1b, 0x64, 0xac])).toBe(-1);
+    // iconst_1; istore_2; iconst_2; istore_3; iload_2; iload_3; iadd; ireturn
+    expect(evaluate([0x04, 0x3d, 0x05, 0x3e, 0x1c, 0x1d, 0x60, 0xac])).toBe(3);
+    // bipush 42; istore 4; iload 4; ireturn — the wide-index forms
+    expect(evaluate([0x10, 0x2a, 0x36, 0x04, 0x15, 0x04, 0xac], 6)).toBe(42);
+  });
+
+  it('does nothing for nop', () => {
+    expect(evaluate([0x00, 0x04, 0xac])).toBe(1);
+  });
+
+  it('adds a negative constant with iinc', () => {
+    // bipush 10; istore_0; iinc 0, -3; iload_0; ireturn
+    expect(evaluate([0x10, 0x0a, 0x3b, 0x84, 0x00, 0xfd, 0x1a, 0xac])).toBe(7);
+  });
+
+  it('runs a countdown loop built from iinc, ifle and a backward goto', () => {
+    // sum = 0; for (i = 5; i > 0; i--) sum += i;  →  15
+    const code = [
+      0x10,
+      0x05, //  0: bipush 5
+      0x3b, //        2: istore_0        (i)
+      0x03, //        3: iconst_0
+      0x3c, //        4: istore_1        (sum)
+      0x1a, //        5: iload_0
+      0x9e,
+      0x00,
+      0x0d, // 6: ifle 19
+      0x1b, //        9: iload_1
+      0x1a, //       10: iload_0
+      0x60, //       11: iadd
+      0x3c, //       12: istore_1
+      0x84,
+      0x00,
+      0xff, // 13: iinc 0, -1
+      0xa7,
+      0xff,
+      0xf5, // 16: goto 5
+      0x1b, //       19: iload_1
+      0xac, //       20: ireturn
+    ];
+
+    expect(evaluate(code)).toBe(15);
+  });
+
+  it.each([
+    { mnemonic: 'if_icmpeq', opcode: 0x9f, taken: [3, 3], skipped: [3, 4] },
+    { mnemonic: 'if_icmpne', opcode: 0xa0, taken: [3, 4], skipped: [3, 3] },
+    { mnemonic: 'if_icmplt', opcode: 0xa1, taken: [3, 4], skipped: [4, 3] },
+    { mnemonic: 'if_icmpge', opcode: 0xa2, taken: [4, 3], skipped: [3, 4] },
+    { mnemonic: 'if_icmpgt', opcode: 0xa3, taken: [4, 3], skipped: [3, 3] },
+    { mnemonic: 'if_icmple', opcode: 0xa4, taken: [3, 3], skipped: [4, 3] },
+  ])('branches on $mnemonic comparing value1 with value2', ({ opcode, taken, skipped }) => {
+    // bipush v1; bipush v2; if_icmp<cond> 9; iconst_0; ireturn; iconst_1; ireturn
+    const program = ([value1 = 0, value2 = 0]: readonly number[]): readonly number[] => [
+      0x10,
+      value1 & 0xff,
+      0x10,
+      value2 & 0xff,
+      opcode,
+      0x00,
+      0x05,
+      0x03,
+      0xac,
+      0x04,
+      0xac,
+    ];
+
+    expect(evaluate(program(taken))).toBe(1);
+    expect(evaluate(program(skipped))).toBe(0);
+  });
+
+  it.each([
+    { mnemonic: 'ifeq', opcode: 0x99, taken: 0, skipped: 1 },
+    { mnemonic: 'ifne', opcode: 0x9a, taken: 1, skipped: 0 },
+    { mnemonic: 'iflt', opcode: 0x9b, taken: -1, skipped: 0 },
+    { mnemonic: 'ifge', opcode: 0x9c, taken: 0, skipped: -1 },
+    { mnemonic: 'ifgt', opcode: 0x9d, taken: 1, skipped: 0 },
+    { mnemonic: 'ifle', opcode: 0x9e, taken: 0, skipped: 1 },
+  ])('branches on $mnemonic comparing the value with zero', ({ opcode, taken, skipped }) => {
+    // bipush v; if<cond> 7; iconst_0; ireturn; iconst_1; ireturn
+    const program = (value: number): readonly number[] => [
+      0x10,
+      value & 0xff,
+      opcode,
+      0x00,
+      0x05,
+      0x03,
+      0xac,
+      0x04,
+      0xac,
+    ];
+
+    expect(evaluate(program(taken))).toBe(1);
+    expect(evaluate(program(skipped))).toBe(0);
+  });
+
+  it('passes arguments to a static call first-argument-first', () => {
+    const pool = new ConstantPoolBuilder();
+    const subtract = pool.methodref(SYNTHETIC_CLASS_NAME, 'subtract', '(II)I');
+    const classFile = syntheticClass({
+      pool,
+      methods: [
+        // bipush 10; iconst_3; invokestatic subtract; ireturn
+        { name: 'main', descriptor: '()I', code: [0x10, 0x0a, 0x06, 0xb8, 0x00, subtract, 0xac] },
+        // iload_0; iload_1; isub; ireturn — reversed arguments would return -7
+        { name: 'subtract', descriptor: '(II)I', code: [0x1a, 0x1b, 0x64, 0xac] },
+      ],
+    });
+
+    expect(expectCompleted(execute(classFile)).returnValue).toBe(7);
+  });
+
+  it('resumes the caller after a void call', () => {
+    const pool = new ConstantPoolBuilder();
+    const noop = pool.methodref(SYNTHETIC_CLASS_NAME, 'noop', '()V');
+    const classFile = syntheticClass({
+      pool,
+      methods: [
+        { name: 'main', descriptor: '()I', code: [0xb8, 0x00, noop, 0x04, 0xac] },
+        { name: 'noop', descriptor: '()V', code: [0xb1] },
+      ],
+    });
+
+    const result = expectCompleted(execute(classFile));
+
+    expect(result.returnValue).toBe(1);
+    expect(maxCallStackDepth(result.snapshots)).toBe(2);
+  });
+});
+
+describe('execute — dispatch table', () => {
+  it('executes exactly the opcodes the disassembler marks as supported', () => {
+    const supported = [...OPCODES.values()]
+      .filter((info) => info.kind === 'supported')
+      .map((info) => info.opcode);
+
+    expect([...EXECUTABLE_OPCODES].sort((a, b) => a - b)).toEqual(supported.sort((a, b) => a - b));
+  });
+});

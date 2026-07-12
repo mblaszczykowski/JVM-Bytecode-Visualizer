@@ -6,8 +6,8 @@ import { defineConfig } from 'vite';
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   test: {
-    // Dwa projekty odzwierciedlają granicę z ADR-0001/§11.1: `core/` jest czystym
-    // TypeScriptem i musi przechodzić testy bez jakiegokolwiek DOM-u.
+    // Two projects mirror the ADR-0001 boundary: `core/` is plain TypeScript and has to pass
+    // its tests without a DOM anywhere in sight.
     projects: [
       {
         extends: true,
@@ -27,13 +27,16 @@ export default defineConfig({
         },
       },
     ],
-    // Testy e2e (Playwright) żyją w tests/e2e i celowo nie są objęte żadnym projektem.
+    // The Playwright suite in tests/e2e is deliberately part of neither project.
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html', 'lcov'],
       include: ['src/**/*.{ts,tsx}'],
       exclude: ['src/**/*.test.{ts,tsx}', 'src/test/**', 'src/main.tsx'],
-      // Progi pokrycia wchodzą w Fazie 3 (plan §9).
+      thresholds: {
+        // The domain layer is the part that has to be correct; CI enforces it, not review.
+        'src/core/**/*.ts': { lines: 90, branches: 90, functions: 90 },
+      },
     },
   },
 });

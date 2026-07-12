@@ -1,10 +1,13 @@
 /**
- * Warstwa domenowa: parser plików `.class`, disassembler i interpreter.
+ * Domain layer: the `.class` parser, the disassembler and the interpreter.
  *
- * Ten katalog jest czystym TypeScriptem — bez React-a, DOM-u i warstwy UI.
- * Granicy pilnuje reguła `@typescript-eslint/no-restricted-imports`
- * w `eslint.config.js` (ADR-0001, plan §11.1).
+ * Pure TypeScript — no React, no DOM, no application layer. The boundary is enforced by
+ * `@typescript-eslint/no-restricted-imports` in `eslint.config.js` (ADR-0001); dependencies
+ * flow one way only, UI → core.
  *
- * Zawartość pojawia się w Fazach 1–3: classfile/, disassembler/, interpreter/.
+ * Re-exports the three layer barrels rather than individual symbols, so a new export in a
+ * layer reaches the UI without touching this file.
  */
-export {};
+export * from './classfile';
+export * from './disassembler';
+export * from './interpreter';

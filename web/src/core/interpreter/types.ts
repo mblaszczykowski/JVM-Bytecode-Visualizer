@@ -53,9 +53,17 @@ export type VmError =
     };
 
 export type ExecutionResult =
-  | { readonly kind: 'completed'; readonly snapshots: readonly Snapshot[]; readonly returnValue?: number }
+  | {
+      readonly kind: 'completed';
+      readonly snapshots: readonly Snapshot[];
+      readonly returnValue?: number;
+    }
   | { readonly kind: 'vm-error'; readonly snapshots: readonly Snapshot[]; readonly error: VmError }
-  | { readonly kind: 'step-limit'; readonly snapshots: readonly Snapshot[]; readonly limit: number };
+  | {
+      readonly kind: 'step-limit';
+      readonly snapshots: readonly Snapshot[];
+      readonly limit: number;
+    };
 
 export interface ExecuteOptions {
   /** Defaults to "main". */
