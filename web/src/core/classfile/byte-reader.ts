@@ -4,10 +4,9 @@ import { ClassFileError } from './errors';
  * Cursor over a slice of an `ArrayBuffer` with big-endian reads of the `.class` format
  * (JVMS §4.1: all multi-byte values are stored big-endian).
  *
- * This is the only place in the domain layer that touches `DataView` — the I/O boundary.
- * Every read past the window ends in a `ClassFileError` of kind `truncated` (rather than
- * a bare `RangeError` from `DataView`), so the UI gets the byte offset and the name of
- * the field the file was cut off at.
+ * The only place in the domain layer that touches `DataView` — the I/O boundary. A read past
+ * the window raises `ClassFileError` of kind `truncated` rather than a bare `RangeError`, so
+ * the UI gets the byte offset and the name of the field the file was cut off at.
  */
 export class ByteReader {
   private readonly source: ArrayBuffer;
@@ -43,7 +42,7 @@ export class ByteReader {
     this.bytes = new Uint8Array(buffer, byteOffset, byteLength);
   }
 
-  /** Absolute cursor offset within the source buffer — used in error messages. */
+  /** Absolute cursor offset within the source buffer. */
   get offset(): number {
     return this.base + this.cursor;
   }
@@ -77,7 +76,7 @@ export class ByteReader {
     return this.view.getInt16(this.claim(2, context));
   }
 
-  /** Copy of `count` bytes — the result does not alias the input buffer, so it is safe to keep in the model. */
+  /** Copies, so the result does not alias the source buffer and is safe to keep in the model. */
   readBytes(count: number, context = 'bytes'): Uint8Array {
     const start = this.claim(count, context);
     return this.bytes.slice(start, start + count);
@@ -88,10 +87,10 @@ export class ByteReader {
   }
 
   /**
-   * Carves out a reader limited to the next `length` bytes and advances the parent cursor
-   * past them. This implements the "skip every attribute by `attribute_length`" rule
-   * (JVMS §4.7): an attribute parser cannot read a single byte outside its own body, and
-   * the parent ends up in the right place regardless.
+   * Carves out a reader limited to the next `length` bytes and advances the parent cursor past
+   * them — the "skip every attribute by `attribute_length`" rule of JVMS §4.7. An attribute
+   * parser cannot read a byte outside its own body, and the parent lands in the right place
+   * regardless of what it read.
    */
   subReader(length: number, context = 'block'): ByteReader {
     const start = this.claim(length, context);
@@ -99,8 +98,8 @@ export class ByteReader {
   }
 
   /**
-   * Reserves `count` bytes and returns their position relative to the window; advances the
-   * cursor. All range checks live here, so the read methods can no longer throw `RangeError`.
+   * Reserves `count` bytes and returns their position relative to the window. Every range
+   * check lives here, which is what keeps `RangeError` out of the read methods.
    */
   private claim(count: number, context: string): number {
     if (!Number.isInteger(count) || count < 0) {

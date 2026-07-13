@@ -1,10 +1,6 @@
 /**
- * Contract test for the committed fixtures.
- *
- * It reads the manifest from disk — not through `fetch` and not from a mock — because the
- * artifact under test is exactly what sits in the repository and ships to production. If
- * someone changes `build-fixtures.mjs` or an example source so that the result no longer
- * matches a real JVM, this test fails before anyone runs the interpreter.
+ * Contract test for the committed fixtures. The manifest is read from disk rather than
+ * through `fetch` or a mock: the artifact under test is the one that ships.
  */
 
 /// <reference types="node" />
@@ -19,9 +15,9 @@ import { describe, expect, it } from 'vitest';
 import { exampleManifestSchema, parseExampleManifest, type ExampleManifest } from './manifest';
 
 /**
- * The fixtures directory is resolved from cwd rather than from `import.meta.url`: under jsdom
- * Vitest serves modules over http, so `import.meta.url` is not a `file:` URL. Vitest roots at
- * `web/` (where vite.config.ts lives); the second candidate covers a run from the repo root.
+ * Resolved from cwd, not from `import.meta.url`: under jsdom Vitest serves modules over http,
+ * so `import.meta.url` is not a `file:` URL. Vitest roots at `web/` (where vite.config.ts
+ * lives); the second candidate covers a run from the repo root.
  */
 function resolveExamplesDir(): string {
   const candidates = [

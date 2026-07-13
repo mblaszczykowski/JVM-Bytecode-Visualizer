@@ -7,20 +7,18 @@ import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
 /**
- * Wzorce importów zakazane w `src/core/**` — egzekwują ADR-0001 i plan §11.1:
- * warstwa domenowa (parser, disassembler, interpreter) nie zna React-a, DOM-u
- * ani warstwy aplikacyjnej. Przepływ zależności jest jednokierunkowy: UI → core.
+ * Import patterns banned inside `src/core` (ADR-0001): the domain layer knows nothing about
+ * React, the DOM or the application layer. Dependencies flow one way, UI → core.
  */
 const CORE_FORBIDDEN_IMPORTS = [
   {
     group: ['react', 'react/*', 'react-dom', 'react-dom/*', 'framer-motion', 'motion', 'motion/*'],
-    message:
-      'src/core musi pozostać czystym TypeScriptem — bez React/DOM/animacji (ADR-0001, plan §11.1).',
+    message: 'src/core stays pure TypeScript — no React, DOM or animation imports (ADR-0001).',
   },
   {
     group: ['**/components/**', '**/hooks/**', '**/services/**', '**/app/**', '**/App', '**/main'],
     message:
-      'src/core nie może zależeć od warstwy UI/aplikacji — zależności płyną wyłącznie UI → core (ADR-0001, plan §11.1).',
+      'src/core must not depend on the UI/application layer — dependencies flow UI → core only (ADR-0001).',
   },
 ];
 
@@ -35,7 +33,6 @@ export default tseslint.config(
     ],
   },
 
-  // --- TypeScript: strict + stylistic z pełną analizą typów ---
   {
     files: ['**/*.{ts,tsx}'],
     extends: [
@@ -58,7 +55,6 @@ export default tseslint.config(
     },
   },
 
-  // --- Kod aplikacji (przeglądarka) ---
   {
     files: ['src/**/*.{ts,tsx}'],
     extends: [reactHooks.configs.flat.recommended, reactRefresh.configs.vite],
@@ -67,21 +63,21 @@ export default tseslint.config(
     },
   },
 
-  // --- Granica architektoniczna: src/core jest czystą domeną ---
+  // --- The architectural boundary: src/core is pure domain ---
   {
     files: ['src/core/**/*.ts'],
     rules: {
       '@typescript-eslint/no-restricted-imports': ['error', { patterns: CORE_FORBIDDEN_IMPORTS }],
       'no-restricted-globals': [
         'error',
-        { name: 'window', message: 'src/core nie może dotykać DOM-u (ADR-0001).' },
-        { name: 'document', message: 'src/core nie może dotykać DOM-u (ADR-0001).' },
-        { name: 'localStorage', message: 'src/core nie może dotykać DOM-u (ADR-0001).' },
+        { name: 'window', message: 'src/core must not touch the DOM (ADR-0001).' },
+        { name: 'document', message: 'src/core must not touch the DOM (ADR-0001).' },
+        { name: 'localStorage', message: 'src/core must not touch the DOM (ADR-0001).' },
       ],
     },
   },
 
-  // --- Pliki konfiguracyjne i testy e2e działają w Node ---
+  // --- Config files and the e2e suite run under Node, not the browser ---
   {
     files: ['*.config.ts', 'tests/e2e/**/*.ts'],
     languageOptions: {
@@ -89,7 +85,7 @@ export default tseslint.config(
     },
   },
 
-  // --- Sam plik konfiguracji ESLint nie należy do żadnego projektu TS ---
+  // --- This config file itself belongs to no TS project, so type-aware rules cannot run ---
   {
     files: ['**/*.js'],
     extends: [tseslint.configs.disableTypeChecked],
@@ -98,6 +94,6 @@ export default tseslint.config(
     },
   },
 
-  // Prettier na końcu: wyłącza reguły kolidujące z formatowaniem.
+  // Last, so it wins: switches off every rule that fights Prettier.
   prettier,
 );

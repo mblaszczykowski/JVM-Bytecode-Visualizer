@@ -1,6 +1,7 @@
-# Specyfikacja projektu — świadomie ręcznie formatowana (wyrównane tabele
-# i komentarze w blokach kodu), Prettier zniszczyłby jej czytelność.
+# Working documents with deliberate manual formatting (aligned tables,
+# annotated code blocks) that Prettier would destroy.
 plan.md
+design.md
 
 node_modules/
 dist/

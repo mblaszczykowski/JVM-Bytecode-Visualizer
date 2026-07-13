@@ -10,12 +10,11 @@ import type { DisassembledCode, Instruction } from './types';
 /**
  * Sequential decoder for a method's `code[]` array (JVMS §4.7.3).
  *
- * It never throws and never reads past the buffer: anything it cannot decode reliably
- * ends the listing at `truncatedAtOffset` instead. That happens for variable-length
- * instructions (`tableswitch`/`lookupswitch`/`wide`, whose length depends on operands and
- * padding), for reserved or unassigned opcode bytes, and for operands cut off by the end
- * of `code[]` — in each case the following bytes are not known to be instruction
- * boundaries, so decoding them would produce fiction.
+ * Never throws, never reads past the buffer: anything it cannot decode reliably ends the
+ * listing at `truncatedAtOffset` instead. That covers variable-length instructions
+ * (`tableswitch`/`lookupswitch`/`wide`, sized by their operands and padding), reserved or
+ * unassigned opcode bytes, and operands cut off by the end of `code[]`. In each case the
+ * bytes that follow are no longer known to be instruction boundaries.
  */
 export function disassemble(code: Uint8Array): DisassembledCode {
   const view = new DataView(code.buffer, code.byteOffset, code.byteLength);
@@ -107,8 +106,8 @@ function decodeSupported(view: DataView, offset: number, info: SupportedOpcode):
 }
 
 /**
- * Outside the MVP subset the operand encoding is not modelled, so the operands are
- * skipped by length and reported as empty — the listing still shows the real mnemonic.
+ * Outside the MVP subset the operand encoding is not modelled, so operands are skipped by
+ * length and reported as empty. The listing still shows the real mnemonic.
  */
 function decodeUnsupported(view: DataView, offset: number, info: UnsupportedOpcode): DecodeStep {
   const nextOffset = offset + 1 + info.operandBytes;

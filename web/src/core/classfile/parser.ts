@@ -16,15 +16,9 @@ import {
  * `.class` file parser (JVMS §4). Scope: header, constant pool, flags, fields, methods
  * and the `Code` attribute together with `LineNumberTable` and `LocalVariableTable`.
  *
- * The rules that keep the parser alive on files produced by a real javac:
- * - the constant pool is 1-indexed and holds `constant_pool_count - 1` entries, with
- *   `Long`/`Double` taking two slots each (JVMS §4.4.5);
- * - tags we do not interpret still have known lengths and are skipped over;
- * - every unknown attribute is skipped by `attribute_length` — at every level (JVMS §4.7);
- * - the only exception leaving this module is `ClassFileError`.
+ * The only exception leaving this module is `ClassFileError`.
  */
 
-/** JVMS §4.1: `magic` always equals 0xCAFEBABE. */
 const CLASS_FILE_MAGIC = 0xcafe_babe;
 
 /** JVMS §4.7.3: `code_length` must be > 0 and < 65536. */
@@ -58,8 +52,8 @@ export function parseClassFile(buffer: ArrayBuffer): ClassFile {
   const interfaceNames = readInterfaces(reader, constantPool);
   const fields = readFields(reader, constantPool);
   const methods = readMethods(reader, constantPool);
-  // Class attributes (SourceFile, NestMembers, InnerClasses...) are read only to confirm
-  // the file is structurally consistent — none of them is needed by the MVP.
+  // Class attributes (SourceFile, NestMembers, InnerClasses...) are read for structural
+  // validation only; the MVP needs none of them.
   readAttributes(reader, constantPool, 'ClassFile', () => undefined);
 
   return {
@@ -75,7 +69,7 @@ export function parseClassFile(buffer: ArrayBuffer): ClassFile {
   };
 }
 
-// --- Constant pool (JVMS §4.4) ---------------------------------------------------------------
+// --- Constant pool (JVMS §4.4) ---
 
 function readConstantPool(reader: ByteReader): ConstantPool {
   const countAt = reader.offset;
@@ -181,8 +175,7 @@ function readConstantEntry(
       return { tag: ConstantTag.Package };
 
     default:
-      // Pool entries have different lengths — without knowing the tag there is no way to
-      // advance to the next entry, so reading any further would be meaningless.
+      // Entries are variable-length, so an unknown tag leaves no way to find the next one.
       throw new ClassFileError({
         kind: 'unknown-constant-tag',
         offset: tagAt,
@@ -195,13 +188,11 @@ function readConstantEntry(
 /**
  * Modified UTF-8 decoder (JVMS §4.4.7): like UTF-8, except U+0000 is encoded on two bytes
  * (0xC0 0x80) and characters outside the BMP use two three-byte sequences (a surrogate
- * pair) instead of a single four-byte one.
+ * pair) instead of a single four-byte one. A JS string is UTF-16, so the surrogate pair
+ * reassembles itself — 1/2/3-byte sequences cover the whole format.
  *
- * Because a JS string is a sequence of UTF-16 code units, the surrogate pair reassembles
- * itself here — decoding 1/2/3-byte sequences covers the whole format, including
- * supplementary characters. Limitation: overlong encodings and surrogate pairing are not
- * validated (javac never emits them, and either way the entry length is known up front,
- * so a bad string cannot desynchronise the reads that follow).
+ * Overlong encodings and surrogate pairing go unvalidated: javac never emits them, and the
+ * entry length is known up front, so a bad string cannot desynchronise the reads that follow.
  */
 function decodeModifiedUtf8(bytes: Uint8Array, constantPoolIndex: number, bytesAt: number): string {
   const byteAt = (position: number): number => {
@@ -239,7 +230,6 @@ function decodeModifiedUtf8(bytes: Uint8Array, constantPoolIndex: number, bytesA
     const lead = byteAt(position);
 
     if (lead === 0x00) {
-      // U+0000 must be encoded as 0xC0 0x80 — a bare zero byte is not allowed.
       throw fail(position, 'byte 0x00 is not allowed (U+0000 is encoded as 0xc0 0x80)');
     } else if (lead < 0x80) {
       result += String.fromCharCode(lead);
@@ -262,7 +252,7 @@ function decodeModifiedUtf8(bytes: Uint8Array, constantPoolIndex: number, bytesA
   return result;
 }
 
-// --- Resolving constant pool references -------------------------------------------------------
+// --- Resolving constant pool references ---
 
 function constantAt(
   pool: ConstantPool,
@@ -299,7 +289,7 @@ function resolveClassName(
   return resolveUtf8(pool, entry.nameIndex, offset, `${context} → Class.name_index`);
 }
 
-// --- Interfaces, fields, methods (JVMS §4.1, §4.5, §4.6) --------------------------------------
+// --- Interfaces, fields, methods (JVMS §4.1, §4.5, §4.6) ---
 
 function readInterfaces(reader: ByteReader, pool: ConstantPool): readonly string[] {
   const count = reader.readU2('interfaces_count');
@@ -339,8 +329,8 @@ function readFields(reader: ByteReader, pool: ConstantPool): readonly FieldInfo[
   for (let i = 0; i < count; i += 1) {
     const owner = `fields[${String(i)}]`;
     const header = readMemberHeader(reader, pool, owner);
-    // The MVP has no notion of fields (no heap) — they are read structurally only, so the
-    // cursor lands on the methods table. Field attributes are skipped entirely.
+    // No heap in the MVP, so fields are read structurally only — just far enough for the
+    // cursor to land on the methods table.
     readAttributes(reader, pool, owner, () => undefined);
     fields.push(header);
   }
@@ -370,12 +360,12 @@ function readMethods(reader: ByteReader, pool: ConstantPool): readonly MethodInf
   return methods;
 }
 
-// --- Attributes (JVMS §4.7) -------------------------------------------------------------------
+// --- Attributes (JVMS §4.7) ---
 
 /**
- * Reads an attributes table and calls `visit` for each entry with a reader limited to the
- * attribute body. The parent cursor skips the attribute by `attribute_length` no matter how
- * many bytes `visit` consumed — this holds at every level (class/field/method/Code).
+ * Calls `visit` for each entry with a reader limited to the attribute body. The parent cursor
+ * skips the attribute by `attribute_length` no matter how many bytes `visit` consumed — that
+ * is what makes unknown attributes harmless at every level (class/field/method/Code).
  */
 function readAttributes(
   reader: ByteReader,
@@ -410,7 +400,7 @@ function readCodeAttribute(body: ByteReader, pool: ConstantPool): CodeAttribute 
   }
   const code = body.readBytes(codeLength, 'Code.code');
 
-  // The exception table is read and deliberately ignored — exceptions are out of MVP scope.
+  // Exception table: skipped over, exceptions are out of MVP scope.
   const exceptionTableLength = body.readU2('Code.exception_table_length');
   for (let i = 0; i < exceptionTableLength; i += 1) {
     body.skip(8, `Code.exception_table[${String(i)}]`);

@@ -16,8 +16,8 @@ interface ErrorBannerProps {
  * Banners borrow the grammar of the current-step highlight — a fill plus an inset outline —
  * so the screen keeps one visual language for "look here".
  *
- * A stopped run is an `error`; a run that simply did not finish within the step limit is a
- * `warning`, because nothing about the program is broken.
+ * A stopped run is an `error`; one that merely ran out of steps is a `warning`, because
+ * nothing about the program is broken.
  */
 const SEVERITY_STYLE: Record<BannerSeverity, string> = {
   error: 'bg-error/[0.18] text-[#ffe5e3] shadow-[inset_0_0_0_1px_rgb(255_69_58/0.40)]',

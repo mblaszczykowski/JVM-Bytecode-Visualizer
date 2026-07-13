@@ -1,10 +1,9 @@
 /**
- * Typed `.class` parsing errors.
+ * Typed `.class` parsing errors. The whole `classfile/` layer fails through `ClassFileError`
+ * and nothing else — no bare `RangeError` from `DataView`, no `throw new Error(string)`.
  *
- * The whole `classfile/` layer signals failures exclusively through `ClassFileError` —
- * never a bare `RangeError` from `DataView` or `throw new Error(string)`. The error
- * variant (`detail`) is machine-readable so the UI can map `kind` to its own wording,
- * while `message` is a ready-to-display description.
+ * `detail` is machine-readable so the UI can map `kind` to its own wording; `message` is a
+ * ready-to-display fallback.
  */
 
 /** Failure kind together with the data needed to build a message. */
@@ -58,9 +57,9 @@ export type ClassFileErrorDetail =
     }
   | {
       /**
-       * A field/method descriptor violating the JVMS §4.3 grammar. The only variant without
-       * a byte offset: the descriptor parser works on a string taken from the constant pool
-       * (or on a literal in a test), so it points at the failure with a character index.
+       * A field/method descriptor violating the JVMS §4.3 grammar. The only variant without a
+       * byte offset — the descriptor is a string pulled out of the constant pool, so the
+       * failure is located by character index instead.
        */
       readonly kind: 'malformed-descriptor';
       readonly descriptor: string;

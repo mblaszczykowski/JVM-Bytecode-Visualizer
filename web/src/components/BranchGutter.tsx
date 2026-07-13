@@ -52,9 +52,9 @@ function maxOverlap(arcs: readonly Arc[], rowCount: number): number {
 }
 
 /**
- * Jump arcs drawn next to the instruction listing. The shape is pure arithmetic on row
- * indices — `branchTarget` resolved through the offset→index map — which is the cheapest way
- * to show control flow that the disassembly text alone does not convey.
+ * Jump arcs drawn next to the instruction listing: control flow the disassembly text alone
+ * does not convey. The shape is arithmetic on row indices, with `branchTarget` resolved
+ * through the offset→index map.
  */
 export function BranchGutter({ instructions, currentIndex, hoveredIndex }: BranchGutterProps) {
   const visible = useMemo(() => {

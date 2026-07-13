@@ -1,10 +1,9 @@
 import { isClassFileError, type ClassFileErrorDetail } from '../errors';
 
 /**
- * Runs `run` and returns the `detail` of the thrown `ClassFileError`.
- *
- * Any other exception (e.g. a `RangeError` from `DataView`) is rethrown so the test fails
- * with the original stack trace — that is exactly the case the parser must never produce.
+ * Returns the `detail` of the `ClassFileError` thrown by `run`. Any other exception — a
+ * `RangeError` from `DataView`, say — is rethrown with its own stack trace intact, since that
+ * is precisely the failure the parser must never produce.
  */
 export function expectClassFileError(run: () => unknown): ClassFileErrorDetail {
   try {

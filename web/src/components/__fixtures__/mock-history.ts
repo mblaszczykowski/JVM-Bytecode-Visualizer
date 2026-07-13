@@ -124,9 +124,8 @@ export function findMockMethod(name: string, descriptor: string): MockMethod | u
 }
 
 /**
- * The constant pool entries the mock disassembly refers to. Resolving `#7` all the way down
- * to a method name is what separates a real class-file reader from an opcode decoder, so the
- * UI shows the whole chain.
+ * The constant pool entries the mock disassembly refers to. The UI shows the whole resolution
+ * chain, `#7` down to a method name, not just the index.
  */
 export interface MockConstant {
   /** Resolution chain, rendered left to right in the "Next" card. */
@@ -188,7 +187,6 @@ function factorialFrame(pc: number, operandStack: readonly number[], n: number):
   };
 }
 
-/** Terminal snapshot: empty call stack, no `currentInstruction`. */
 export const mockTerminalSnapshot: Snapshot = { step: 19, callStack: [] };
 
 /**
@@ -321,7 +319,6 @@ export const mockHistory: readonly Snapshot[] = [
   mockTerminalSnapshot,
 ];
 
-/** Returns the snapshot for an index clamped to the history range. */
 export function mockSnapshotAt(index: number): Snapshot {
   const clamped = Math.min(Math.max(index, 0), mockHistory.length - 1);
   return mockHistory[clamped] ?? mockTerminalSnapshot;

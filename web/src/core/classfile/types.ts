@@ -1,9 +1,4 @@
-/**
- * Model of the `.class` parser result.
- *
- * Everything is `readonly`: the parser returns data that the disassembler and interpreter
- * only read from.
- */
+/** Model of the `.class` parser result. */
 
 /** Constant pool entry tags — JVMS §4.4, table 4.4-B. */
 export const ConstantTag = {
@@ -83,14 +78,13 @@ export interface NameAndTypeConstant {
 }
 
 /**
- * An entry of known length whose contents the MVP does not need. Only the tag is kept, so
- * that pool indices stay correct and the UI can still show the entry kind.
+ * An entry of known length whose contents the MVP does not need. Keeping the tag alone is
+ * enough to hold the pool indices in place and still name the entry kind in the UI.
  */
 export interface UninterpretedConstant {
   readonly tag: UninterpretedConstantTag;
 }
 
-/** Union discriminated by `tag` (JVMS §4.4). */
 export type ConstantPoolEntry =
   | Utf8Constant
   | IntegerConstant

@@ -5,9 +5,9 @@ import { ClassFileError } from './errors';
  * (MethodDescriptor).
  *
  * The grammar is implemented in full (`B C D F I J S Z`, `L<name>;`, `[`) even though the
- * interpreter only accepts `I` parameters and `I`/`V` return types. That restriction is
- * enforced by the interpreter, not here: the parser tells the truth about the file, so the
- * message can read "unsupported parameter type: long" instead of "unknown descriptor".
+ * interpreter only accepts `I` parameters and `I`/`V` return types. Enforcing that subset is
+ * the interpreter's job — a parser that tells the truth about the file lets the error read
+ * "unsupported parameter type: long" instead of "unknown descriptor".
  */
 
 export type PrimitiveTypeName =
@@ -73,7 +73,7 @@ export function parseMethodDescriptor(descriptor: string): MethodDescriptor {
     params.push(parsed.type);
     position = parsed.next;
   }
-  position += 1; // the ')' character
+  position += 1;
 
   const returnType = parseReturnType(descriptor, position);
   if (returnType.next !== descriptor.length) {
@@ -120,8 +120,8 @@ function parseReturnType(descriptor: string, position: number): ParsedType<JvmRe
 }
 
 function parseFieldType(descriptor: string, position: number): ParsedType<JvmType> {
-  // Dimensions are counted iteratively (not recursively) so that a pathological descriptor
-  // with thousands of "[" cannot blow the call stack.
+  // Dimensions are counted iteratively: a descriptor with thousands of "[" would blow the
+  // call stack if this recursed.
   let dimensions = 0;
   let cursor = position;
   while (descriptor[cursor] === '[') {

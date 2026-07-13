@@ -9,10 +9,10 @@ import type { Instruction } from './types';
 
 /**
  * Source of truth for the parity assertions: `javap -c -p Factorial.class`, recorded in
- * `../classfile/__fixtures__/Factorial.javap.txt`. The expected listings below are that
- * dump written out instruction by instruction; note that javap prints the *absolute*
- * branch target (`if_icmpgt 7`), while `Instruction.operands` keeps the encoded signed
- * delta and `branchTarget` carries the absolute offset.
+ * `../classfile/__fixtures__/Factorial.javap.txt`. The expected listings below are that dump
+ * written out instruction by instruction. Watch the branch column: javap prints the absolute
+ * target (`if_icmpgt 7`), whereas `Instruction.operands` keeps the encoded signed delta and
+ * the absolute offset lands in `branchTarget`.
  *
  *   static int factorial(int);            public static void main(java.lang.String[]);
  *      0: iload_0                            0: iconst_4

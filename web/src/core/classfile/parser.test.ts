@@ -24,7 +24,7 @@ import { ConstantTag, isStatic, type ClassFile, type MethodInfo } from './types'
  *      #8 = Class      #10     // Factorial
  *      #9 = NameAndType #11:#12
  *     #12 = Utf8       (I)I
- *     #27 = Utf8       Factorial.java     <- ostatni wpis, constant_pool_count = 28
+ *     #27 = Utf8       Factorial.java     <- last entry, constant_pool_count = 28
  *
  *   public static void main(java.lang.String[]);   descriptor: ([Ljava/lang/String;)V
  *     Code: stack=1, locals=2, args_size=1
@@ -184,7 +184,7 @@ describe('parseClassFile — fixture methods', () => {
   });
 });
 
-// --- Synthetic .class files for the cases the fixture does not cover -------------------------
+// --- Synthetic .class files for the cases the fixture does not cover ---
 
 const u2 = (value: number): number[] => [(value >>> 8) & 0xff, value & 0xff];
 const u4 = (value: number): number[] => [...u2((value >>> 16) & 0xffff), ...u2(value & 0xffff)];

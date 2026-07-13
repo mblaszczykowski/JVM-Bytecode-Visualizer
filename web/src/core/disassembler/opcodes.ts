@@ -1,19 +1,15 @@
 /**
- * Opcode metadata for the whole JVM instruction set (JVMS §6.5), kept as data rather
- * than a switch so the decoder, the interpreter and the UI all read the same table.
+ * Opcode metadata for the whole JVM instruction set (JVMS §6.5), kept as data rather than a
+ * switch so the decoder, the interpreter and the UI all read the same table.
  *
- * Three levels of detail:
- *  - every assigned opcode has a mnemonic and an operand byte count (or a variable-length
- *    marker), so an unknown instruction can still be listed and skipped;
- *  - MVP instructions additionally carry an operand encoding (width + signedness + role),
- *    which is what makes correct decoding possible;
- *  - MVP instructions carry a stack effect used by the UI to explain the next step.
+ * Every assigned opcode carries a mnemonic and an operand byte count, which is enough to list
+ * and skip an instruction nobody here understands. The MVP subset carries more: an operand
+ * encoding (width, signedness, role) and a stack effect.
  */
 
 /** Operand width and signedness as written in the JVMS instruction format. */
 export type OperandType = 'u1' | 'i1' | 'u2' | 'i2';
 
-/** What the decoded number means — drives interpretation and rendering. */
 export type OperandRole = 'local-index' | 'constant-pool-index' | 'immediate' | 'branch-offset';
 
 export interface OperandSpec {
