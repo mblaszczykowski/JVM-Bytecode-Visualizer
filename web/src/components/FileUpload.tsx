@@ -1,11 +1,25 @@
 import { type ChangeEvent, type DragEvent, useId, useState } from 'react';
 
+/** `compact` is the toolbar pill; `zone` is the drop target on the welcome screen. */
+export type FileUploadVariant = 'compact' | 'zone';
+
 interface FileUploadProps {
   /** Only the choice of file. Validation and parsing happen upstream. */
   readonly onFileSelected: (file: File) => void;
+  readonly variant?: FileUploadVariant;
 }
 
-export function FileUpload({ onFileSelected }: FileUploadProps) {
+const CONTAINER: Record<FileUploadVariant, string> = {
+  compact: 'flex items-center gap-2 rounded-full p-1',
+  zone: 'flex flex-col items-center gap-2 rounded-panel px-6 py-7 shadow-panel',
+};
+
+const IDLE_SURFACE: Record<FileUploadVariant, string> = {
+  compact: '',
+  zone: 'bg-white/[0.03]',
+};
+
+export function FileUpload({ onFileSelected, variant = 'compact' }: FileUploadProps) {
   const inputId = useId();
   const [isDragging, setIsDragging] = useState(false);
 
@@ -37,12 +51,13 @@ export function FileUpload({ onFileSelected }: FileUploadProps) {
   return (
     <div
       data-testid="file-drop-zone"
+      data-variant={variant}
       data-dragging={isDragging}
       onDrop={handleDrop}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
-      className={`flex items-center gap-2 rounded-full p-1 transition-colors ${
-        isDragging ? 'bg-accent/[0.22]' : ''
+      className={`${CONTAINER[variant]} transition-colors ${
+        isDragging ? 'bg-accent/[0.22]' : IDLE_SURFACE[variant]
       }`}
     >
       <label
@@ -51,7 +66,13 @@ export function FileUpload({ onFileSelected }: FileUploadProps) {
       >
         Open .class…
       </label>
-      <span className="hidden text-[11px] text-white/32 lg:inline">or drop it here</span>
+      {variant === 'zone' ? (
+        <span className="text-[11.5px] text-white/40">
+          or drop a .class file here — up to 512 KiB, parsed in this tab
+        </span>
+      ) : (
+        <span className="hidden text-[11px] text-white/32 lg:inline">or drop it here</span>
+      )}
       <input
         id={inputId}
         type="file"

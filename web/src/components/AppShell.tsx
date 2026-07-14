@@ -21,10 +21,11 @@ export function AppShell({ toolbar, children, footer }: AppShellProps) {
         {toolbar}
 
         {/*
-          Explicit `minmax(0, …)` rows at every breakpoint: with auto rows the panels size to
-          their content and push the grid past the height of the shell instead of scrolling.
+          Explicit `minmax(0, …)` on every track: with the automatic minimum, a long line of
+          source or a wide disassembly row sizes its column to its content and pushes the grid
+          past the shell in both directions instead of scrolling inside the panel.
         */}
-        <main className="grid min-h-0 flex-1 grid-cols-1 grid-rows-3 gap-[14px] px-[14px] md:grid-cols-2 md:grid-rows-[minmax(0,1fr)_minmax(0,34%)] lg:grid-cols-[1fr_1fr_280px] lg:grid-rows-1 xl:grid-cols-[1fr_1fr_328px]">
+        <main className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] grid-rows-3 gap-[14px] px-[14px] md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] md:grid-rows-[minmax(0,1fr)_minmax(0,34%)] lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_280px] lg:grid-rows-1 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_328px]">
           {children}
         </main>
 
