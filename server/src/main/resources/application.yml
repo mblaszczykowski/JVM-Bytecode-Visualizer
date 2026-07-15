@@ -1,0 +1,28 @@
+spring:
+  application:
+    name: compile-service
+
+server:
+  port: ${PORT:8080}
+  shutdown: graceful
+
+compile:
+  allowed-origin: ${COMPILE_SERVICE_ALLOWED_ORIGIN:http://localhost:5173}
+  max-source-size: 64KB
+  timeout: 10s
+  rate-limit:
+    requests-per-minute: 10
+    trust-forwarded-for: ${COMPILE_SERVICE_TRUST_FORWARDED_FOR:false}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+
+logging:
+  level:
+    root: INFO
