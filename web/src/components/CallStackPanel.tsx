@@ -1,3 +1,4 @@
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { useState } from 'react';
 
 import type { StackFrame } from '../core/interpreter/types';
@@ -55,6 +56,8 @@ function buildRows(frames: readonly StackFrame[], expanded: boolean): readonly R
 
 export function CallStackPanel({ frames }: CallStackPanelProps) {
   const [expanded, setExpanded] = useState(false);
+  const reduced = useReducedMotion() ?? false;
+  const duration = reduced ? 0 : 0.18;
   const topIndex = frames.length - 1;
   // `flex-col-reverse` puts the first DOM child at the bottom, so the top frame ends up next
   // to the Locals panel that describes it — and a deep stack scrolls anchored to it.
@@ -67,58 +70,70 @@ export function CallStackPanel({ frames }: CallStackPanelProps) {
       variant="state"
       className="min-h-[92px] flex-1"
     >
+      {/*
+        The list disappears with the last frame rather than fading it out: an empty call stack
+        only happens once, at the terminal snapshot, and there the panel changes what it says.
+      */}
       {frames.length === 0 ? (
-        <p className="px-[18px] py-3 text-[12px] text-white/30">
+        <p className="px-[18px] py-3 text-[12px] text-white/55">
           No active frame — execution finished.
         </p>
       ) : (
         <ol data-testid="call-frame-list" className="flex flex-col-reverse gap-[5px] px-[10px]">
-          {rows.map((row) => {
-            if (row.kind === 'collapsed') {
+          {/* `popLayout` takes the returning frame out of flow, so the stack below stays put. */}
+          <AnimatePresence initial={false} mode="popLayout">
+            {rows.map((row) => {
+              if (row.kind === 'collapsed') {
+                return (
+                  <li key="collapsed">
+                    <button
+                      type="button"
+                      data-testid="collapsed-frames"
+                      onClick={() => {
+                        setExpanded(true);
+                      }}
+                      className="focus-ring w-full rounded-row px-[13px] py-[7px] text-left text-[11px] text-white/55 hover:text-white/80"
+                    >
+                      … {row.count} more frames
+                    </button>
+                  </li>
+                );
+              }
+
+              const { frame, index } = row;
+              const isTop = index === topIndex;
+              const argument = firstArgument(frame);
+
               return (
-                <li key="collapsed">
-                  <button
-                    type="button"
-                    data-testid="collapsed-frames"
-                    onClick={() => {
-                      setExpanded(true);
-                    }}
-                    className="focus-ring w-full rounded-row px-[13px] py-[7px] text-left text-[11px] text-white/35 hover:text-white/60"
-                  >
-                    … {row.count} more frames
-                  </button>
-                </li>
+                <motion.li
+                  key={`${String(index)}:${frame.methodName}${frame.methodDescriptor}`}
+                  layout
+                  initial={{ opacity: 0, y: -8 }}
+                  // Depth is carried by opacity, so the resting value is the animation target.
+                  animate={{ opacity: frameOpacity(topIndex - index), y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  transition={{ duration, ease: 'easeOut' }}
+                  data-testid="call-frame"
+                  data-frame-index={index}
+                  aria-current={isTop ? 'true' : undefined}
+                  title={`${frame.methodName}${frame.methodDescriptor}`}
+                  className={`flex items-center gap-2 rounded-row px-[13px] py-[9px] text-[12px] ${
+                    isTop
+                      ? 'bg-accent/[0.26] text-accent-text shadow-current-strong'
+                      : 'bg-white/5 text-white/70'
+                  }`}
+                >
+                  <span className="w-3 shrink-0 font-mono text-[10px] text-white/40">{index}</span>
+                  <span className="truncate font-medium">{frame.methodName}</span>
+                  <span className="grow" />
+                  {argument === undefined ? null : (
+                    <span className="shrink-0 font-mono text-[11px] text-white/55">{argument}</span>
+                  )}
+                  {isTop ? <Pill tone="accent">pc {frame.pc}</Pill> : null}
+                </motion.li>
               );
-            }
-
-            const { frame, index } = row;
-            const isTop = index === topIndex;
-            const argument = firstArgument(frame);
-
-            return (
-              <li
-                key={`${String(index)}:${frame.methodName}${frame.methodDescriptor}`}
-                data-testid="call-frame"
-                data-frame-index={index}
-                aria-current={isTop ? 'true' : undefined}
-                title={`${frame.methodName}${frame.methodDescriptor}`}
-                style={{ opacity: frameOpacity(topIndex - index) }}
-                className={`flex items-center gap-2 rounded-row px-[13px] py-[9px] text-[12px] ${
-                  isTop
-                    ? 'bg-accent/[0.26] text-accent-text shadow-current-strong'
-                    : 'bg-white/5 text-white/70'
-                }`}
-              >
-                <span className="w-3 shrink-0 font-mono text-[10px] text-white/40">{index}</span>
-                <span className="truncate font-medium">{frame.methodName}</span>
-                <span className="grow" />
-                {argument === undefined ? null : (
-                  <span className="shrink-0 font-mono text-[11px] text-white/45">{argument}</span>
-                )}
-                {isTop ? <Pill tone="accent">pc {frame.pc}</Pill> : null}
-              </li>
-            );
-          })}
+            })}
+          </AnimatePresence>
         </ol>
       )}
     </Panel>

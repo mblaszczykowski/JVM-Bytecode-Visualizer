@@ -15,7 +15,11 @@ interface PanelProps {
   readonly footer?: ReactNode;
   /** Scroll container, so the owning panel can drive `scrollTop` itself. */
   readonly contentRef?: RefObject<HTMLDivElement> | undefined;
-  readonly contentClassName?: string;
+  /**
+   * Whether the body scrolls on its own. A scrollable body must be reachable by keyboard,
+   * so it takes a tab stop; the State sections size to their content and take none.
+   */
+  readonly scrolls?: boolean;
   readonly className?: string;
   readonly children: ReactNode;
 }
@@ -40,7 +44,7 @@ export function Panel({
   variant = 'code',
   footer,
   contentRef,
-  contentClassName = 'min-h-0 flex-1 overflow-auto scroll-slim',
+  scrolls = true,
   className = '',
   children,
 }: PanelProps) {
@@ -58,7 +62,11 @@ export function Panel({
         <span className="truncate font-mono text-[11px] text-white/32">{meta}</span>
       </header>
 
-      <div ref={contentRef} className={contentClassName}>
+      <div
+        ref={contentRef}
+        tabIndex={scrolls ? 0 : undefined}
+        className={scrolls ? 'focus-ring scroll-slim min-h-0 flex-1 overflow-auto' : 'shrink-0'}
+      >
         {children}
       </div>
 

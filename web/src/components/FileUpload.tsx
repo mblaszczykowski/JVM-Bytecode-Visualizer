@@ -56,7 +56,8 @@ export function FileUpload({ onFileSelected, variant = 'compact' }: FileUploadPr
       onDrop={handleDrop}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
-      className={`${CONTAINER[variant]} transition-colors ${
+      // The input itself is `sr-only`, so the focus ring has to be drawn around the label.
+      className={`focus-ring-within ${CONTAINER[variant]} transition-colors ${
         isDragging ? 'bg-accent/[0.22]' : IDLE_SURFACE[variant]
       }`}
     >
@@ -67,18 +68,18 @@ export function FileUpload({ onFileSelected, variant = 'compact' }: FileUploadPr
         Open .class…
       </label>
       {variant === 'zone' ? (
-        <span className="text-[11.5px] text-white/40">
+        <span className="text-[11.5px] text-white/55">
           or drop a .class file here — up to 512 KiB, parsed in this tab
         </span>
       ) : (
-        <span className="hidden text-[11px] text-white/32 lg:inline">or drop it here</span>
+        <span className="hidden text-[11px] text-white/55 lg:inline">or drop it here</span>
       )}
       <input
         id={inputId}
         type="file"
         accept=".class,application/java-vm"
         onChange={handleInputChange}
-        className="focus-ring sr-only"
+        className="sr-only"
       />
     </div>
   );

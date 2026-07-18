@@ -4,6 +4,7 @@ import type { Instruction } from '../core/disassembler/types';
 
 import { BranchGutter } from './BranchGutter';
 import { formatOperands } from './bytecode-format';
+import { CurrentRowHighlight } from './CurrentRowHighlight';
 import { NextInstructionCard, type NextInstructionCardProps } from './NextInstructionCard';
 import { Panel } from './Panel';
 import { CODE_ROW } from './rhythm';
@@ -31,6 +32,11 @@ interface BytecodePanelProps {
    */
   readonly truncatedAtOffset?: number | undefined;
   readonly next?: NextInstructionCardProps | undefined;
+  /** Slide the highlight between instructions; switched off above 4× playback. */
+  readonly animateHighlight?: boolean;
+  /** Silences the live region during playback — one announcement per tick is unusable. */
+  readonly isPlaying?: boolean;
+  readonly className?: string;
 }
 
 export function BytecodePanel({
@@ -44,6 +50,9 @@ export function BytecodePanel({
   deadOffsets,
   truncatedAtOffset,
   next,
+  animateHighlight = false,
+  isPlaying = false,
+  className = '',
 }: BytecodePanelProps) {
   const [hoveredIndex, setHoveredIndex] = useState<number | undefined>(undefined);
 
@@ -61,10 +70,11 @@ export function BytecodePanel({
       title="Bytecode"
       meta={meta}
       contentRef={contentRef}
+      className={className}
       footer={next === undefined ? undefined : <NextInstructionCard {...next} />}
     >
       {/* The highlight must not be the only carrier of "which step is this". */}
-      <p className="sr-only" aria-live="polite">
+      <p className="sr-only" aria-live={isPlaying ? 'off' : 'polite'}>
         {current === undefined
           ? 'No active instruction.'
           : `pc ${String(current.offset)} · ${current.mnemonic}${currentOperands === '' ? '' : ` ${currentOperands}`}`}
@@ -82,7 +92,8 @@ export function BytecodePanel({
           hoveredIndex={hoveredIndex}
         />
 
-        <ol className="pl-[26px]">
+        {/* `isolate` keeps the highlight's negative z-index from sinking below the panel. */}
+        <ol className="isolate pl-[26px]">
           {instructions.map((instruction, index) => {
             const isCurrent = index === currentIndex;
             const isUnsupported = instruction.unsupported === true;
@@ -99,10 +110,13 @@ export function BytecodePanel({
                 onMouseEnter={() => {
                   setHoveredIndex(index);
                 }}
-                className={`${CODE_ROW} ${
-                  isCurrent ? 'bg-accent/[0.22] text-accent-text shadow-current' : 'text-white/60'
-                } ${isUnsupported ? 'opacity-75' : isDead ? 'opacity-45' : ''}`}
+                className={`${CODE_ROW} ${isCurrent ? 'text-accent-text' : 'text-white/60'} ${
+                  isUnsupported ? 'opacity-75' : isDead ? 'opacity-45' : ''
+                }`}
               >
+                {isCurrent ? (
+                  <CurrentRowHighlight layoutId="pc-highlight" animate={animateHighlight} />
+                ) : null}
                 <span
                   className={`w-7 shrink-0 text-right select-none ${
                     isCurrent ? 'text-accent-dim' : 'text-white/24'
@@ -127,7 +141,7 @@ export function BytecodePanel({
           })}
 
           {truncatedAtOffset === undefined ? null : (
-            <li className={`${CODE_ROW} text-white/24`}>… not decoded</li>
+            <li className={`${CODE_ROW} text-white/55`}>… not decoded</li>
           )}
         </ol>
       </div>

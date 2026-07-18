@@ -1,3 +1,4 @@
+import { CurrentRowHighlight } from './CurrentRowHighlight';
 import { Panel } from './Panel';
 import { CODE_ROW } from './rhythm';
 import { TOKEN_CLASS, tokenizeJava } from './syntax';
@@ -17,6 +18,9 @@ interface SourcePanelProps {
   readonly pcRange?: { readonly from: number; readonly to: number } | undefined;
   /** How the current line was chosen — spells out the LineNumberTable rule. */
   readonly lineMappingNote?: string | undefined;
+  /** Slide the highlight between lines; switched off above 4× playback. */
+  readonly animateHighlight?: boolean;
+  readonly className?: string;
 }
 
 export function SourcePanel({
@@ -25,6 +29,8 @@ export function SourcePanel({
   currentLine,
   pcRange,
   lineMappingNote,
+  animateHighlight = false,
+  className = '',
 }: SourcePanelProps) {
   const currentIndex = currentLine === undefined ? undefined : currentLine - 1;
   const isMapped = currentIndex !== undefined && currentIndex >= 0 && currentIndex < lines.length;
@@ -39,14 +45,21 @@ export function SourcePanel({
         </Pill>
       )}
       {lineMappingNote === undefined ? null : (
-        <span className="font-mono text-[10.5px] text-white/32">{lineMappingNote}</span>
+        <span className="font-mono text-[10.5px] text-white/55">{lineMappingNote}</span>
       )}
     </div>
   );
 
   return (
-    <Panel title="Source" meta={fileName} contentRef={contentRef} footer={footer}>
-      <ol className="px-[10px]">
+    <Panel
+      title="Source"
+      meta={fileName}
+      contentRef={contentRef}
+      footer={footer}
+      className={className}
+    >
+      {/* `isolate` keeps the highlight's negative z-index from sinking below the panel. */}
+      <ol className="isolate px-[10px]">
         {lines.map((line, index) => {
           const lineNumber = index + 1;
           const isCurrent = lineNumber === currentLine;
@@ -56,10 +69,11 @@ export function SourcePanel({
               key={lineNumber}
               aria-current={isCurrent ? 'step' : undefined}
               data-testid={isCurrent ? 'current-source-line' : 'source-line'}
-              className={`${CODE_ROW} ${
-                isCurrent ? 'bg-accent/[0.22] text-accent-text shadow-current' : 'text-white/60'
-              }`}
+              className={`${CODE_ROW} ${isCurrent ? 'text-accent-text' : 'text-white/60'}`}
             >
+              {isCurrent ? (
+                <CurrentRowHighlight layoutId="source-highlight" animate={animateHighlight} />
+              ) : null}
               <span
                 className={`w-7 shrink-0 text-right select-none ${
                   isCurrent ? 'text-accent-dim' : 'text-white/24'

@@ -74,14 +74,15 @@ export function TransportControls({
   const lastIndex = Math.max(stepCount - 1, 0);
 
   return (
-    <div className="flex shrink-0 items-center gap-[14px] px-[18px] pt-[14px] pb-[18px]">
+    // On a phone the scrubber takes a line of its own and every control clears 44px.
+    <div className="flex shrink-0 flex-wrap items-center gap-[14px] px-[18px] pt-[14px] pb-[18px]">
       <SegmentedControl label="Playback" className="p-1">
         <Segment
           label="Step back"
           title="Step back (←)"
           disabled={stepIndex <= 0}
           onClick={onStepBack}
-          className="h-8 w-[38px]"
+          className="h-11 w-11 md:h-8 md:w-[38px]"
         >
           <StepBackIcon />
         </Segment>
@@ -91,7 +92,7 @@ export function TransportControls({
           selected={isPlaying}
           tone="inverted"
           onClick={onTogglePlay}
-          className="h-8 w-[46px]"
+          className="h-11 w-12 md:h-8 md:w-[46px]"
         >
           {isPlaying ? <PauseIcon /> : <PlayIcon />}
         </Segment>
@@ -100,7 +101,7 @@ export function TransportControls({
           title="Step forward (→)"
           disabled={stepIndex >= lastIndex}
           onClick={onStepForward}
-          className="h-8 w-[38px]"
+          className="h-11 w-11 md:h-8 md:w-[38px]"
         >
           <StepForwardIcon />
         </Segment>
@@ -113,7 +114,7 @@ export function TransportControls({
         onClick={() => {
           onSpeedChange(nextSpeed(speed));
         }}
-        className="focus-ring shrink-0 rounded-full bg-white/9 px-[11px] py-[6px] font-mono text-[12px] text-white/80 shadow-control-raised"
+        className="focus-ring h-11 shrink-0 rounded-full bg-white/9 px-[11px] font-mono text-[12px] text-white/80 shadow-control-raised md:h-auto md:py-[6px]"
       >
         {speed}×
       </button>
@@ -123,6 +124,7 @@ export function TransportControls({
         stepIndex={stepIndex}
         onSeek={onSeek}
         label="Execution history position"
+        className="order-last basis-full md:order-none md:basis-auto"
       />
 
       <output

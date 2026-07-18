@@ -40,8 +40,9 @@ export function LoadingPanels({ label }: { readonly label: string }) {
           {label}
         </p>
       </SkeletonPanel>
-      <SkeletonPanel rows={12} />
-      <SkeletonPanel rows={7} raised className="md:col-span-2 lg:col-span-1" />
+      {/* Below 768px the grid has one cell, so only the first skeleton has somewhere to go. */}
+      <SkeletonPanel rows={12} className="hidden md:flex" />
+      <SkeletonPanel rows={7} raised className="hidden md:col-span-2 md:flex lg:col-span-1" />
     </>
   );
 }

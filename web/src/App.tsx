@@ -9,7 +9,7 @@ import type { ExampleOption } from './components/ExamplePicker';
 import { LoadingPanels } from './components/LoadingPanels';
 import { SourcePanel } from './components/SourcePanel';
 import { StateColumn } from './components/StateColumn';
-import { Toolbar, type CompilerStatus } from './components/Toolbar';
+import { Toolbar, type CompilerStatus, type PanelName } from './components/Toolbar';
 import { TransportControls } from './components/TransportControls';
 import { WelcomeScreen, type WelcomeExample } from './components/WelcomeScreen';
 import type { Snapshot } from './core/interpreter';
@@ -83,6 +83,14 @@ type EditorView =
 const CLOSED: EditorView = { kind: 'closed' };
 const EDITING: EditorView = { kind: 'editing', diagnostics: NO_DIAGNOSTICS };
 
+/** Above 4× the highlight changes rows faster than the projection can read as movement. */
+const SMOOTH_HIGHLIGHT_UP_TO = 4;
+
+/** Below 768px the grid holds one panel; everywhere else all three are on screen. */
+function visibilityOf(panel: PanelName, selected: PanelName): string {
+  return panel === selected ? '' : 'hidden md:flex';
+}
+
 interface AppProps {
   /** Base URL of the compile service; `undefined` switches the editor off (ADR-0004). */
   readonly compileApiUrl?: string | undefined;
@@ -98,6 +106,7 @@ export function App({ compileApiUrl = compileApiBaseUrl() }: AppProps = {}) {
   /** Kept outside `editor` so closing and reopening does not throw the draft away. */
   const [draft, setDraft] = useState(SEED_SOURCE);
   const [compileNotice, setCompileNotice] = useState<ErrorPresentation | undefined>(undefined);
+  const [visiblePanel, setVisiblePanel] = useState<PanelName>('bytecode');
   const loadCounter = useRef(0);
 
   useEffect(() => {
@@ -306,6 +315,7 @@ export function App({ compileApiUrl = compileApiBaseUrl() }: AppProps = {}) {
       : undefined;
 
   const canReplay = program !== undefined && snapshots.length > 0 && listing !== undefined;
+  const smoothHighlight = player.speed <= SMOOTH_HIGHLIGHT_UP_TO;
 
   const compilerIsUsable = compiler === 'online' || compiler === 'degraded';
   const compilerStatus: CompilerStatus =
@@ -339,6 +349,9 @@ export function App({ compileApiUrl = compileApiBaseUrl() }: AppProps = {}) {
           onFileSelected={selectFile}
           compilerStatus={compilerStatus}
           onWriteJava={writeJava}
+          panelSwitch={
+            canReplay ? { selected: visiblePanel, onSelect: setVisiblePanel } : undefined
+          }
         />
       }
       footer={
@@ -398,6 +411,8 @@ export function App({ compileApiUrl = compileApiBaseUrl() }: AppProps = {}) {
             currentLine={snapshot?.sourceLine}
             pcRange={pcRange}
             lineMappingNote={mappingNote}
+            animateHighlight={smoothHighlight}
+            className={visibilityOf('source', visiblePanel)}
           />
           <BytecodePanel
             methodName={listing.name}
@@ -410,11 +425,14 @@ export function App({ compileApiUrl = compileApiBaseUrl() }: AppProps = {}) {
             deadOffsets={deadOffsets}
             truncatedAtOffset={listing.truncatedAtOffset}
             next={next}
+            animateHighlight={smoothHighlight}
+            isPlaying={player.isPlaying}
+            className={visibilityOf('bytecode', visiblePanel)}
           />
           <StateColumn
             frames={snapshot?.callStack ?? []}
             operandAnnotations={operandRoles}
-            className="md:col-span-2 lg:col-span-1"
+            className={`md:col-span-2 lg:col-span-1 ${visibilityOf('state', visiblePanel)}`}
           />
         </ErrorBoundary>
       ) : (

@@ -49,7 +49,7 @@ export function WelcomeScreen({
                 className="focus-ring flex w-full flex-col gap-[5px] rounded-row bg-white/5 px-[15px] py-[12px] text-left transition-colors hover:bg-white/10"
               >
                 <span className="text-[12.5px] font-semibold text-white/90">{example.title}</span>
-                <span className="line-clamp-3 text-[11.5px] leading-[16px] text-white/45">
+                <span className="line-clamp-3 text-[11.5px] leading-[16px] text-white/55">
                   {example.description}
                 </span>
               </button>

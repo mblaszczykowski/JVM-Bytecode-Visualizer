@@ -110,6 +110,17 @@
   }
 }
 
+/*
+ * For controls whose real input is invisible — a `sr-only` file input, the transparent range
+ * that covers the scrubber — the ring has to land on the wrapper the reader can actually see.
+ */
+@utility focus-ring-within {
+  &:has(:focus-visible) {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+}
+
 @utility scroll-slim {
   scrollbar-width: thin;
   scrollbar-color: rgb(255 255 255 / 0.18) transparent;

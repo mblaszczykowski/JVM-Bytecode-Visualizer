@@ -79,6 +79,31 @@ test('the right arrow key advances the step counter', async ({ page }) => {
   await expect(page.getByTestId('step-counter')).toHaveText(`step 1 / ${String(FACTORIAL_STEPS)}`);
 });
 
+test('a full pass through the app writes nothing to the console', async ({ page }) => {
+  const complaints: string[] = [];
+  page.on('console', (message) => {
+    if (message.type() === 'error' || message.type() === 'warning') {
+      complaints.push(`${message.type()}: ${message.text()}`);
+    }
+  });
+  page.on('pageerror', (error) => {
+    complaints.push(`pageerror: ${error.message}`);
+  });
+
+  await openFactorial(page);
+  await page.getByRole('button', { name: 'Step forward' }).click();
+  await page.getByRole('button', { name: 'Playback speed' }).click();
+  await page.getByRole('slider', { name: 'Execution history position' }).fill('26');
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Play', exact: true })).toBeVisible({
+    timeout: 20_000,
+  });
+  await page.getByRole('button', { name: 'GCD', exact: true }).click();
+  await expect(page.getByTestId('step-counter')).toHaveText(/^step 1 \/ \d+$/);
+
+  expect(complaints).toEqual([]);
+});
+
 test('every code row keeps the 26px rhythm', async ({ page }) => {
   await openFactorial(page);
 

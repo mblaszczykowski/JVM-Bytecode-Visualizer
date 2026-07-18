@@ -6,6 +6,7 @@ interface DepthTrackProps {
   readonly stepIndex: number;
   readonly onSeek: (index: number) => void;
   readonly label: string;
+  readonly className?: string;
 }
 
 /**
@@ -67,7 +68,7 @@ function currentFrameSpan(
  * its bottom edge. The chart itself is the control — a transparent range input covers it, so
  * clicking or dragging anywhere seeks, and keyboard and screen readers get the native slider.
  */
-export function DepthTrack({ depths, stepIndex, onSeek, label }: DepthTrackProps) {
+export function DepthTrack({ depths, stepIndex, onSeek, label, className = '' }: DepthTrackProps) {
   const bars = useMemo(() => bucketDepths(depths), [depths]);
   const maxDepth = useMemo(
     () => depths.reduce((high, value) => Math.max(high, value), 1),
@@ -83,7 +84,8 @@ export function DepthTrack({ depths, stepIndex, onSeek, label }: DepthTrackProps
   }
 
   return (
-    <div className="relative h-[34px] grow">
+    // The input that carries the focus is transparent, so the ring has to sit on the chart.
+    <div className={`focus-ring-within relative h-11 grow rounded-md md:h-[34px] ${className}`}>
       <div
         aria-hidden="true"
         className="absolute inset-x-0 top-0 bottom-[6px] flex items-end gap-px opacity-50"
@@ -128,7 +130,7 @@ export function DepthTrack({ depths, stepIndex, onSeek, label }: DepthTrackProps
         onChange={handleChange}
         aria-label={label}
         aria-valuetext={`step ${String(stepIndex + 1)} of ${String(depths.length)}`}
-        className="focus-ring absolute inset-0 h-full w-full cursor-pointer opacity-0"
+        className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
       />
     </div>
   );

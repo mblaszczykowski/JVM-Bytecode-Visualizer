@@ -5,11 +5,21 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="dark" />
     <meta name="theme-color" content="#0b0d13" />
-    <title>JVM Bytecode Visualizer</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>JVM Bytecode Visualizer — step through Java bytecode</title>
     <meta
       name="description"
-      content="Step-by-step visualisation of JVM bytecode execution: call stack, operand stack and local variables."
+      content="Parse, disassemble and execute a .class file in the browser, then replay the run instruction by instruction: call stack, operand stack and every local variable slot."
     />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="JVM Bytecode Visualizer" />
+    <meta
+      property="og:description"
+      content="Watch a Java program run, one bytecode instruction at a time — call stack, operand stack and locals, replayable like a video."
+    />
+    <meta property="og:image" content="docs/screenshots/app-ready.png" />
+    <meta name="twitter:card" content="summary_large_image" />
   </head>
   <body>
     <div id="root"></div>

@@ -1,3 +1,5 @@
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+
 import type { StackFrame } from '../core/interpreter/types';
 
 import { Panel } from './Panel';
@@ -5,6 +7,11 @@ import { Panel } from './Panel';
 interface OperandStackPanelProps {
   /** Top frame of the current snapshot; `undefined` when the call stack is empty. */
   readonly frame: StackFrame | undefined;
+  /**
+   * Depth of the frame the cells belong to. It is part of the cell keys, so a value left on
+   * a caller's stack never animates into a same-valued cell of the callee.
+   */
+  readonly frameIndex?: number;
   /**
    * Role of each cell, indexed like `StackFrame.operandStack` — what the current instruction
    * is about to do with the value, or which later instruction is waiting for it.
@@ -18,11 +25,14 @@ const BASE_LINE =
 
 const LABEL_COLUMN = 'w-[30px] shrink-0 text-[9px] tracking-[0.1em]';
 
-export function OperandStackPanel({ frame, annotations }: OperandStackPanelProps) {
+export function OperandStackPanel({ frame, frameIndex = 0, annotations }: OperandStackPanelProps) {
+  const reduced = useReducedMotion() ?? false;
+  const duration = reduced ? 0 : 0.16;
+
   if (frame === undefined) {
     return (
-      <Panel title="Operand stack" meta="—" variant="state" contentClassName="shrink-0">
-        <p className="px-[18px] py-3 text-[12px] text-white/30">No active frame.</p>
+      <Panel title="Operand stack" meta="—" variant="state" scrolls={false}>
+        <p className="px-[18px] py-3 text-[12px] text-white/55">No active frame.</p>
       </Panel>
     );
   }
@@ -35,12 +45,12 @@ export function OperandStackPanel({ frame, annotations }: OperandStackPanelProps
       title="Operand stack"
       meta={`height ${String(operandStack.length)}`}
       variant="state"
-      contentClassName="shrink-0"
+      scrolls={false}
     >
-      {operandStack.length === 0 ? (
-        <p className="px-[23px] py-2 text-[12px] text-white/30">empty</p>
-      ) : (
-        <ol className="flex flex-col gap-[5px] px-[10px]">
+      {/* The list stays mounted even when empty: unmounting it would cut the exit short. */}
+      <ol className="flex flex-col gap-[5px] px-[10px]">
+        {/* `popLayout` takes the leaving cell out of flow, so the rows below never jump. */}
+        <AnimatePresence initial={false} mode="popLayout">
           {operandStack
             .map((value, index) => ({ value, index }))
             .reverse()
@@ -49,8 +59,13 @@ export function OperandStackPanel({ frame, annotations }: OperandStackPanelProps
               const annotation = annotations?.[index];
 
               return (
-                <li
-                  key={index}
+                <motion.li
+                  key={`${String(frameIndex)}:${String(index)}`}
+                  layout
+                  initial={{ opacity: 0, y: -8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  transition={{ duration, ease: 'easeOut' }}
                   data-testid="operand-cell"
                   data-stack-index={index}
                   className="flex items-center gap-2"
@@ -68,18 +83,21 @@ export function OperandStackPanel({ frame, annotations }: OperandStackPanelProps
                     {annotation === undefined ? null : (
                       <span
                         className={`shrink-0 font-ui text-[10px] ${
-                          isTop ? 'text-accent-soft' : 'text-white/35'
+                          isTop ? 'text-accent-soft' : 'text-white/55'
                         }`}
                       >
                         {annotation}
                       </span>
                     )}
                   </span>
-                </li>
+                </motion.li>
               );
             })}
-        </ol>
-      )}
+        </AnimatePresence>
+      </ol>
+      {operandStack.length === 0 ? (
+        <p className="px-[23px] py-2 text-[12px] text-white/55">empty</p>
+      ) : null}
 
       <div className="flex items-center gap-2 px-[10px] pt-2">
         <span className={`${LABEL_COLUMN} text-white/25`}>BASE</span>

@@ -31,19 +31,25 @@ function Hairline() {
  */
 export function StateColumn({ frames, operandAnnotations, className = '' }: StateColumnProps) {
   const topFrame = frames.at(-1);
+  const topIndex = frames.length - 1;
 
   return (
     <div
+      data-testid="state-column"
       className={`flex min-h-0 flex-col rounded-panel bg-panel/[0.065] shadow-panel-raised md:flex-row xl:flex-col ${className}`}
     >
       <CallStackPanel frames={frames} />
       <Hairline />
       <div className="flex min-h-0 shrink-0 flex-col md:flex-1 xl:flex-none">
-        <OperandStackPanel frame={topFrame} annotations={operandAnnotations} />
+        <OperandStackPanel
+          frame={topFrame}
+          frameIndex={topIndex}
+          annotations={operandAnnotations}
+        />
       </div>
       <Hairline />
       <div className="flex min-h-0 shrink-0 flex-col pb-[6px] md:flex-1 xl:flex-none">
-        <LocalsPanel frame={topFrame} />
+        <LocalsPanel frame={topFrame} frameIndex={topIndex} />
       </div>
     </div>
   );

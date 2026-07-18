@@ -135,7 +135,7 @@ export function CompileEditor({
           >
             {isCompiling ? 'Compiling…' : 'Compile'}
           </button>
-          <span className="text-[11.5px] text-white/40">
+          <span className="text-[11.5px] text-white/55">
             Static int methods called from <span className="font-mono">main</span> — no objects,
             arrays or strings yet.
           </span>
