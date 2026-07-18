@@ -15,6 +15,7 @@ import {
 } from '../core/classfile';
 import type { VmError } from '../core/interpreter';
 
+import type { CompileResult, UnavailableReason } from './compile-client';
 import { formatExampleLoadError, isExampleLoadError, type ExampleLoadDetail } from './examples';
 
 export type AppError =
@@ -68,6 +69,39 @@ export function describeAppError(error: AppError): ErrorPresentation {
       return { severity: 'error', message: formatExampleLoadError(error.detail) };
     case 'unexpected':
       return { severity: 'error', message: `Unexpected failure: ${error.reason}.` };
+  }
+}
+
+/**
+ * The compile outcomes that belong in the banner rather than in the editor. Diagnostics are
+ * deliberately not among them: they point at lines of the source and are shown next to it.
+ */
+export type CompileFailure = Extract<CompileResult, { kind: 'rate-limited' | 'unavailable' }>;
+
+export function describeCompileFailure(failure: CompileFailure): ErrorPresentation {
+  switch (failure.kind) {
+    case 'rate-limited':
+      return {
+        severity: 'warning',
+        message: 'The compiler is busy (rate limit). Try again in a minute.',
+      };
+    case 'unavailable':
+      return { severity: 'error', message: describeUnavailable(failure.reason) };
+  }
+}
+
+function describeUnavailable(reason: UnavailableReason): string {
+  const stillWorks = 'The examples and .class uploads still work.';
+
+  switch (reason.kind) {
+    case 'network':
+      return `Could not reach the compile service: ${reason.reason}. ${stillWorks}`;
+    case 'timeout':
+      return `The compile service did not answer within ${String(reason.ms / 1000)} s. ${stillWorks}`;
+    case 'http':
+      return `The compile service answered ${String(reason.status)}. ${stillWorks}`;
+    case 'invalid-response':
+      return `The compile service sent an answer this build cannot read: ${reason.reason}.`;
   }
 }
 

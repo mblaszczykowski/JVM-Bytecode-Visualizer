@@ -27,6 +27,17 @@ export function okResponse(body: FakeBody): Response {
   } as unknown as Response;
 }
 
+/** A status with a JSON body — 4xx answers of the compile API carry one just like 200s do. */
+export function jsonResponse(status: number, json: unknown): Response {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    json: () => Promise.resolve(json),
+    text: () => Promise.resolve(JSON.stringify(json)),
+    arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)),
+  } as unknown as Response;
+}
+
 export function statusResponse(status: number): Response {
   return {
     ok: false,

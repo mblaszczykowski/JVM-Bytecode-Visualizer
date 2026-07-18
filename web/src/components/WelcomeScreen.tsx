@@ -10,6 +10,8 @@ interface WelcomeScreenProps {
   readonly examples: readonly WelcomeExample[];
   readonly onExampleSelected: (id: string) => void;
   readonly onFileSelected: (file: File) => void;
+  /** Absent unless a compile service is configured and answered its health check. */
+  readonly onWriteJava?: (() => void) | undefined;
 }
 
 /**
@@ -17,7 +19,12 @@ interface WelcomeScreenProps {
  * first, so it says what the application does and offers the four examples as full-size
  * targets rather than as a strip of toolbar segments.
  */
-export function WelcomeScreen({ examples, onExampleSelected, onFileSelected }: WelcomeScreenProps) {
+export function WelcomeScreen({
+  examples,
+  onExampleSelected,
+  onFileSelected,
+  onWriteJava,
+}: WelcomeScreenProps) {
   return (
     <div className="col-span-full row-span-full flex min-h-0 items-center justify-center overflow-auto scroll-slim">
       <div className="w-full max-w-[720px] rounded-panel bg-panel/[0.045] px-[28px] py-[26px] shadow-panel">
@@ -50,8 +57,18 @@ export function WelcomeScreen({ examples, onExampleSelected, onFileSelected }: W
           ))}
         </ul>
 
-        <div className="mt-[18px]">
+        <div className="mt-[18px] flex flex-col gap-[10px]">
           <FileUpload variant="zone" onFileSelected={onFileSelected} />
+          {onWriteJava === undefined ? null : (
+            <button
+              type="button"
+              data-testid="welcome-write-java"
+              onClick={onWriteJava}
+              className="focus-ring rounded-row bg-white/5 px-[15px] py-[12px] text-[12px] text-white/70 transition-colors hover:bg-white/10"
+            >
+              Write Java here and compile it
+            </button>
+          )}
         </div>
       </div>
     </div>

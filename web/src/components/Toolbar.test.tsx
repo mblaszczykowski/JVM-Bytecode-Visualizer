@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { mockExamples } from './__fixtures__/mock-history';
 import { Toolbar, type CompilerStatus } from './Toolbar';
 
-function renderToolbar(compilerStatus: CompilerStatus = 'hidden') {
+function renderToolbar(compilerStatus: CompilerStatus = 'hidden', onWriteJava?: () => void) {
   const onExampleSelected = vi.fn();
   const onFileSelected = vi.fn();
 
@@ -16,6 +16,7 @@ function renderToolbar(compilerStatus: CompilerStatus = 'hidden') {
       onExampleSelected={onExampleSelected}
       onFileSelected={onFileSelected}
       compilerStatus={compilerStatus}
+      onWriteJava={onWriteJava}
     />,
   );
 
@@ -54,5 +55,20 @@ describe('Toolbar', () => {
 
     expect(screen.getByTestId('compiler-health')).toHaveAttribute('data-status', 'online');
     expect(screen.getByText('Compiler')).toBeInTheDocument();
+  });
+
+  it('offers the editor only when there is a compiler behind it', () => {
+    renderToolbar();
+
+    expect(screen.queryByRole('button', { name: 'Write Java…' })).not.toBeInTheDocument();
+  });
+
+  it('opens the editor from the toolbar', () => {
+    const onWriteJava = vi.fn();
+    renderToolbar('online', onWriteJava);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Write Java…' }));
+
+    expect(onWriteJava).toHaveBeenCalledOnce();
   });
 });

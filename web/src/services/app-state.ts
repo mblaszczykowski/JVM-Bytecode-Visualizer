@@ -137,6 +137,32 @@ export async function loadUploadState(
   }
 }
 
+export interface CompiledClass {
+  readonly className: string;
+  readonly classBytes: ArrayBuffer;
+  /** The `.java` that produced the bytes — the source panel shows exactly what was written. */
+  readonly source: string;
+}
+
+/** The compile editor lands on the same path as an upload, only with its source in hand. */
+export function loadCompiledState(
+  compiled: CompiledClass,
+  maxSteps: number = DEFAULT_MAX_STEPS,
+): AppState {
+  try {
+    return stateFor(
+      buildProgram({
+        origin: { kind: 'compiled', className: compiled.className },
+        classFile: parseClassFile(compiled.classBytes),
+        source: { fileName: `${compiled.className}.java`, text: compiled.source },
+        maxSteps,
+      }),
+    );
+  } catch (error) {
+    return failedState(toAppError(error));
+  }
+}
+
 /** Same class file and source, a different step limit — the "Raise the limit" action. */
 export function rerunState(program: LoadedProgram, maxSteps: number): AppState {
   return stateFor(
@@ -149,8 +175,9 @@ export function rerunState(program: LoadedProgram, maxSteps: number): AppState {
   );
 }
 
+/** Uploads have no source — feeding the placeholder lines back would fake one. */
 function sourceOf(program: LoadedProgram): { fileName: string; text: string } | undefined {
-  return program.origin.kind === 'example'
-    ? { fileName: program.sourceFileName, text: program.sourceLines.join('\n') }
-    : undefined;
+  return program.origin.kind === 'upload'
+    ? undefined
+    : { fileName: program.sourceFileName, text: program.sourceLines.join('\n') };
 }

@@ -3,7 +3,13 @@ import { describe, expect, it } from 'vitest';
 import { ClassFileError } from '../core/classfile';
 import type { VmError } from '../core/interpreter';
 
-import { describeAppError, toAppError, type AppError } from './errors';
+import {
+  describeAppError,
+  describeCompileFailure,
+  toAppError,
+  type AppError,
+  type CompileFailure,
+} from './errors';
 import { ExampleLoadError } from './examples';
 
 /** One row per failure the user can actually reach — the wording is part of the contract. */
@@ -168,5 +174,43 @@ describe('toAppError', () => {
   it('falls back to the message of anything else', () => {
     expect(toAppError(new RangeError('boom'))).toEqual({ kind: 'unexpected', reason: 'boom' });
     expect(toAppError('boom')).toEqual({ kind: 'unexpected', reason: 'boom' });
+  });
+});
+
+describe('describeCompileFailure', () => {
+  it('asks for patience rather than blaming the source when the limit is hit', () => {
+    expect(describeCompileFailure({ kind: 'rate-limited' })).toEqual({
+      severity: 'warning',
+      message: 'The compiler is busy (rate limit). Try again in a minute.',
+    });
+  });
+
+  it('says the rest of the application still works when the service is gone', () => {
+    const presentation = describeCompileFailure({
+      kind: 'unavailable',
+      reason: { kind: 'network', reason: 'Failed to fetch' },
+    });
+
+    expect(presentation.severity).toBe('error');
+    expect(presentation.message).toBe(
+      'Could not reach the compile service: Failed to fetch. The examples and .class uploads still work.',
+    );
+  });
+
+  it('names the status, the deadline and an answer it cannot read', () => {
+    const message = (failure: CompileFailure) => describeCompileFailure(failure).message;
+
+    expect(message({ kind: 'unavailable', reason: { kind: 'http', status: 502 } })).toContain(
+      'answered 502',
+    );
+    expect(message({ kind: 'unavailable', reason: { kind: 'timeout', ms: 30_000 } })).toContain(
+      'within 30 s',
+    );
+    expect(
+      message({
+        kind: 'unavailable',
+        reason: { kind: 'invalid-response', reason: 'className: required' },
+      }),
+    ).toContain('className: required');
   });
 });

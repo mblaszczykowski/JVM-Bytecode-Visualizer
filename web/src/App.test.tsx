@@ -8,6 +8,7 @@ import {
   okResponse,
   statusResponse,
   stubFetch,
+  type FakeRoute,
 } from './services/__fixtures__/fake-fetch';
 import { uploadFile } from './services/__fixtures__/upload-file';
 import { exampleUrl, MANIFEST_FILE } from './services/examples';
@@ -15,9 +16,13 @@ import { exampleUrl, MANIFEST_FILE } from './services/examples';
 const FACTORIAL_STEPS = 40;
 const SCRUBBER = { name: 'Execution history position' };
 
+const COMPILE_API = 'http://compile.test';
+const HEALTH_URL = `${COMPILE_API}/actuator/health`;
+const COMPILE_URL = `${COMPILE_API}/api/compile`;
+
 /** Renders the app and waits for the manifest to arrive. */
-async function openApp() {
-  render(<App />);
+async function openApp(compileApiUrl?: string) {
+  render(<App compileApiUrl={compileApiUrl} />);
   await screen.findByRole('button', { name: 'Factorial' });
 }
 
@@ -255,5 +260,189 @@ describe('uploads', () => {
     await screen.findByTestId('step-counter');
     expect(screen.getByRole('region', { name: 'Source' })).toHaveTextContent('No .java source');
     expect(screen.getByTestId('current-instruction')).toBeInTheDocument();
+  });
+});
+
+const GCD_SOURCE = 'public class Gcd {\n    static int gcd(int a, int b) { return a; }\n}';
+const GCD_STEPS = 43;
+
+function base64Of(bytes: ArrayBuffer): string {
+  return btoa(String.fromCharCode(...new Uint8Array(bytes)));
+}
+
+const compiledGcd: FakeRoute = () =>
+  okResponse({
+    json: {
+      success: true,
+      className: 'Gcd',
+      classFileBase64: base64Of(readExampleBytes('Gcd.class')),
+      diagnostics: [],
+    },
+  });
+
+const healthy: FakeRoute = () => okResponse({ json: { status: 'UP' } });
+
+function compileRoutes(compileRoute: FakeRoute, healthRoute: FakeRoute = healthy) {
+  return { ...exampleRoutes(), [HEALTH_URL]: healthRoute, [COMPILE_URL]: compileRoute };
+}
+
+/** Opens the editor from the toolbar once the health check has let it appear. */
+async function openEditor(): Promise<HTMLElement> {
+  fireEvent.click(await screen.findByRole('button', { name: 'Write Java…' }));
+  return screen.getByLabelText('Java source');
+}
+
+async function writeAndCompile(source = GCD_SOURCE): Promise<void> {
+  fireEvent.change(await openEditor(), { target: { value: source } });
+  fireEvent.click(screen.getByRole('button', { name: 'Compile' }));
+}
+
+describe('the compile editor', () => {
+  it('is nowhere to be seen without a configured service', async () => {
+    stubFetch(exampleRoutes());
+    await openApp();
+
+    expect(screen.queryByTestId('compiler-health')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Write Java…' })).not.toBeInTheDocument();
+    expect(screen.queryByTestId('welcome-write-java')).not.toBeInTheDocument();
+  });
+
+  it('appears in the toolbar and on the welcome screen once the service answers', async () => {
+    stubFetch(compileRoutes(compiledGcd));
+    await openApp(COMPILE_API);
+
+    expect(await screen.findByRole('button', { name: 'Write Java…' })).toBeVisible();
+    expect(screen.getByTestId('compiler-health')).toHaveAttribute('data-status', 'online');
+    expect(screen.getByTestId('welcome-write-java')).toBeInTheDocument();
+  });
+
+  it('stays hidden when the service is configured but not answering', async () => {
+    const fetchMock = stubFetch(compileRoutes(compiledGcd, () => statusResponse(503)));
+    await openApp(COMPILE_API);
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(HEALTH_URL, expect.anything());
+    });
+    expect(screen.queryByTestId('compiler-health')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Write Java…' })).not.toBeInTheDocument();
+  });
+
+  it('compiles what was written and plays the result back', async () => {
+    const fetchMock = stubFetch(compileRoutes(compiledGcd));
+    await openApp(COMPILE_API);
+
+    await writeAndCompile();
+
+    expect(await screen.findByTestId('step-counter')).toHaveTextContent(
+      `step 1 / ${String(GCD_STEPS)}`,
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      COMPILE_URL,
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ source: GCD_SOURCE }) }),
+    );
+
+    // The source panel shows the .java that was written, not a placeholder.
+    const source = screen.getByRole('region', { name: 'Source' });
+    expect(source).toHaveTextContent('Gcd.java');
+    expect(source).toHaveTextContent('static int gcd(int a, int b)');
+    expect(screen.queryByTestId('compile-editor')).not.toBeInTheDocument();
+  });
+
+  it('keeps javac diagnostics in the editor rather than in the banner', async () => {
+    stubFetch(
+      compileRoutes(() =>
+        okResponse({
+          json: {
+            success: false,
+            className: null,
+            classFileBase64: null,
+            diagnostics: [{ line: 3, column: 12, kind: 'ERROR', message: "';' expected" }],
+          },
+        }),
+      ),
+    );
+    await openApp(COMPILE_API);
+
+    await writeAndCompile();
+
+    expect(await screen.findByTestId('compile-diagnostic')).toHaveTextContent("3:12';' expected");
+    expect(screen.queryByTestId('error-banner')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Java source')).toHaveValue(GCD_SOURCE);
+  });
+
+  it('asks the reader to wait when the rate limit is hit', async () => {
+    stubFetch(compileRoutes(() => statusResponse(429)));
+    await openApp(COMPILE_API);
+
+    await writeAndCompile();
+
+    expect(await screen.findByTestId('error-banner')).toHaveTextContent(
+      'The compiler is busy (rate limit). Try again in a minute.',
+    );
+    expect(screen.getByLabelText('Java source')).toHaveValue(GCD_SOURCE);
+  });
+
+  it('keeps the draft when the service disappears mid-session', async () => {
+    stubFetch({ ...exampleRoutes(), [HEALTH_URL]: healthy });
+    await openApp(COMPILE_API);
+
+    await writeAndCompile();
+
+    expect(await screen.findByTestId('error-banner')).toHaveTextContent(
+      'Could not reach the compile service',
+    );
+    expect(screen.getByTestId('compile-editor')).toBeInTheDocument();
+    expect(screen.getByLabelText('Java source')).toHaveValue(GCD_SOURCE);
+    expect(screen.getByTestId('compiler-health')).toHaveAttribute('data-status', 'offline');
+  });
+
+  it('returns to what was on screen before when Escape closes it', async () => {
+    stubFetch(compileRoutes(compiledGcd));
+    await openApp(COMPILE_API);
+    fireEvent.click(screen.getByRole('button', { name: 'Factorial' }));
+    await screen.findByTestId('step-counter');
+
+    await openEditor();
+    expect(screen.queryByTestId('current-instruction')).not.toBeInTheDocument();
+
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+
+    expect(screen.queryByTestId('compile-editor')).not.toBeInTheDocument();
+    expect(screen.getByTestId('current-instruction')).toBeInTheDocument();
+    expect(screen.getByTestId('step-counter')).toHaveTextContent(
+      `step 1 / ${String(FACTORIAL_STEPS)}`,
+    );
+  });
+
+  it('gives the grid back when another program is chosen', async () => {
+    stubFetch(compileRoutes(compiledGcd));
+    await openApp(COMPILE_API);
+    await openEditor();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Factorial' }));
+
+    expect(await screen.findByTestId('step-counter')).toBeInTheDocument();
+    expect(screen.queryByTestId('compile-editor')).not.toBeInTheDocument();
+  });
+
+  it('lets the editor keep the keys the transport also listens for', async () => {
+    stubFetch(compileRoutes(compiledGcd));
+    await openApp(COMPILE_API);
+    fireEvent.click(screen.getByRole('button', { name: 'Factorial' }));
+    await screen.findByTestId('step-counter');
+    const textarea = await openEditor();
+
+    fireEvent.keyDown(textarea, { key: ' ' });
+    fireEvent.keyDown(textarea, { key: 'ArrowRight' });
+
+    expect(screen.getByTestId('step-counter')).toHaveTextContent(
+      `step 1 / ${String(FACTORIAL_STEPS)}`,
+    );
+
+    // The shortcuts are still live — they only stepped aside for the text field.
+    fireEvent.keyDown(document.body, { key: 'ArrowRight' });
+    expect(screen.getByTestId('step-counter')).toHaveTextContent(
+      `step 2 / ${String(FACTORIAL_STEPS)}`,
+    );
   });
 });

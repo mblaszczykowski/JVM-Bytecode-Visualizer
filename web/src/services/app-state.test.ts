@@ -8,6 +8,7 @@ import { exampleRoutes, statusResponse, stubFetch } from './__fixtures__/fake-fe
 import { uploadFile } from './__fixtures__/upload-file';
 import {
   IDLE,
+  loadCompiledState,
   loadExampleState,
   loadUploadState,
   MAX_STEP_LIMIT,
@@ -92,6 +93,49 @@ describe('upload', () => {
       error: { kind: 'class-file', detail: { kind: 'bad-magic', offset: 0 } },
       program: undefined,
     });
+  });
+});
+
+describe('compiled source', () => {
+  it('runs the class and keeps the source that produced it', () => {
+    const source = 'public class Gcd {\n    // whatever the author wrote\n}\n';
+
+    const state = loadCompiledState({
+      className: 'Gcd',
+      classBytes: readExampleBytes('Gcd.class'),
+      source,
+    });
+
+    expect(state.status).toBe('ready');
+    expect(programOf(state)?.origin).toEqual({ kind: 'compiled', className: 'Gcd' });
+    expect(programOf(state)?.sourceFileName).toBe('Gcd.java');
+    expect(programOf(state)?.sourceLines).toEqual(source.split('\n'));
+  });
+
+  it('reports bytes that are not a class file', () => {
+    const state = loadCompiledState({
+      className: 'Broken',
+      classBytes: new TextEncoder().encode('not bytecode').buffer,
+      source: 'public class Broken { }',
+    });
+
+    expect(state).toMatchObject({
+      status: 'error',
+      error: { kind: 'class-file', detail: { kind: 'bad-magic' } },
+    });
+  });
+
+  it('re-runs with a higher limit without losing the source', () => {
+    const program = buildProgram({
+      origin: { kind: 'compiled', className: 'Loop' },
+      classFile: syntheticClass({
+        methods: [{ name: 'main', descriptor: '([Ljava/lang/String;)V', code: [0xa7, 0x00, 0x00] }],
+      }),
+      source: { fileName: 'Loop.java', text: 'public class Loop { }' },
+      maxSteps: 25,
+    });
+
+    expect(programOf(rerunState(program, 125))?.sourceLines).toEqual(['public class Loop { }']);
   });
 });
 

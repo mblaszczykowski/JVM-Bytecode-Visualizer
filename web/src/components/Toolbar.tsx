@@ -11,6 +11,8 @@ interface ToolbarProps {
   readonly onExampleSelected: (id: string) => void;
   readonly onFileSelected: (file: File) => void;
   readonly compilerStatus: CompilerStatus;
+  /** Absent unless a compile service is configured and answered its health check. */
+  readonly onWriteJava?: (() => void) | undefined;
 }
 
 function HealthBadge({ status }: { readonly status: Exclude<CompilerStatus, 'hidden'> }) {
@@ -44,6 +46,7 @@ export function Toolbar({
   onExampleSelected,
   onFileSelected,
   compilerStatus,
+  onWriteJava,
 }: ToolbarProps) {
   return (
     <header className="flex shrink-0 flex-wrap items-center gap-3 px-[18px] py-[13px]">
@@ -58,6 +61,15 @@ export function Toolbar({
       />
 
       <div className="ml-auto flex items-center gap-3">
+        {onWriteJava === undefined ? null : (
+          <button
+            type="button"
+            onClick={onWriteJava}
+            className="focus-ring shrink-0 rounded-full bg-white/9 px-3 py-1.5 text-[12px] text-white/80 shadow-control-raised transition-colors hover:bg-white/15"
+          >
+            Write Java…
+          </button>
+        )}
         <FileUpload onFileSelected={onFileSelected} />
         {compilerStatus === 'hidden' ? null : <HealthBadge status={compilerStatus} />}
       </div>

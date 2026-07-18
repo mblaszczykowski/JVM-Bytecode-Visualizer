@@ -32,7 +32,9 @@ export interface MethodListing {
 
 export type ProgramOrigin =
   | { readonly kind: 'example'; readonly entry: ExampleEntry }
-  | { readonly kind: 'upload'; readonly fileName: string };
+  | { readonly kind: 'upload'; readonly fileName: string }
+  /** Compiled from source written in the editor; the source is always available. */
+  | { readonly kind: 'compiled'; readonly className: string };
 
 export type ExecutionOutcome =
   | { readonly kind: 'completed'; readonly returnValue: number | undefined }
@@ -234,5 +236,12 @@ function outcomeOf(result: ReturnType<typeof execute>): ExecutionOutcome {
 }
 
 function fileNameOf(origin: ProgramOrigin): string {
-  return origin.kind === 'example' ? origin.entry.sourceFile : origin.fileName;
+  switch (origin.kind) {
+    case 'example':
+      return origin.entry.sourceFile;
+    case 'upload':
+      return origin.fileName;
+    case 'compiled':
+      return `${origin.className}.java`;
+  }
 }
