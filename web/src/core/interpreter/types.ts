@@ -50,6 +50,24 @@ export type VmError =
       readonly message: string;
       readonly offset: number;
       readonly methodName: string;
+    }
+  | {
+      /** More nested calls than `maxCallDepth` — what a real JVM answers with StackOverflowError. */
+      readonly kind: 'stack-overflow';
+      /** The depth limit that was reached. */
+      readonly limit: number;
+      readonly offset: number;
+      readonly methodName: string;
+    }
+  | {
+      /** A branch whose target is not the first byte of an instruction (JVMS §4.9.1). */
+      readonly kind: 'bad-branch-target';
+      readonly mnemonic: string;
+      /** Absolute target the branch resolved to. */
+      readonly target: number;
+      /** Offset of the branch instruction itself. */
+      readonly offset: number;
+      readonly methodName: string;
     };
 
 export type ExecutionResult =
@@ -68,8 +86,17 @@ export type ExecutionResult =
 export interface ExecuteOptions {
   /** Defaults to "main". */
   readonly entryMethod?: string;
-  /** Defaults to DEFAULT_MAX_STEPS. */
+  /** Defaults to DEFAULT_MAX_STEPS; anything below 1 is clamped to 1. */
   readonly maxSteps?: number;
+  /** Defaults to DEFAULT_MAX_CALL_DEPTH; anything below 1 is clamped to 1. */
+  readonly maxCallDepth?: number;
 }
 
 export const DEFAULT_MAX_STEPS = 20_000;
+
+/**
+ * Frames a run may stack before it is stopped with `stack-overflow`. Far more than the
+ * bundled examples need (the deepest is Fibonacci at a handful of frames) and low enough
+ * that runaway recursion stops long before the history exhausts the browser tab.
+ */
+export const DEFAULT_MAX_CALL_DEPTH = 1_500;

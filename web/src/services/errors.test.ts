@@ -94,6 +94,32 @@ const CASES: readonly {
     message: 'Invalid bytecode state: execution ran past the end of main() (pc 9, method main).',
   },
   {
+    name: 'runaway recursion',
+    error: {
+      kind: 'vm',
+      error: { kind: 'stack-overflow', limit: 1_500, offset: 10, methodName: 'sum' },
+    },
+    severity: 'error',
+    message:
+      'StackOverflowError: too many nested calls — the call stack reached its limit of 1,500 frames (pc 10, method sum). Recursion without a reachable base case ends up here.',
+  },
+  {
+    name: 'branch into the middle of an instruction',
+    error: {
+      kind: 'vm',
+      error: {
+        kind: 'bad-branch-target',
+        mnemonic: 'goto',
+        target: 67,
+        offset: 3,
+        methodName: 'main',
+      },
+    },
+    severity: 'error',
+    message:
+      'Invalid branch target: goto jumps to offset 67, which is not the start of an instruction (pc 3, method main).',
+  },
+  {
     name: 'step limit',
     error: { kind: 'step-limit', limit: 20_000 },
     severity: 'warning',
@@ -149,6 +175,8 @@ describe('error messages', () => {
       'unsupported-call',
       'division-by-zero',
       'invalid-state',
+      'stack-overflow',
+      'bad-branch-target',
     ];
     const covered = CASES.filter((testCase) => testCase.error.kind === 'vm').map(
       (testCase) => (testCase.error as { error: VmError }).error.kind,

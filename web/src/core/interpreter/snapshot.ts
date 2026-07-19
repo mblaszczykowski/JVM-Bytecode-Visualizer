@@ -1,27 +1,57 @@
 import type { Instruction } from '../disassembler';
-import type { Frame } from './frame';
+import { localNamesAt, type Frame } from './frame';
 import type { Snapshot, StackFrame } from './types';
 
 /**
  * Turns the mutable machine state into the frozen shapes the player replays.
  *
- * Every snapshot is a deep copy: the interpreter keeps mutating the same frames, so sharing
- * the arrays would make the whole history collapse onto the final state. Freezing costs
- * little at MVP sizes (a few thousand steps over frames of a handful of slots) and makes
- * the immutability guarantee real rather than type-level only.
+ * A frame has to be copied: the interpreter keeps mutating the same objects, so sharing them
+ * would collapse the whole history onto the final state. Copying the *entire* call stack on
+ * every step, however, costs O(steps × depth) — a thousand nested calls alone allocated
+ * gigabytes. Between two consecutive instructions only the top of the stack moves, so the
+ * frozen copies of the frames below it are carried over and every frame is copied once per
+ * change rather than once per step.
+ *
+ * One writer per run: the reuse is only sound for the frames of the machine it was made for.
  */
-export function createSnapshot(
-  step: number,
-  callStack: readonly Frame[],
-  currentInstruction: Instruction,
-  sourceLine: number | undefined,
-): Snapshot {
-  return Object.freeze({
-    step,
-    callStack: Object.freeze(callStack.map(toStackFrame)),
-    currentInstruction: freezeInstruction(currentInstruction),
-    ...(sourceLine === undefined ? {} : { sourceLine }),
-  });
+export class SnapshotWriter {
+  /** Last copy emitted per call stack depth, with the frame version it was taken from. */
+  private readonly emitted: (EmittedFrame | undefined)[] = [];
+
+  next(
+    step: number,
+    callStack: readonly Frame[],
+    currentInstruction: Instruction,
+    sourceLine: number | undefined,
+  ): Snapshot {
+    const frames = callStack.map((frame, depth) => this.copyOrReuse(depth, frame));
+    // Frames of returned calls are gone for good; dropping them releases the popped Frames.
+    this.emitted.length = callStack.length;
+
+    return Object.freeze({
+      step,
+      callStack: Object.freeze(frames),
+      currentInstruction: freezeInstruction(currentInstruction),
+      ...(sourceLine === undefined ? {} : { sourceLine }),
+    });
+  }
+
+  private copyOrReuse(depth: number, frame: Frame): StackFrame {
+    const previous = this.emitted[depth];
+    if (previous?.source === frame && previous.version === frame.version) {
+      return previous.stackFrame;
+    }
+
+    const stackFrame = toStackFrame(frame);
+    this.emitted[depth] = { source: frame, version: frame.version, stackFrame };
+    return stackFrame;
+  }
+}
+
+interface EmittedFrame {
+  readonly source: Frame;
+  readonly version: number;
+  readonly stackFrame: StackFrame;
 }
 
 /** Closing state after the entry frame returns: nothing left to execute. */
@@ -49,8 +79,8 @@ function toStackFrame(frame: Frame): StackFrame {
     pc: frame.pc,
     operandStack: Object.freeze([...frame.operandStack]),
     locals: Object.freeze([...frame.locals]),
-    // Names never change during a run, so the array is shared (and already frozen).
-    localNames: frame.method.localNames,
+    // Which variable a slot holds depends on the pc; the arrays are frozen and shared.
+    localNames: localNamesAt(frame.method, frame.pc),
   });
 }
 

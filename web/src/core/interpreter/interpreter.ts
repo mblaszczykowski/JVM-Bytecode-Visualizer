@@ -20,13 +20,15 @@ import {
   pop,
   prepareMethod,
   push,
+  setPc,
   storeLocal,
   type Frame,
   type PreparedMethod,
 } from './frame';
 import { iadd, idiv, imul, ineg, irem, isub } from './int32';
-import { createSnapshot, createTerminalSnapshot, sourceLineAt } from './snapshot';
+import { createTerminalSnapshot, SnapshotWriter, sourceLineAt } from './snapshot';
 import {
+  DEFAULT_MAX_CALL_DEPTH,
   DEFAULT_MAX_STEPS,
   type ExecuteOptions,
   type ExecutionResult,
@@ -42,7 +44,7 @@ import {
  * failure comes back as an `ExecutionResult`.
  */
 export function execute(classFile: ClassFile, options: ExecuteOptions = {}): ExecutionResult {
-  const maxSteps = options.maxSteps ?? DEFAULT_MAX_STEPS;
+  const maxSteps = atLeastOne(options.maxSteps, DEFAULT_MAX_STEPS);
   const entryName = options.entryMethod ?? DEFAULT_ENTRY_METHOD;
 
   const entry = findEntryMethod(classFile, entryName);
@@ -59,14 +61,27 @@ export function execute(classFile: ClassFile, options: ExecuteOptions = {}): Exe
     };
   }
 
+  const snapshots: Snapshot[] = [];
+  const writer = new SnapshotWriter();
   const prepared = new Map<MethodInfo, PreparedMethod>();
+
+  let entryFrame: Frame;
+  try {
+    // Preparing the entry method is the one step outside the run loop that can fault (an
+    // unverifiable branch target), so it needs the same handling — without this `execute()`
+    // would throw a `VmFault` at its caller instead of returning a result.
+    entryFrame = createFrame(prepare(prepared, entry.method, entry.code), []);
+  } catch (error) {
+    return failedRun(error, snapshots, 0, entry.method.name);
+  }
+
   const machine: Machine = {
     classFile,
     prepared,
-    callStack: [createFrame(prepare(prepared, entry.method, entry.code), [])],
+    maxCallDepth: atLeastOne(options.maxCallDepth, DEFAULT_MAX_CALL_DEPTH),
+    callStack: [entryFrame],
     returnValue: undefined,
   };
-  const snapshots: Snapshot[] = [];
 
   for (;;) {
     const frame = machine.callStack.at(-1);
@@ -81,26 +96,14 @@ export function execute(classFile: ClassFile, options: ExecuteOptions = {}): Exe
     try {
       const fetched = fetchAt(frame);
       snapshots.push(
-        createSnapshot(
-          snapshots.length,
-          machine.callStack,
-          fetched.instruction,
-          sourceLineAt(frame),
-        ),
+        writer.next(snapshots.length, machine.callStack, fetched.instruction, sourceLineAt(frame)),
       );
       // Advance before dispatching: a call pushed by this instruction must leave the caller
       // pointing at its continuation, which is where the frame resumes after the callee returns.
-      frame.pc = fetched.nextOffset;
+      setPc(frame, fetched.nextOffset);
       step(machine, frame, fetched.instruction);
     } catch (error) {
-      if (!isVmFault(error)) {
-        throw error;
-      }
-      return {
-        kind: 'vm-error',
-        snapshots: Object.freeze(snapshots),
-        error: toVmError(error.detail, offset, frame.method.name),
-      };
+      return failedRun(error, snapshots, offset, frame.method.name);
     }
   }
 
@@ -112,7 +115,36 @@ export function execute(classFile: ClassFile, options: ExecuteOptions = {}): Exe
   };
 }
 
-const DEFAULT_ENTRY_METHOD = 'main';
+export const DEFAULT_ENTRY_METHOD = 'main';
+
+/**
+ * A stopped run, with the history collected so far. Anything that is not a `VmFault` is a bug
+ * in the interpreter rather than in the bytecode, and is rethrown rather than dressed up.
+ */
+function failedRun(
+  error: unknown,
+  snapshots: readonly Snapshot[],
+  offset: number,
+  methodName: string,
+): ExecutionResult {
+  if (!isVmFault(error)) {
+    throw error;
+  }
+  const location = error.location ?? { offset, methodName };
+  return {
+    kind: 'vm-error',
+    snapshots: Object.freeze(snapshots),
+    error: toVmError(error.detail, location.offset, location.methodName),
+  };
+}
+
+/** A limit of zero would produce an empty history, which reads as "nothing happened". */
+function atLeastOne(value: number | undefined, fallback: number): number {
+  if (value === undefined || !Number.isFinite(value)) {
+    return fallback;
+  }
+  return Math.max(1, Math.floor(value));
+}
 
 /**
  * Entry points the interpreter can start from. The `String[]` of `main` stays an empty slot
@@ -182,6 +214,7 @@ function isExecutable(opcode: number): opcode is Op {
 interface Machine {
   readonly classFile: ClassFile;
   readonly prepared: Map<MethodInfo, PreparedMethod>;
+  readonly maxCallDepth: number;
   readonly callStack: Frame[];
   /** Set when the entry frame returns a value — the result of the whole run. */
   returnValue: number | undefined;
@@ -352,7 +385,7 @@ function step(machine: Machine, frame: Frame, instruction: Instruction): void {
       branchIf(frame, instruction, comparePair(frame, lessOrEqual));
       break;
     case Op.goto:
-      frame.pc = branchTargetOf(instruction);
+      setPc(frame, branchTargetOf(instruction));
       break;
 
     case Op.invokestatic:
@@ -404,7 +437,7 @@ function divide(frame: Frame, apply: (dividend: number, divisor: number) => numb
 
 function branchIf(frame: Frame, instruction: Instruction, taken: boolean): void {
   if (taken) {
-    frame.pc = branchTargetOf(instruction);
+    setPc(frame, branchTargetOf(instruction));
   }
 }
 
@@ -451,6 +484,11 @@ function invokeStatic(machine: Machine, frame: Frame, poolIndex: number): void {
   ) {
     throw new VmFault({ kind: 'unsupported-call', target });
   }
+  // Recursion without a base case would otherwise grow the history until the tab dies; a real
+  // JVM answers the same situation with StackOverflowError (JVMS §2.6.2).
+  if (machine.callStack.length >= machine.maxCallDepth) {
+    throw new VmFault({ kind: 'stack-overflow', limit: machine.maxCallDepth });
+  }
 
   // Arguments were pushed left to right, so they come off the stack in reverse order.
   const args = new Array<number>(parameterCount);
@@ -484,24 +522,36 @@ function findMethod(
   );
 }
 
-interface EntryPoint {
+export interface EntryPoint {
   readonly method: MethodInfo;
   readonly code: CodeAttribute;
 }
 
-function findEntryMethod(classFile: ClassFile, name: string): EntryPoint | undefined {
+/**
+ * The method a run starts from. Exported because the rule — static, with a Code attribute and
+ * one of `ENTRY_DESCRIPTORS` — decides what the UI may offer as runnable; matching on the name
+ * alone would list a method the interpreter then refuses to execute.
+ */
+export function findEntryMethod(
+  classFile: ClassFile,
+  name: string = DEFAULT_ENTRY_METHOD,
+): EntryPoint | undefined {
   for (const method of classFile.methods) {
     const { code } = method;
-    if (
-      method.name === name &&
-      code !== undefined &&
-      isStatic(method.accessFlags) &&
-      ENTRY_DESCRIPTORS.has(method.descriptor)
-    ) {
+    if (method.name === name && code !== undefined && isEntryMethod(method)) {
       return { method, code };
     }
   }
   return undefined;
+}
+
+/** Whether `execute()` could start from this method, its name aside. */
+export function isEntryMethod(method: MethodInfo): boolean {
+  return (
+    method.code !== undefined &&
+    isStatic(method.accessFlags) &&
+    ENTRY_DESCRIPTORS.has(method.descriptor)
+  );
 }
 
 /** Parameter count, or `undefined` for a descriptor outside the MVP subset `(I*)I|V`. */

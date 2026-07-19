@@ -122,6 +122,14 @@ function describeVmError(error: VmError): string {
       return `ArithmeticException: / by zero ${at}.`;
     case 'invalid-state':
       return `Invalid bytecode state: ${error.message} ${at}.`;
+    case 'stack-overflow':
+      return (
+        'StackOverflowError: too many nested calls — the call stack reached its limit of ' +
+        `${error.limit.toLocaleString('en-US')} frames ${at}. ` +
+        'Recursion without a reachable base case ends up here.'
+      );
+    case 'bad-branch-target':
+      return `Invalid branch target: ${error.mnemonic} jumps to offset ${String(error.target)}, which is not the start of an instruction ${at}.`;
   }
 }
 

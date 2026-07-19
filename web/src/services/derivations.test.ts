@@ -92,7 +92,9 @@ describe('next instruction summary', () => {
     expect(summaryOf(program, 'iload_0').explanation).toBe(
       'Pushes local 0 (n = 4) onto the operand stack.',
     );
-    expect(summaryOf(program, 'istore_1').explanation).toBe('Pops 24 into local slot 1 (result).');
+    // `result` enters scope at the pc the store jumps to (LocalVariableTable start_pc 5), so
+    // at the store itself slot 1 still has no name of its own.
+    expect(summaryOf(program, 'istore_1').explanation).toBe('Pops 24 into local slot 1 (slot 1).');
   });
 
   it('spells out a comparison and its branch target', () => {

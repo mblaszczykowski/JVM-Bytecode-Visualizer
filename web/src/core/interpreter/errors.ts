@@ -11,15 +11,29 @@ export type VmFaultDetail =
   | { readonly kind: 'unsupported-opcode'; readonly mnemonic: string }
   | { readonly kind: 'division-by-zero' }
   | { readonly kind: 'unsupported-call'; readonly target: string }
-  | { readonly kind: 'invalid-state'; readonly message: string };
+  | { readonly kind: 'invalid-state'; readonly message: string }
+  | { readonly kind: 'stack-overflow'; readonly limit: number }
+  | { readonly kind: 'bad-branch-target'; readonly mnemonic: string; readonly target: number };
+
+/** Where a fault happened, when that is not the instruction currently being executed. */
+export interface FaultLocation {
+  readonly offset: number;
+  readonly methodName: string;
+}
 
 export class VmFault extends Error {
   readonly detail: VmFaultDetail;
+  /**
+   * Set for faults found outside the run loop — preparing a method reports the offset of the
+   * offending instruction of *that* method, which is not where the pc stands.
+   */
+  readonly location: FaultLocation | undefined;
 
-  constructor(detail: VmFaultDetail) {
+  constructor(detail: VmFaultDetail, location?: FaultLocation) {
     super(describeFault(detail));
     this.name = 'VmFault';
     this.detail = detail;
+    this.location = location;
   }
 }
 
@@ -47,5 +61,10 @@ function describeFault(detail: VmFaultDetail): string {
       return `Unsupported call: ${detail.target} — only static int methods of the executed class can be called`;
     case 'invalid-state':
       return detail.message;
+    case 'stack-overflow':
+      // Wording taken from the error a real JVM throws here (java.lang.StackOverflowError).
+      return `StackOverflowError: the call stack reached its limit of ${String(detail.limit)} frames`;
+    case 'bad-branch-target':
+      return `Invalid branch target: ${detail.mnemonic} jumps to offset ${String(detail.target)}, which is not the start of an instruction`;
   }
 }

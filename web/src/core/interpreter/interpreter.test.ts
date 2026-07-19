@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-import { parseClassFile, type ClassFile } from '../classfile';
+import { AccessFlag, parseClassFile, type ClassFile } from '../classfile';
 import { OPCODES } from '../disassembler';
 import {
   expectCompleted,
@@ -15,8 +15,8 @@ import {
   syntheticClass,
   SYNTHETIC_CLASS_NAME,
 } from './__fixtures__/synthetic-class';
-import { EXECUTABLE_OPCODES, execute } from './interpreter';
-import type { Snapshot } from './types';
+import { EXECUTABLE_OPCODES, execute, findEntryMethod, isEntryMethod } from './interpreter';
+import type { Snapshot, StackFrame } from './types';
 
 /**
  * Bytecode of the fixtures used below, from `javap -c -p` (the full dump lives in
@@ -96,6 +96,11 @@ describe('execute — Factorial fixture', () => {
       pc: 0,
       operandStack: [],
       locals: [undefined, undefined],
+      // `result` only enters scope at its LocalVariableTable start_pc (5), where it is stored.
+      localNames: ['args', undefined],
+    });
+    expect(lastFrameOf(runFactorial(), 'main')).toMatchObject({
+      pc: 5,
       localNames: ['args', 'result'],
     });
   });
@@ -410,5 +415,221 @@ describe('execute — dispatch table', () => {
       .map((info) => info.opcode);
 
     expect([...EXECUTABLE_OPCODES].sort((a, b) => a - b)).toEqual(supported.sort((a, b) => a - b));
+  });
+});
+
+describe('execute — local variable names', () => {
+  /**
+   * javac gives two disjoint scopes the same slot — the `i` of two sequential `for` loops is
+   * the classic case — so a name is only valid inside the pc range of its entry.
+   *
+   *   0: iconst_1   1: istore_1   2: iconst_2   3: istore_1   4: iload_1   5: ireturn
+   *   slot 1 is `a` on [0, 2) and `b` on [2, 6)
+   */
+  const SLOT_REUSE = syntheticClass({
+    methods: [
+      {
+        name: 'main',
+        descriptor: '()I',
+        code: [0x04, 0x3c, 0x05, 0x3c, 0x1b, 0xac],
+        maxLocals: 2,
+        localVariableTable: [
+          { startPc: 0, length: 2, name: 'a', descriptor: 'I', index: 1 },
+          { startPc: 2, length: 4, name: 'b', descriptor: 'I', index: 1 },
+        ],
+      },
+    ],
+  });
+
+  it('resolves a reused slot to the variable in scope at the current pc', () => {
+    const { snapshots } = expectCompleted(execute(SLOT_REUSE));
+
+    expect(
+      snapshots
+        .filter((snapshot) => snapshot.currentInstruction !== undefined)
+        .map((snapshot) => [snapshot.callStack[0]?.pc, snapshot.callStack[0]?.localNames[1]]),
+    ).toEqual([
+      [0, 'a'],
+      [1, 'a'],
+      [2, 'b'],
+      [3, 'b'],
+      [4, 'b'],
+      [5, 'b'],
+    ]);
+  });
+
+  it('leaves a slot unnamed where no entry covers the pc', () => {
+    const classFile = syntheticClass({
+      methods: [
+        {
+          name: 'main',
+          descriptor: '()I',
+          code: [0x04, 0x3c, 0x1b, 0xac],
+          maxLocals: 2,
+          localVariableTable: [
+            // Out of range for every pc of this method, and a slot outside max_locals.
+            { startPc: 10, length: 4, name: 'later', descriptor: 'I', index: 1 },
+            { startPc: 0, length: 4, name: 'outside', descriptor: 'I', index: 9 },
+          ],
+        },
+      ],
+    });
+
+    const { snapshots } = expectCompleted(execute(classFile));
+
+    expect(snapshots[0]?.callStack[0]?.localNames).toEqual([undefined, undefined]);
+  });
+});
+
+describe('execute — snapshot allocation', () => {
+  /**
+   * `static int sum(int n) { return n <= 0 ? 0 : n + sum(n - 1); }`, called with `n`:
+   *
+   *   sum(I)I   0: iload_0   1: ifgt 6   4: iconst_0   5: ireturn
+   *             6: iload_0   7: iload_0  8: iconst_1   9: isub
+   *            10: invokestatic sum     13: iadd      14: ireturn
+   */
+  function recursiveSum(n: number): ClassFile {
+    const pool = new ConstantPoolBuilder();
+    const sum = pool.methodref(SYNTHETIC_CLASS_NAME, 'sum', '(I)I');
+    return syntheticClass({
+      pool,
+      methods: [
+        // sipush n; invokestatic sum; ireturn
+        {
+          name: 'main',
+          descriptor: '()I',
+          code: [0x11, (n >> 8) & 0xff, n & 0xff, 0xb8, 0x00, sum, 0xac],
+        },
+        {
+          name: 'sum',
+          descriptor: '(I)I',
+          code: [
+            0x1a,
+            0x9d,
+            0x00,
+            0x05,
+            0x03,
+            0xac,
+            0x1a,
+            0x1a,
+            0x04,
+            0x64,
+            0xb8,
+            0x00,
+            sum,
+            0x60,
+            0xac,
+          ],
+          maxLocals: 1,
+        },
+      ],
+    });
+  }
+
+  function countFrames(snapshots: readonly Snapshot[]): number {
+    const distinct = new Set<StackFrame>();
+    for (const snapshot of snapshots) {
+      for (const frame of snapshot.callStack) {
+        distinct.add(frame);
+      }
+    }
+    return distinct.size;
+  }
+
+  it('copies a frame per change, not per step, through a thousand nested calls', () => {
+    const { snapshots, returnValue } = expectCompleted(execute(recursiveSum(1000)));
+    const depth = maxCallStackDepth(snapshots);
+
+    expect(returnValue).toBe(500_500);
+    expect(depth).toBe(1_002);
+    // Copying the whole stack every step allocated depth × steps ≈ 4.5 million frames here
+    // (~2 GB) — enough to freeze the tab. Every frame is now copied once per change instead.
+    expect(countFrames(snapshots)).toBeLessThan(3 * snapshots.length);
+    expect(countFrames(snapshots)).toBeLessThan(snapshots.length * depth * 0.01);
+  });
+
+  it('shares the frozen frames of the call stack tail between consecutive snapshots', () => {
+    const { snapshots } = expectCompleted(execute(recursiveSum(20)));
+    const bottom = snapshots
+      .map((snapshot) => snapshot.callStack[0])
+      .filter((frame) => frame !== undefined);
+    const shared = snapshots.filter(
+      (snapshot, index) =>
+        index > 0 && snapshot.callStack[0] === snapshots[index - 1]?.callStack[0],
+    );
+
+    // main changes only around its own three instructions; the recursion never touches it.
+    expect(new Set(bottom).size).toBe(4);
+    expect(shared.length).toBeGreaterThan(snapshots.length - 6);
+  });
+
+  it('never reuses a frame across two different calls at the same depth', () => {
+    const pool = new ConstantPoolBuilder();
+    const identity = pool.methodref(SYNTHETIC_CLASS_NAME, 'identity', '(I)I');
+    const classFile = syntheticClass({
+      pool,
+      methods: [
+        // iconst_1; invokestatic identity; iconst_2; invokestatic identity; iadd; ireturn
+        {
+          name: 'main',
+          descriptor: '()I',
+          code: [0x04, 0xb8, 0x00, identity, 0x05, 0xb8, 0x00, identity, 0x60, 0xac],
+        },
+        { name: 'identity', descriptor: '(I)I', code: [0x1a, 0xac], maxLocals: 1 },
+      ],
+    });
+
+    const { snapshots, returnValue } = expectCompleted(execute(classFile));
+    const callees = snapshots.flatMap((snapshot) => snapshot.callStack.slice(1));
+
+    expect(returnValue).toBe(3);
+    expect(callees.map((frame) => frame.locals[0])).toEqual([1, 1, 2, 2]);
+    expect(new Set(callees).size).toBe(4);
+  });
+
+  it('still freezes every frame it reuses', () => {
+    const { snapshots } = expectCompleted(execute(recursiveSum(5)));
+
+    for (const snapshot of snapshots) {
+      expect(Object.isFrozen(snapshot.callStack)).toBe(true);
+      for (const frame of snapshot.callStack) {
+        expect(Object.isFrozen(frame)).toBe(true);
+        expect(Object.isFrozen(frame.operandStack)).toBe(true);
+        expect(Object.isFrozen(frame.locals)).toBe(true);
+        expect(Object.isFrozen(frame.localNames)).toBe(true);
+      }
+    }
+  });
+});
+
+describe('findEntryMethod', () => {
+  const runnable = { name: 'main', descriptor: '()I', code: [0x03, 0xac] };
+
+  it('applies the rule execute() uses: static, with code, and a supported descriptor', () => {
+    const classFile = syntheticClass({
+      methods: [
+        { name: 'abstract0', descriptor: '()V' },
+        { name: 'instance', descriptor: '()V', code: [0xb1], accessFlags: AccessFlag.Public },
+        { name: 'takesInt', descriptor: '(I)V', code: [0xb1] },
+        runnable,
+      ],
+    });
+
+    expect(classFile.methods.filter(isEntryMethod).map((method) => method.name)).toEqual(['main']);
+    expect(findEntryMethod(classFile)?.method.name).toBe('main');
+    expect(findEntryMethod(classFile, 'takesInt')).toBeUndefined();
+  });
+
+  it('accepts the descriptors of a main method and of a directly runnable method', () => {
+    const descriptors = ['([Ljava/lang/String;)V', '()V', '()I'];
+
+    for (const descriptor of descriptors) {
+      const classFile = syntheticClass({
+        methods: [{ name: 'run', descriptor, code: [0x03, 0x57, 0xb1] }],
+      });
+
+      expect(findEntryMethod(classFile, 'run')?.method.descriptor).toBe(descriptor);
+    }
   });
 });

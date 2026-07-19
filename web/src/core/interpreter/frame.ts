@@ -1,4 +1,4 @@
-import type { CodeAttribute, LineNumberEntry, MethodInfo } from '../classfile';
+import type { CodeAttribute, LineNumberEntry, LocalVariableEntry, MethodInfo } from '../classfile';
 import { disassemble, type DisassembledCode, type Instruction } from '../disassembler';
 import { VmFault } from './errors';
 
@@ -18,8 +18,10 @@ export interface PreparedMethod {
   readonly code: CodeAttribute;
   /** Instruction fetch by pc; a missing offset means undecodable bytes or past-the-end. */
   readonly flow: ReadonlyMap<number, FetchedInstruction>;
-  /** One entry per local slot; `undefined` where the LocalVariableTable says nothing. */
-  readonly localNames: readonly (string | undefined)[];
+  /** LocalVariableTable entries, kept with their pc ranges — a slot can name several variables. */
+  readonly localVariables: readonly LocalVariableEntry[];
+  /** Memo of `localNamesAt`: one frozen array per pc the run actually visits. */
+  readonly localNamesByPc: Map<number, readonly (string | undefined)[]>;
   readonly lineNumbers: readonly LineNumberEntry[];
 }
 
@@ -29,19 +31,30 @@ export interface PreparedMethod {
  */
 export interface Frame {
   readonly method: PreparedMethod;
-  /** Offset of the next instruction this frame will execute. */
+  /** Offset of the next instruction this frame will execute; written through `setPc`. */
   pc: number;
   readonly operandStack: number[];
   readonly locals: (number | undefined)[];
+  /**
+   * Bumped by every mutation of this frame. A snapshot reuses the frozen copy it already
+   * emitted for an unchanged frame, which is what keeps a deep call stack from being copied
+   * once per step.
+   */
+  version: number;
 }
 
 export function prepareMethod(method: MethodInfo, code: CodeAttribute): PreparedMethod {
+  const disassembled = disassemble(code.code);
+  const flow = flowOf(disassembled, code.code.length);
+  checkBranchTargets(method.name, disassembled.instructions, flow);
+
   return {
     name: method.name,
     descriptor: method.descriptor,
     code,
-    flow: flowOf(disassemble(code.code), code.code.length),
-    localNames: localNamesOf(code),
+    flow,
+    localVariables: code.localVariableTable ?? [],
+    localNamesByPc: new Map(),
     lineNumbers: code.lineNumberTable ?? [],
   };
 }
@@ -52,11 +65,17 @@ export function createFrame(method: PreparedMethod, args: readonly number[]): Fr
   for (let slot = 0; slot < args.length; slot += 1) {
     locals[slot] = args[slot];
   }
-  return { method, pc: 0, operandStack: [], locals };
+  return { method, pc: 0, operandStack: [], locals, version: 0 };
+}
+
+export function setPc(frame: Frame, pc: number): void {
+  frame.pc = pc;
+  frame.version += 1;
 }
 
 export function push(frame: Frame, value: number): void {
   frame.operandStack.push(value);
+  frame.version += 1;
 }
 
 export function pop(frame: Frame): number {
@@ -64,6 +83,7 @@ export function pop(frame: Frame): number {
   if (value === undefined) {
     throw new VmFault({ kind: 'invalid-state', message: 'operand stack underflow' });
   }
+  frame.version += 1;
   return value;
 }
 
@@ -92,6 +112,34 @@ export function loadLocal(frame: Frame, slot: number): number {
 export function storeLocal(frame: Frame, slot: number, value: number): void {
   checkSlot(frame, slot);
   frame.locals[slot] = value;
+  frame.version += 1;
+}
+
+/**
+ * Names visible at `pc`, one per slot.
+ *
+ * JVMS §4.7.13: an entry names its slot only inside [start_pc, start_pc + length). javac
+ * reuses one slot for disjoint scopes — two sequential `for (int i …)` loops share a slot —
+ * so taking the first entry per slot would label the second loop with the first loop's name.
+ * The answer only changes with the pc, so it is memoised per method.
+ */
+export function localNamesAt(method: PreparedMethod, pc: number): readonly (string | undefined)[] {
+  const memoised = method.localNamesByPc.get(pc);
+  if (memoised !== undefined) {
+    return memoised;
+  }
+
+  const names = new Array<string | undefined>(method.code.maxLocals).fill(undefined);
+  for (const entry of method.localVariables) {
+    const inScope = pc >= entry.startPc && pc < entry.startPc + entry.length;
+    if (inScope && entry.index >= 0 && entry.index < names.length) {
+      names[entry.index] ??= entry.name;
+    }
+  }
+
+  const frozen = Object.freeze(names);
+  method.localNamesByPc.set(pc, frozen);
+  return frozen;
 }
 
 function checkSlot(frame: Frame, slot: number): void {
@@ -122,15 +170,24 @@ function flowOf(
   return flow;
 }
 
-function localNamesOf(code: CodeAttribute): readonly (string | undefined)[] {
-  const names = new Array<string | undefined>(code.maxLocals).fill(undefined);
-  for (const entry of code.localVariableTable ?? []) {
-    // Simplification: javac can reuse one slot for several disjoint scopes, but the first
-    // name per slot is the right one for the programs the MVP runs, so the pc ranges of the
-    // LocalVariableTable entries are not tracked.
-    if (entry.index < names.length && names[entry.index] === undefined) {
-      names[entry.index] = entry.name;
+/**
+ * JVMS §4.9.1: a branch may only target the first byte of an instruction of the same method.
+ * Checked once per method, so a target past the end of `code[]` or in the middle of another
+ * instruction's operands is named as such, instead of surfacing later as whatever byte the
+ * pc happened to land on.
+ */
+function checkBranchTargets(
+  methodName: string,
+  instructions: readonly Instruction[],
+  flow: ReadonlyMap<number, FetchedInstruction>,
+): void {
+  for (const instruction of instructions) {
+    const { branchTarget } = instruction;
+    if (branchTarget !== undefined && !flow.has(branchTarget)) {
+      throw new VmFault(
+        { kind: 'bad-branch-target', mnemonic: instruction.mnemonic, target: branchTarget },
+        { offset: instruction.offset, methodName },
+      );
     }
   }
-  return Object.freeze(names);
 }
