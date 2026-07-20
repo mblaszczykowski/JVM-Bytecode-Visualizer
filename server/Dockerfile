@@ -7,6 +7,14 @@ RUN mvn -B -ntp dependency:go-offline
 COPY src ./src
 RUN mvn -B -ntp -DskipTests package
 
+# Unpacked, because a compilation runs in a child JVM launched with this process's
+# java.class.path. Started with "-jar app.jar" that property is the jar alone and the application
+# classes sit inside BOOT-INF, where a plain "java -cp" cannot find them; the exploded layout is a
+# class path both processes can use.
+RUN mkdir -p /workspace/app \
+    && cd /workspace/app \
+    && jar --extract --file /workspace/target/compile-service-*.jar
+
 
 # The runtime is a JDK, not a JRE: the service compiles Java on demand, and without the
 # jdk.compiler module ToolProvider.getSystemJavaCompiler() returns null and every request fails.
@@ -19,7 +27,8 @@ RUN apt-get update \
     && useradd --system --gid app --home-dir /app --shell /usr/sbin/nologin app
 
 WORKDIR /app
-COPY --from=build --chown=app:app /workspace/target/compile-service-*.jar app.jar
+COPY --from=build --chown=app:app /workspace/app/BOOT-INF/lib /app/lib
+COPY --from=build --chown=app:app /workspace/app/BOOT-INF/classes /app/classes
 USER app
 
 ENV PORT=8080
@@ -28,4 +37,7 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=3s --start-period=30s --retries=3 \
     CMD curl -fsS "http://127.0.0.1:${PORT}/actuator/health" | grep -q '"status":"UP"' || exit 1
 
-ENTRYPOINT ["java", "-XX:MaxRAMPercentage=75", "-jar", "/app/app.jar"]
+# Half the container, not three quarters: the rest belongs to the compiler processes, which take
+# up to compile.max-concurrent-compilations × 128 MB while they run.
+ENTRYPOINT ["java", "-XX:MaxRAMPercentage=50", "-cp", "/app/classes:/app/lib/*", \
+            "dev.jvmvisualizer.compileservice.CompileServiceApplication"]

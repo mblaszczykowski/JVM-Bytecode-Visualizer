@@ -22,6 +22,8 @@
     <!-- Built and tested on newer JDKs as well; the produced bytecode stays on the Java 21 LTS baseline. -->
     <maven.compiler.release>21</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <!-- Surefire appends to this; declaring it empty keeps @{argLine} resolvable without JaCoCo. -->
+    <argLine/>
   </properties>
 
   <dependencies>
@@ -36,6 +38,12 @@
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-actuator</artifactId>
+    </dependency>
+
+    <!-- Bounded, expiring store for the per-IP rate limit counters. -->
+    <dependency>
+      <groupId>com.github.ben-manes.caffeine</groupId>
+      <artifactId>caffeine</artifactId>
     </dependency>
 
     <dependency>
@@ -57,8 +65,10 @@
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
         <configuration>
-          <!-- Mockito arrives with spring-boot-starter-test and self-attaches its agent. -->
-          <argLine>-XX:+EnableDynamicAgentLoading</argLine>
+          <!-- Mockito arrives with spring-boot-starter-test and self-attaches its agent. The
+               @{argLine} prefix is late replacement: an agent-setting plugin (JaCoCo) can prepend
+               to it without this line having to know about it. -->
+          <argLine>@{argLine} -XX:+EnableDynamicAgentLoading</argLine>
         </configuration>
       </plugin>
 

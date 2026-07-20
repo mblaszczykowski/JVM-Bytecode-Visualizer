@@ -13,6 +13,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
@@ -159,6 +161,47 @@ class CompileApiTest {
         compile("class PackagePrivate { }")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value("no-public-class"));
+    }
+
+    /**
+     * A megabyte-scale body used to be parsed into the heap in full and measured afterwards, so a
+     * 19 MB {@code source} — comfortably inside Jackson's own limits — was an out-of-memory exit
+     * for one request. The filter answers from Content-Length alone, before anything is read.
+     */
+    @Test
+    void refusesAnOversizedBodyBeforeReadingIt() throws Exception {
+        byte[] body = ("{\"source\":\"" + "x".repeat(2_000_000) + "\"}").getBytes(StandardCharsets.UTF_8);
+
+        long start = System.nanoTime();
+        mockMvc.perform(post("/api/compile").contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("source-too-large"))
+                .andExpect(jsonPath("$.message", containsString("request body")));
+
+        assertThat(Duration.ofNanos(System.nanoTime() - start)).isLessThan(Duration.ofSeconds(2));
+    }
+
+    /** Second line: a body under the request cap whose one string is still far too long. */
+    @Test
+    void refusesASourceFieldLongerThanJacksonMayMaterialize() throws Exception {
+        compile("x".repeat(100_000))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("source-too-large"));
+    }
+
+    /**
+     * The name scan used to be a regular expression whose modifier group recursed once per
+     * repetition: this source raised {@link StackOverflowError} out of the controller, past the
+     * advice, and the client got a 500 with no JSON body at all.
+     */
+    @Test
+    void answersTheModifierPayloadWithDiagnosticsRatherThanA500() throws Exception {
+        String pathological = "public " + "final ".repeat(3_000) + "class Pathological { }";
+
+        compile(pathological)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.diagnostics").isNotEmpty());
     }
 
     @Test

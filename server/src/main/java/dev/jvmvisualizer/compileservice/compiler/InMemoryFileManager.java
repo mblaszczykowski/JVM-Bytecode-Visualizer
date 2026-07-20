@@ -1,5 +1,6 @@
 package dev.jvmvisualizer.compileservice.compiler;
 
+import java.io.IOException;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -26,6 +27,18 @@ final class InMemoryFileManager extends ForwardingJavaFileManager<StandardJavaFi
         InMemoryClassFile classFile = new InMemoryClassFile(className);
         classFiles.put(className, classFile);
         return classFile;
+    }
+
+    /**
+     * Defence in depth for the non-class outputs: {@code -s}, {@code -h} and any {@code Filer}
+     * resource would otherwise be written relative to the working directory. Nothing should ask
+     * for one with {@code -proc:none}, and if something does it fails loudly instead of quietly
+     * writing a file.
+     */
+    @Override
+    public FileObject getFileForOutput(Location location, String packageName, String relativeName,
+                                       FileObject sibling) throws IOException {
+        throw new IOException("this compile service emits class files only, and only in memory");
     }
 
     /**

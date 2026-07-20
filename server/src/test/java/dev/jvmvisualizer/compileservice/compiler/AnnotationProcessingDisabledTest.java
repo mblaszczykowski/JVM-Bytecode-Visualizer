@@ -6,7 +6,6 @@ import java.io.IOException;
 import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
-import java.time.Duration;
 import java.util.List;
 import javax.tools.DiagnosticCollector;
 import javax.tools.JavaCompiler;
@@ -65,7 +64,7 @@ class AnnotationProcessingDisabledTest {
     void serviceCompilerRunsNoAnnotationProcessor() {
         assertThat(InMemoryCompiler.options()).contains("-proc:none");
 
-        CompilationResult result = new InMemoryCompiler(Duration.ofSeconds(10)).compile(ANNOTATED_SOURCE);
+        CompilationResult result = new InMemoryCompiler().compile(ANNOTATED_SOURCE);
 
         assertThat(result).isInstanceOf(CompilationResult.Success.class);
         assertThat(System.getProperty(MarkerProcessor.MARKER_PROPERTY)).isNull();

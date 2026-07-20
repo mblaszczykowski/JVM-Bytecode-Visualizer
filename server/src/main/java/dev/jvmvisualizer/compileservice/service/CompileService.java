@@ -4,7 +4,7 @@ import dev.jvmvisualizer.compileservice.api.dto.CompileResponse;
 import dev.jvmvisualizer.compileservice.api.dto.DiagnosticDto;
 import dev.jvmvisualizer.compileservice.compiler.CompilationResult;
 import dev.jvmvisualizer.compileservice.compiler.CompilerDiagnostic;
-import dev.jvmvisualizer.compileservice.compiler.InMemoryCompiler;
+import dev.jvmvisualizer.compileservice.compiler.SourceCompiler;
 import java.util.Base64;
 import java.util.List;
 import org.springframework.stereotype.Service;
@@ -13,9 +13,9 @@ import org.springframework.stereotype.Service;
 public class CompileService {
 
     private final SourceValidator validator;
-    private final InMemoryCompiler compiler;
+    private final SourceCompiler compiler;
 
-    CompileService(SourceValidator validator, InMemoryCompiler compiler) {
+    CompileService(SourceValidator validator, SourceCompiler compiler) {
         this.validator = validator;
         this.compiler = compiler;
     }

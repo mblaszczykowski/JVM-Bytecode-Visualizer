@@ -4,14 +4,17 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import javax.tools.Diagnostic;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 class InMemoryCompilerTest {
 
     private static final int CLASS_FILE_MAGIC = 0xCAFEBABE;
     private static final short JAVA_21_MAJOR_VERSION = 65;
+
+    private static final String STATIC_INITIALIZER_PROPERTY = "compile-service.test.static-initializer-ran";
 
     private static final String ADDER = """
             public class Adder {
@@ -25,7 +28,13 @@ class InMemoryCompilerTest {
             }
             """;
 
-    private final InMemoryCompiler compiler = new InMemoryCompiler(Duration.ofSeconds(10));
+    private final InMemoryCompiler compiler = new InMemoryCompiler();
+
+    @BeforeEach
+    @AfterEach
+    void clearMarker() {
+        System.clearProperty(STATIC_INITIALIZER_PROPERTY);
+    }
 
     @Test
     void compilesValidSourceToAJava21ClassFile() {
@@ -98,17 +107,52 @@ class InMemoryCompilerTest {
                 .contains(InMemoryCompiler.MULTIPLE_CLASSES_MESSAGE);
     }
 
+    /** The client's schema requires at least one diagnostic on a failure; javac may report none. */
     @Test
-    void failsWithADiagnosticWhenCompilationExceedsTheTimeout() {
-        InMemoryCompiler impatient = new InMemoryCompiler(Duration.ofMillis(1));
+    void neverFailsWithoutADiagnostic() {
+        assertThat(compiler.compile("public class Nothing {").diagnostics()).isNotEmpty();
+        assertThat(compiler.compile("public class Mismatch { }\nclass Second { }\n").diagnostics()).isNotEmpty();
+    }
 
-        CompilationResult result = impatient.compile(ADDER);
+    @Test
+    void cannotSeeTheTypesOnThisServersClassPath() {
+        String peeking = """
+                import org.springframework.stereotype.Service;
+
+                public class Peeking {
+                    static Class<?> service = Service.class;
+                }
+                """;
+
+        CompilationResult result = compiler.compile(peeking);
 
         assertThat(result).isInstanceOf(CompilationResult.Failure.class);
-        assertThat(result.diagnostics()).singleElement().satisfies(diagnostic -> {
-            assertThat(diagnostic.kind()).isEqualTo(Diagnostic.Kind.ERROR);
-            assertThat(diagnostic.message()).isEqualTo(InMemoryCompiler.TIMEOUT_MESSAGE);
-        });
+        assertThat(result.diagnostics()).extracting(CompilerDiagnostic::message)
+                .anyMatch(message -> message.contains("org.springframework"));
+    }
+
+    /**
+     * The service compiles and never executes. A static initializer is the one piece of a class
+     * body that would run the moment the class was loaded, so this mirrors the annotation
+     * processor test: the marker must stay unset with the compiler running in this very JVM.
+     */
+    @Test
+    void neverRunsWhatItCompiles() {
+        String withStaticInitializer = """
+                public class Eager {
+                    static {
+                        System.setProperty("%s", "true");
+                    }
+
+                    public static void main(String[] args) {
+                    }
+                }
+                """.formatted(STATIC_INITIALIZER_PROPERTY);
+
+        CompilationResult result = compiler.compile(withStaticInitializer);
+
+        assertThat(result).isInstanceOf(CompilationResult.Success.class);
+        assertThat(System.getProperty(STATIC_INITIALIZER_PROPERTY)).isNull();
     }
 
     @Test

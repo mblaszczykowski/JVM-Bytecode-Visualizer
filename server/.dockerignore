@@ -1,0 +1,10 @@
+# The image is built from pom.xml and src alone; everything else is context the daemon can skip.
+target/
+.mvn/
+mvnw
+mvnw.cmd
+Dockerfile
+.dockerignore
+.idea/
+*.iml
+.DS_Store

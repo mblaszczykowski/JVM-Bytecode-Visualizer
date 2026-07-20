@@ -18,6 +18,7 @@ import org.springframework.mock.web.MockHttpServletResponse;
 class RateLimitFilterTest {
 
     private static final int LIMIT = 3;
+    private static final int ONE_PROXY = 1;
 
     private final MutableClock clock = new MutableClock(Instant.parse("2026-01-01T00:00:00Z"));
 
@@ -72,12 +73,16 @@ class RateLimitFilterTest {
                 .isEqualTo(HttpStatus.TOO_MANY_REQUESTS.value());
     }
 
+    /**
+     * One proxy in front of the service: it appends the address it saw, so the client is the last
+     * entry and everything before it is whatever the caller chose to send.
+     */
     @Test
-    void usesTheFirstForwardedForEntryWhenProxiesAreTrusted() throws Exception {
-        RateLimitFilter filter = filter(true);
+    void keysOnTheEntryTheTrustedProxyAppended() throws Exception {
+        RateLimitFilter filter = filter(true, ONE_PROXY);
 
         for (int i = 1; i <= LIMIT; i++) {
-            call(filter, "10.0.0.1", "203.0.113.7, 10.0.0.1");
+            call(filter, "10.0.0.1", "203.0.113.7");
         }
 
         assertThat(call(filter, "10.0.0.1", "203.0.113.7").getStatus())
@@ -85,8 +90,97 @@ class RateLimitFilterTest {
         assertThat(call(filter, "10.0.0.1", "203.0.113.8").getStatus()).isEqualTo(HttpStatus.OK.value());
     }
 
+    @Test
+    void cannotBeEscapedByPrependingEntriesToTheHeader() throws Exception {
+        RateLimitFilter filter = filter(true, ONE_PROXY);
+
+        for (int i = 1; i <= LIMIT; i++) {
+            call(filter, "10.0.0.1", "203.0.113.7");
+        }
+
+        // Reading the leftmost entry gave every request a bucket of the caller's choosing.
+        assertThat(call(filter, "10.0.0.1", "198.51.100.1, 203.0.113.7").getStatus())
+                .isEqualTo(HttpStatus.TOO_MANY_REQUESTS.value());
+        assertThat(call(filter, "10.0.0.1", "198.51.100.2, 198.51.100.3, 203.0.113.7").getStatus())
+                .isEqualTo(HttpStatus.TOO_MANY_REQUESTS.value());
+    }
+
+    @Test
+    void countsBackTheConfiguredNumberOfAppendingProxies() throws Exception {
+        RateLimitFilter filter = filter(true, 2);
+
+        // client → CDN (appends the client) → load balancer (appends the CDN)
+        for (int i = 1; i <= LIMIT; i++) {
+            call(filter, "10.0.0.1", "203.0.113.7, 192.0.2.10");
+        }
+
+        assertThat(call(filter, "10.0.0.1", "203.0.113.7, 192.0.2.10").getStatus())
+                .isEqualTo(HttpStatus.TOO_MANY_REQUESTS.value());
+        assertThat(call(filter, "10.0.0.1", "203.0.113.8, 192.0.2.10").getStatus())
+                .isEqualTo(HttpStatus.OK.value());
+    }
+
+    @Test
+    void fallsBackToTheRemoteAddressWhenTheHeaderIsNotAnAddress() throws Exception {
+        RateLimitFilter filter = filter(true, ONE_PROXY);
+
+        for (int i = 1; i <= LIMIT; i++) {
+            call(filter, "10.0.0.1", "not-an-address");
+        }
+
+        // A name would have keyed a bucket of its own — and a DNS lookup on the request path.
+        assertThat(call(filter, "10.0.0.1", "another.name").getStatus())
+                .isEqualTo(HttpStatus.TOO_MANY_REQUESTS.value());
+    }
+
+    @Test
+    void acceptsAddressesCarryingAPortOrBrackets() throws Exception {
+        RateLimitFilter filter = filter(true, ONE_PROXY);
+
+        for (int i = 1; i <= LIMIT; i++) {
+            call(filter, "10.0.0.1", "203.0.113.7:41234");
+        }
+
+        assertThat(call(filter, "10.0.0.1", "203.0.113.7").getStatus())
+                .isEqualTo(HttpStatus.TOO_MANY_REQUESTS.value());
+        assertThat(call(filter, "10.0.0.1", "[2001:db8::1]:443").getStatus()).isEqualTo(HttpStatus.OK.value());
+    }
+
+    @Test
+    void doesNotChargePreflightRequestsAgainstTheLimit() throws Exception {
+        RateLimitFilter filter = filter(false);
+
+        for (int i = 0; i < 10; i++) {
+            MockHttpServletRequest preflight = new MockHttpServletRequest("OPTIONS", "/api/compile");
+            preflight.setRemoteAddr("10.0.0.1");
+            MockHttpServletResponse response = new MockHttpServletResponse();
+            filter.doFilter(preflight, response, new MockFilterChain());
+            assertThat(response.getStatus()).isEqualTo(HttpStatus.OK.value());
+        }
+
+        for (int i = 1; i <= LIMIT; i++) {
+            assertThat(call(filter, "10.0.0.1").getStatus()).isEqualTo(HttpStatus.OK.value());
+        }
+    }
+
+    /** A map keyed by address grew with every address an attacker cared to invent. */
+    @Test
+    void tracksABoundedNumberOfClients() throws Exception {
+        RateLimitFilter filter = filter(false);
+
+        for (int i = 0; i < 20_000; i++) {
+            call(filter, "10.%d.%d.%d".formatted(i / 65536 % 256, i / 256 % 256, i % 256));
+        }
+
+        assertThat(filter.trackedClients()).isLessThanOrEqualTo(10_000);
+    }
+
     private RateLimitFilter filter(boolean trustForwardedFor) {
-        return new RateLimitFilter(new CompileProperties.RateLimit(LIMIT, trustForwardedFor),
+        return filter(trustForwardedFor, trustForwardedFor ? ONE_PROXY : 0);
+    }
+
+    private RateLimitFilter filter(boolean trustForwardedFor, int trustedProxyHops) {
+        return new RateLimitFilter(new CompileProperties.RateLimit(LIMIT, trustForwardedFor, trustedProxyHops),
                 new ObjectMapper(), clock);
     }
 
