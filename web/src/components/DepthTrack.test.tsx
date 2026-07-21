@@ -46,6 +46,20 @@ describe('DepthTrack', () => {
     expect(screen.getAllByTestId('depth-bar')).toHaveLength(120);
   });
 
+  it('keeps a run of equally deep steps together as one frame', () => {
+    // Two separate calls at depth 2, with a return to the caller between them.
+    const depths = [1, 2, 2, 1, 2, 1];
+    const { rerender } = render(
+      <DepthTrack depths={depths} stepIndex={1} onSeek={vi.fn()} label={LABEL} />,
+    );
+
+    expect(accentBars()).toBe(2);
+
+    rerender(<DepthTrack depths={depths} stepIndex={4} onSeek={vi.fn()} label={LABEL} />);
+
+    expect(accentBars()).toBe(1);
+  });
+
   it('highlights the steps the current frame is alive for', () => {
     // Steps 10–14 are the only ones with three frames, i.e. the lifetime of factorial(1).
     const { rerender } = render(

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { parseClassFile } from '../core/classfile';
+import { parseClassFile, type ClassFile, type MethodInfo } from '../core/classfile';
 import { syntheticClass } from '../core/interpreter/__fixtures__/synthetic-class';
 
 import { readExampleBytes, readExampleManifest } from './__fixtures__/example-files';
@@ -199,6 +199,30 @@ describe('raising the step limit', () => {
 
     expect(state).toMatchObject({ status: 'error', error: { kind: 'step-limit', limit: 125 } });
     expect(programOf(state)?.snapshots).toHaveLength(125);
+  });
+
+  it('reports a re-run that throws instead of leaving the screen loading', () => {
+    const program = buildProgram({
+      origin: { kind: 'upload', fileName: 'Loop.class' },
+      classFile: syntheticClass({
+        methods: [{ name: 'main', descriptor: '([Ljava/lang/String;)V', code: [0xa7, 0x00, 0x00] }],
+      }),
+      maxSteps: 25,
+    });
+    // Whatever goes wrong below the load path, the caller only ever sees a state.
+    const unreadable: ClassFile = {
+      ...program.classFile,
+      get methods(): readonly MethodInfo[] {
+        throw new Error('the class file fell apart');
+      },
+    };
+
+    const state = rerunState({ ...program, classFile: unreadable }, 125);
+
+    expect(state).toMatchObject({
+      status: 'error',
+      error: { kind: 'unexpected', reason: 'the class file fell apart' },
+    });
   });
 
   it('re-runs an example without downloading it again', async () => {

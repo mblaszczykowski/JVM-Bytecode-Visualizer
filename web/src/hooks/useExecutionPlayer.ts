@@ -20,6 +20,7 @@ export interface ExecutionPlayer {
   readonly speed: PlaybackSpeed;
   readonly atStart: boolean;
   readonly atEnd: boolean;
+  /** Starts playback; pressing it on the last step replays the run from the beginning. */
   readonly play: () => void;
   readonly pause: () => void;
   readonly togglePlay: () => void;
@@ -83,10 +84,16 @@ export function useExecutionPlayer(snapshots: readonly Snapshot[]): ExecutionPla
   }, [isPlaying, speed, lastIndex]);
 
   const play = useCallback(() => {
-    if (stepIndex < lastIndex) {
-      setIsPlaying(true);
+    if (stepCount === 0) {
+      return;
     }
-  }, [stepIndex, lastIndex]);
+    // At the end there is nothing left to play, so ▶ means "watch it again" rather than
+    // nothing at all — the alternative is a control that is visibly enabled and inert.
+    if (stepIndex >= lastIndex) {
+      setStepIndex(0);
+    }
+    setIsPlaying(true);
+  }, [stepIndex, lastIndex, stepCount]);
 
   const pause = useCallback(() => {
     setIsPlaying(false);

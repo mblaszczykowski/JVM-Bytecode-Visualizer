@@ -38,29 +38,56 @@ function bucketDepths(depths: readonly number[]): readonly Bar[] {
   return bars;
 }
 
+interface FrameSpans {
+  /** First step of the frame on top at step i. */
+  readonly from: readonly number[];
+  /** Last step of that same frame. */
+  readonly to: readonly number[];
+}
+
 /**
- * Lifetime of the frame currently on top: the widest run of steps around `stepIndex` whose
- * depth never drops below the current one. The frame is pushed when the depth first reaches
- * that value and popped when it falls below, so the depth history alone pins it down.
+ * Lifetime of the frame on top at every step: the widest run around the step whose depth
+ * never drops below it. The frame is pushed when the depth first reaches that value and
+ * popped when it falls below, so the depth history alone pins it down.
+ *
+ * Both ends are the nearest strictly shallower step, which two monotonic-stack passes find
+ * for the whole history at once. Walking outwards from the current step instead would scan
+ * all twenty thousand entries twice per tick whenever the run is flat.
  */
-function currentFrameSpan(
-  depths: readonly number[],
-  stepIndex: number,
-): { readonly from: number; readonly to: number } | undefined {
-  const depth = depths[stepIndex];
-  if (depth === undefined || depth === 0) {
-    return undefined;
+function frameSpansOf(depths: readonly number[]): FrameSpans {
+  const count = depths.length;
+  const from = new Array<number>(count).fill(0);
+  const to = new Array<number>(count).fill(count - 1);
+  const shallower: number[] = [];
+
+  for (let step = 0; step < count; step++) {
+    from[step] = popTo(shallower, depths, step) + 1;
+    shallower.push(step);
   }
 
-  let from = stepIndex;
-  while (from > 0 && (depths[from - 1] ?? 0) >= depth) {
-    from--;
+  shallower.length = 0;
+  for (let step = count - 1; step >= 0; step--) {
+    const next = popTo(shallower, depths, step);
+    to[step] = next < 0 ? count - 1 : next - 1;
+    shallower.push(step);
   }
-  let to = stepIndex;
-  while (to < depths.length - 1 && (depths[to + 1] ?? 0) >= depth) {
-    to++;
-  }
+
   return { from, to };
+}
+
+/** Drops every stacked step at least as deep as `step`, and reports the one left below it. */
+function popTo(stack: number[], depths: readonly number[], step: number): number {
+  const depth = depths[step] ?? 0;
+  for (;;) {
+    const top = stack.at(-1);
+    if (top === undefined) {
+      return -1;
+    }
+    if ((depths[top] ?? 0) < depth) {
+      return top;
+    }
+    stack.pop();
+  }
 }
 
 /**
@@ -74,7 +101,15 @@ export function DepthTrack({ depths, stepIndex, onSeek, label, className = '' }:
     () => depths.reduce((high, value) => Math.max(high, value), 1),
     [depths],
   );
-  const span = currentFrameSpan(depths, stepIndex);
+  // Indexed once per history, so seeking is a pair of lookups rather than a scan.
+  const spans = useMemo(() => frameSpansOf(depths), [depths]);
+  const currentDepth = depths[stepIndex] ?? 0;
+  const spanFrom = spans.from[stepIndex];
+  const spanTo = spans.to[stepIndex];
+  const span =
+    currentDepth === 0 || spanFrom === undefined || spanTo === undefined
+      ? undefined
+      : { from: spanFrom, to: spanTo };
 
   const lastIndex = Math.max(depths.length - 1, 0);
   const progress = lastIndex === 0 ? 0 : (stepIndex / lastIndex) * 100;

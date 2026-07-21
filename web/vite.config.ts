@@ -3,8 +3,18 @@ import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
 
+/**
+ * The React Compiler memoises components and hooks for us, so the source keeps saying what it
+ * computes instead of how it caches. `target: '18'` makes it emit the `react-compiler-runtime`
+ * polyfill of `useMemoCache`, which React 18 does not ship itself.
+ */
+const reactCompiler: [string, { readonly target: string }] = [
+  'babel-plugin-react-compiler',
+  { target: '18' },
+];
+
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [react({ babel: { plugins: [reactCompiler] } }), tailwindcss()],
   test: {
     // Two projects mirror the ADR-0001 boundary: `core/` is plain TypeScript and has to pass
     // its tests without a DOM anywhere in sight.

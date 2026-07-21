@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 
 import { AppShell } from './components/AppShell';
 import { BytecodePanel } from './components/BytecodePanel';
@@ -12,15 +12,17 @@ import { StateColumn } from './components/StateColumn';
 import { Toolbar, type CompilerStatus, type PanelName } from './components/Toolbar';
 import { TransportControls } from './components/TransportControls';
 import { WelcomeScreen, type WelcomeExample } from './components/WelcomeScreen';
-import type { Snapshot } from './core/interpreter';
+import type { Snapshot, StackFrame } from './core/interpreter';
 import { useExecutionPlayer } from './hooks/useExecutionPlayer';
 import { useTransportShortcuts } from './hooks/useTransportShortcuts';
 import {
+  appReducer,
+  exampleEntriesOf,
+  examplesErrorOf,
   failedState,
-  IDLE,
+  initialAppModel,
   loadCompiledState,
   loadExampleState,
-  loadingState,
   loadUploadState,
   programOf,
   raisedStepLimit,
@@ -38,14 +40,8 @@ import {
   describeNextInstruction,
   describeOperandRoles,
 } from './services/derivations';
-import {
-  describeAppError,
-  describeCompileFailure,
-  toAppError,
-  type ErrorPresentation,
-} from './services/errors';
+import { describeAppError, describeCompileFailure, toAppError } from './services/errors';
 import { fetchExampleManifest, shortTitleOf } from './services/examples';
-import type { ExampleEntry } from './services/manifest';
 import {
   deadOffsetsOf,
   depthsOf,
@@ -62,26 +58,8 @@ const NO_SNAPSHOTS: readonly Snapshot[] = [];
 
 const NO_DIAGNOSTICS: readonly CompileDiagnostic[] = [];
 
-/**
- * Availability of the optional compile service. `unavailable` is the health check having
- * failed at start-up — the editor never appears and the application looks complete without
- * it; `degraded` is the service dropping out mid-session, which is worth saying out loud
- * because the editor is already open with the reader's source in it.
- */
-type CompilerAvailability = 'unconfigured' | 'checking' | 'online' | 'degraded' | 'unavailable';
-
-/**
- * The editor is a view over the grid, not a stage of the program lifecycle, so it stays out
- * of `AppState`: `error` plus an open editor is a legal combination, and folding one into the
- * other would either duplicate every status or make that combination unrepresentable.
- */
-type EditorView =
-  | { readonly kind: 'closed' }
-  | { readonly kind: 'editing'; readonly diagnostics: readonly CompileDiagnostic[] }
-  | { readonly kind: 'compiling' };
-
-const CLOSED: EditorView = { kind: 'closed' };
-const EDITING: EditorView = { kind: 'editing', diagnostics: NO_DIAGNOSTICS };
+/** Same reason as NO_SNAPSHOTS: a literal `[]` prop is a new value on every render. */
+const NO_FRAMES: readonly StackFrame[] = [];
 
 /** Above 4× the highlight changes rows faster than the projection can read as movement. */
 const SMOOTH_HIGHLIGHT_UP_TO = 4;
@@ -91,35 +69,58 @@ function visibilityOf(panel: PanelName, selected: PanelName): string {
   return panel === selected ? '' : 'hidden md:flex';
 }
 
+/**
+ * One macrotask, so React can commit and paint the loading skeleton before the parse and the
+ * run block this thread — half a million steps take long enough to freeze the tab otherwise.
+ */
+function yieldToPaint(): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, 0);
+  });
+}
+
+/**
+ * The single place a load may throw: every path into the grid comes through here, so a
+ * failure ends as a banner rather than as a skeleton that never goes away.
+ */
+async function settle(load: () => Promise<AppState> | AppState): Promise<AppState> {
+  try {
+    return await load();
+  } catch (error) {
+    return failedState(toAppError(error));
+  }
+}
+
 interface AppProps {
   /** Base URL of the compile service; `undefined` switches the editor off (ADR-0004). */
   readonly compileApiUrl?: string | undefined;
 }
 
 export function App({ compileApiUrl = compileApiBaseUrl() }: AppProps = {}) {
-  const [state, setState] = useState<AppState>(IDLE);
-  const [examples, setExamples] = useState<readonly ExampleEntry[]>([]);
-  const [compiler, setCompiler] = useState<CompilerAvailability>(
-    compileApiUrl === undefined ? 'unconfigured' : 'checking',
-  );
-  const [editor, setEditor] = useState<EditorView>(CLOSED);
-  /** Kept outside `editor` so closing and reopening does not throw the draft away. */
+  const [model, dispatch] = useReducer(appReducer, compileApiUrl !== undefined, initialAppModel);
+  const { editor, compiler } = model;
+  const state = model.load;
+  /** Kept outside the model so closing and reopening the editor does not throw the draft away. */
   const [draft, setDraft] = useState(SEED_SOURCE);
-  const [compileNotice, setCompileNotice] = useState<ErrorPresentation | undefined>(undefined);
   const [visiblePanel, setVisiblePanel] = useState<PanelName>('bytecode');
-  const loadCounter = useRef(0);
+
+  const tokenRef = useRef(0);
+  const issueToken = useCallback(() => {
+    tokenRef.current += 1;
+    return tokenRef.current;
+  }, []);
 
   useEffect(() => {
     let active = true;
     void fetchExampleManifest().then(
       (manifest) => {
         if (active) {
-          setExamples(manifest.examples);
+          dispatch({ kind: 'examples-loaded', entries: manifest.examples });
         }
       },
       (error: unknown) => {
         if (active) {
-          setState(failedState(toAppError(error)));
+          dispatch({ kind: 'examples-failed', error: toAppError(error) });
         }
       },
     );
@@ -137,12 +138,12 @@ export function App({ compileApiUrl = compileApiBaseUrl() }: AppProps = {}) {
     void checkHealth(compileApiUrl).then(
       (healthy) => {
         if (active) {
-          setCompiler(healthy ? 'online' : 'unavailable');
+          dispatch({ kind: 'compiler-checked', healthy });
         }
       },
       () => {
         if (active) {
-          setCompiler('unavailable');
+          dispatch({ kind: 'compiler-checked', healthy: false });
         }
       },
     );
@@ -154,20 +155,16 @@ export function App({ compileApiUrl = compileApiBaseUrl() }: AppProps = {}) {
   /** Only the most recent load may land: a slow example must not overwrite a newer upload. */
   const startLoad = useCallback(
     async (label: string, load: () => Promise<AppState> | AppState): Promise<void> => {
-      loadCounter.current += 1;
-      const token = loadCounter.current;
-      setState(loadingState(label));
-      // A new program takes the grid back; the draft itself survives in `draft`.
-      setEditor(CLOSED);
-      setCompileNotice(undefined);
-
-      const next = await load();
-      if (loadCounter.current === token) {
-        setState(next);
-      }
+      const token = issueToken();
+      dispatch({ kind: 'load-started', token, label });
+      // follow-up: move execute() to a worker for cancellation
+      await yieldToPaint();
+      dispatch({ kind: 'load-settled', token, state: await settle(load) });
     },
-    [],
+    [issueToken],
   );
+
+  const examples = exampleEntriesOf(model.examples);
 
   const selectExample = useCallback(
     (id: string) => {
@@ -188,47 +185,38 @@ export function App({ compileApiUrl = compileApiBaseUrl() }: AppProps = {}) {
   );
 
   const openEditor = useCallback(() => {
-    setEditor(EDITING);
+    dispatch({ kind: 'editor-opened' });
   }, []);
 
   const closeEditor = useCallback(() => {
-    setEditor(CLOSED);
-    setCompileNotice(undefined);
-  }, []);
+    dispatch({ kind: 'editor-closed', token: issueToken() });
+  }, [issueToken]);
 
   const compileDraft = useCallback(async (): Promise<void> => {
     if (compileApiUrl === undefined) {
       return;
     }
-    setEditor({ kind: 'compiling' });
-    setCompileNotice(undefined);
+    const token = issueToken();
+    dispatch({ kind: 'compile-started', token });
 
     const result = await compile(compileApiUrl, draft);
-    switch (result.kind) {
-      case 'compiled':
-        // `startLoad` closes the editor; the visualization is the answer to the compile.
-        void startLoad(`Running ${result.className}`, () =>
-          loadCompiledState({
-            className: result.className,
-            classBytes: result.classBytes,
-            source: draft,
-          }),
-        );
-        break;
-      case 'diagnostics':
-        setEditor({ kind: 'editing', diagnostics: result.diagnostics });
-        break;
-      case 'rate-limited':
-      case 'unavailable':
-        // The draft stays on screen: the source is fine, the service is not.
-        setEditor(EDITING);
-        setCompileNotice(describeCompileFailure(result));
-        if (result.kind === 'unavailable') {
-          setCompiler('degraded');
-        }
-        break;
+    if (tokenRef.current !== token) {
+      // The editor closed, a program was loaded or a newer compile was issued meanwhile.
+      return;
     }
-  }, [compileApiUrl, draft, startLoad]);
+    dispatch({ kind: 'compile-settled', token, result });
+
+    if (result.kind === 'compiled') {
+      // `startLoad` closes the editor; the visualization is the answer to the compile.
+      void startLoad(`Running ${result.className}`, () =>
+        loadCompiledState({
+          className: result.className,
+          classBytes: result.classBytes,
+          source: draft,
+        }),
+      );
+    }
+  }, [compileApiUrl, draft, issueToken, startLoad]);
 
   const requestCompile = useCallback(() => {
     void compileDraft();
@@ -291,24 +279,38 @@ export function App({ compileApiUrl = compileApiBaseUrl() }: AppProps = {}) {
   );
   const depths = useMemo(() => depthsOf(snapshots), [snapshots]);
 
-  const pcRange =
-    listing === undefined || snapshot?.sourceLine === undefined
-      ? undefined
-      : offsetsForLine(listing, snapshot.sourceLine);
+  const sourceLine = snapshot?.sourceLine;
+  const pcRange = useMemo(
+    () =>
+      listing === undefined || sourceLine === undefined
+        ? undefined
+        : offsetsForLine(listing, sourceLine),
+    [listing, sourceLine],
+  );
   const mappingNote =
     listing === undefined || topFrame === undefined
       ? undefined
       : lineMappingNote(listing, topFrame.pc);
-  const next =
-    snapshot === undefined || program === undefined
-      ? undefined
-      : describeNextInstruction(snapshot, program.classFile);
-  const operandRoles =
-    snapshot === undefined || program === undefined
-      ? undefined
-      : describeOperandRoles(snapshot, listing, program.classFile);
+  const next = useMemo(
+    () =>
+      snapshot === undefined || program === undefined
+        ? undefined
+        : describeNextInstruction(snapshot, listing, program.classFile),
+    [snapshot, listing, program],
+  );
+  const operandRoles = useMemo(
+    () =>
+      snapshot === undefined || program === undefined
+        ? undefined
+        : describeOperandRoles(snapshot, listing, program.classFile),
+    [snapshot, listing, program],
+  );
 
   const failure = state.status === 'error' ? describeAppError(state.error) : undefined;
+  const examplesError = examplesErrorOf(model.examples);
+  const examplesFailure = examplesError === undefined ? undefined : describeAppError(examplesError);
+  const compileNotice =
+    model.compileFailure === undefined ? undefined : describeCompileFailure(model.compileFailure);
   const nextStepLimit =
     state.status === 'error' && state.error.kind === 'step-limit' && program !== undefined
       ? raisedStepLimit(program.maxSteps)
@@ -322,19 +324,23 @@ export function App({ compileApiUrl = compileApiBaseUrl() }: AppProps = {}) {
     compiler === 'online' ? 'online' : compiler === 'degraded' ? 'offline' : 'hidden';
   const writeJava = compilerIsUsable ? openEditor : undefined;
 
-  // The compile attempt is the newer event, so its banner wins over a stale run failure.
-  const notice = compileNotice ?? failure;
-  const raiseLimit =
-    compileNotice !== undefined || nextStepLimit === undefined || program === undefined
-      ? undefined
-      : {
-          label: 'Raise the limit',
-          onAction: () => {
-            void startLoad(`Re-running with ${nextStepLimit.toLocaleString('en-US')} steps`, () =>
-              rerunState(program, nextStepLimit),
-            );
+  // The compile attempt is the newer event, so its banner wins over a stale run failure;
+  // examples that never arrived are the oldest news of the three.
+  const notice = compileNotice ?? failure ?? examplesFailure;
+  const raiseLimit = useMemo(
+    () =>
+      compileNotice !== undefined || nextStepLimit === undefined || program === undefined
+        ? undefined
+        : {
+            label: 'Raise the limit',
+            onAction: () => {
+              void startLoad(`Re-running with ${nextStepLimit.toLocaleString('en-US')} steps`, () =>
+                rerunState(program, nextStepLimit),
+              );
+            },
           },
-        };
+    [compileNotice, nextStepLimit, program, startLoad],
+  );
 
   return (
     <AppShell
@@ -430,7 +436,7 @@ export function App({ compileApiUrl = compileApiBaseUrl() }: AppProps = {}) {
             className={visibilityOf('bytecode', visiblePanel)}
           />
           <StateColumn
-            frames={snapshot?.callStack ?? []}
+            frames={snapshot?.callStack ?? NO_FRAMES}
             operandAnnotations={operandRoles}
             className={`md:col-span-2 lg:col-span-1 ${visibilityOf('state', visiblePanel)}`}
           />

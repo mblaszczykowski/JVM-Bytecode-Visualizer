@@ -15,7 +15,7 @@
     "skipLibCheck": true,
     "noEmit": true,
 
-    /* Rygor typów (plan §9 Faza 0, §11.2) */
+    /* Type rigour: the compiler is the first reviewer. */
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": true,

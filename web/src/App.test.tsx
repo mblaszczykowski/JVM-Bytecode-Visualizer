@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { App } from './App';
@@ -44,6 +44,36 @@ function chooseFile(file: File): void {
   fireEvent.change(toolbarInput, { target: { files: [file] } });
 }
 
+interface HeldAnswer {
+  readonly route: FakeRoute;
+  /** Lands the answer and lets React process everything that follows from it. */
+  readonly land: (response: Response | Error) => Promise<void>;
+}
+
+/** A request the test keeps in flight, so a later event can be raced against it. */
+function heldAnswer(): HeldAnswer {
+  let settle: (response: Response | Error) => void = () => undefined;
+  const pending = new Promise<Response>((resolve, reject) => {
+    settle = (response) => {
+      if (response instanceof Error) {
+        reject(response);
+      } else {
+        resolve(response);
+      }
+    };
+  });
+
+  return {
+    route: () => pending,
+    land: async (response) => {
+      await act(async () => {
+        settle(response);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+    },
+  };
+}
+
 afterEach(() => {
   vi.unstubAllGlobals();
 });
@@ -78,6 +108,24 @@ describe('welcome screen', () => {
 
     expect(banner).toHaveTextContent('does not match the example manifest schema');
     expect(screen.queryAllByTestId('welcome-example')).toHaveLength(0);
+  });
+
+  it('never takes a program loaded meanwhile down with the manifest', async () => {
+    const manifest = heldAnswer();
+    stubFetch({ ...exampleRoutes(), [exampleUrl(MANIFEST_FILE)]: manifest.route });
+    render(<App />);
+
+    // The reader does not wait for the examples: a drop lands while they are still in flight.
+    chooseFile(uploadFile('Gcd.class', new Uint8Array(readExampleBytes('Gcd.class'))));
+    await screen.findByTestId('step-counter');
+
+    await manifest.land(new Error('the network went away'));
+
+    expect(screen.getByTestId('step-counter')).toHaveTextContent(`step 1 / ${String(GCD_STEPS)}`);
+    expect(screen.getByTestId('current-instruction')).toBeInTheDocument();
+    // Only the examples are gone, and the banner says so.
+    expect(screen.getByTestId('error-banner')).toHaveTextContent('Could not download');
+    expect(screen.queryByRole('button', { name: 'Factorial' })).not.toBeInTheDocument();
   });
 });
 
@@ -282,6 +330,17 @@ const compiledGcd: FakeRoute = () =>
 
 const healthy: FakeRoute = () => okResponse({ json: { status: 'UP' } });
 
+function diagnosticsResponse(message: string): Response {
+  return okResponse({
+    json: {
+      success: false,
+      className: null,
+      classFileBase64: null,
+      diagnostics: [{ line: 3, column: 12, kind: 'ERROR', message }],
+    },
+  });
+}
+
 function compileRoutes(compileRoute: FakeRoute, healthRoute: FakeRoute = healthy) {
   return { ...exampleRoutes(), [HEALTH_URL]: healthRoute, [COMPILE_URL]: compileRoute };
 }
@@ -394,6 +453,70 @@ describe('the compile editor', () => {
     expect(screen.getByTestId('compile-editor')).toBeInTheDocument();
     expect(screen.getByLabelText('Java source')).toHaveValue(GCD_SOURCE);
     expect(screen.getByTestId('compiler-health')).toHaveAttribute('data-status', 'offline');
+  });
+
+  it('drops a compile answer that lands after the editor is closed', async () => {
+    const held = heldAnswer();
+    const fetchMock = stubFetch(compileRoutes(held.route));
+    await openApp(COMPILE_API);
+
+    await writeAndCompile();
+    expect(fetchMock).toHaveBeenCalledWith(COMPILE_URL, expect.anything());
+
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+    expect(screen.queryByTestId('compile-editor')).not.toBeInTheDocument();
+
+    await held.land(diagnosticsResponse("';' expected"));
+
+    // Nothing reopens behind the reader's back and nothing lands in the banner.
+    expect(screen.queryByTestId('compile-editor')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('compile-diagnostic')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('error-banner')).not.toBeInTheDocument();
+  });
+
+  it('keeps the answer to the newest compile when an older one comes back late', async () => {
+    const stale = heldAnswer();
+    let answer: FakeRoute = stale.route;
+    stubFetch(compileRoutes(() => answer()));
+    await openApp(COMPILE_API);
+
+    await writeAndCompile();
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+
+    answer = () => diagnosticsResponse('cannot find symbol');
+    await writeAndCompile();
+    expect(await screen.findByTestId('compile-diagnostic')).toHaveTextContent('cannot find symbol');
+
+    await stale.land(diagnosticsResponse("';' expected"));
+
+    expect(screen.getByTestId('compile-diagnostic')).toHaveTextContent('cannot find symbol');
+  });
+
+  it('brings the badge back online once the service answers again', async () => {
+    let down = true;
+    stubFetch(
+      compileRoutes(() => {
+        if (down) {
+          throw new Error('connection refused');
+        }
+        return diagnosticsResponse("';' expected");
+      }),
+    );
+    await openApp(COMPILE_API);
+
+    await writeAndCompile();
+    expect(await screen.findByTestId('error-banner')).toHaveTextContent(
+      'Could not reach the compile service',
+    );
+    expect(screen.getByTestId('compiler-health')).toHaveAttribute('data-status', 'offline');
+
+    down = false;
+    fireEvent.click(screen.getByRole('button', { name: 'Compile' }));
+
+    // javac answering at all is proof the service came back.
+    expect(await screen.findByTestId('compile-diagnostic')).toBeInTheDocument();
+    expect(screen.getByTestId('compiler-health')).toHaveAttribute('data-status', 'online');
+    expect(screen.queryByTestId('error-banner')).not.toBeInTheDocument();
   });
 
   it('returns to what was on screen before when Escape closes it', async () => {

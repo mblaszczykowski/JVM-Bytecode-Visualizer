@@ -1,3 +1,5 @@
+import { PLAYBACK_SPEEDS, type PlaybackSpeed } from '../hooks/useExecutionPlayer';
+
 import { DepthTrack } from './DepthTrack';
 import { Segment, SegmentedControl } from './ui/SegmentedControl';
 
@@ -6,7 +8,7 @@ interface TransportControlsProps {
   readonly stepIndex: number;
   readonly stepCount: number;
   readonly isPlaying: boolean;
-  readonly speed: number;
+  readonly speed: PlaybackSpeed;
   /** Call stack depth per step — the background chart of the scrubber. */
   readonly depths: readonly number[];
   readonly onSeek: (index: number) => void;
@@ -16,11 +18,10 @@ interface TransportControlsProps {
   readonly onSpeedChange: (speed: number) => void;
 }
 
-const SPEEDS = [0.5, 1, 2, 4, 8] as const;
-
-function nextSpeed(current: number): number {
-  const index = SPEEDS.indexOf(current as (typeof SPEEDS)[number]);
-  return SPEEDS[(index + 1) % SPEEDS.length] ?? 1;
+/** The pill cycles through the speeds the player supports and wraps back to the slowest. */
+function nextSpeed(current: PlaybackSpeed): PlaybackSpeed {
+  const index = PLAYBACK_SPEEDS.indexOf(current);
+  return PLAYBACK_SPEEDS[index + 1] ?? PLAYBACK_SPEEDS[0];
 }
 
 function StepBackIcon() {

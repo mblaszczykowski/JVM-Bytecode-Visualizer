@@ -44,6 +44,39 @@ describe('transport shortcuts', () => {
     expect(handlers.onSeekToEnd).toHaveBeenCalledOnce();
   });
 
+  it('subscribes once and still calls the newest callbacks', () => {
+    const addListener = vi.spyOn(window, 'addEventListener');
+    const first = vi.fn();
+    const second = vi.fn();
+    const { rerender } = renderHook(
+      ({ onTogglePlay }: { onTogglePlay: () => void }) => {
+        useTransportShortcuts({
+          enabled: true,
+          onTogglePlay,
+          // Fresh identities every render, exactly as the player hands them over.
+          onStepForward: () => undefined,
+          onStepBack: () => undefined,
+          onSeekToStart: () => undefined,
+          onSeekToEnd: () => undefined,
+        });
+      },
+      { initialProps: { onTogglePlay: first } },
+    );
+
+    const subscriptions = () =>
+      addListener.mock.calls.filter(([type]) => type === 'keydown').length;
+    const afterMount = subscriptions();
+
+    rerender({ onTogglePlay: second });
+    fireEvent.keyDown(document.body, { key: ' ' });
+
+    expect(subscriptions()).toBe(afterMount);
+    expect(first).not.toHaveBeenCalled();
+    expect(second).toHaveBeenCalledOnce();
+
+    addListener.mockRestore();
+  });
+
   it('leaves other keys to the page', () => {
     const handlers = setup();
 

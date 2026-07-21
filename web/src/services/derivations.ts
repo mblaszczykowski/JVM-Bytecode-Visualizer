@@ -16,6 +16,8 @@ import {
 } from '../core/classfile';
 import { lookupOpcode, type Instruction } from '../core/disassembler';
 import type { Snapshot, StackFrame } from '../core/interpreter';
+// int semantics live in one place: the explanations quote the interpreter, not a copy of it.
+import { iadd, idiv, imul, ineg, irem, isub } from '../core/interpreter/int32';
 
 import type { MethodListing } from './program';
 
@@ -32,6 +34,7 @@ export interface NextInstructionSummary {
 
 export function describeNextInstruction(
   snapshot: Snapshot,
+  listing: MethodListing | undefined,
   classFile: ClassFile,
 ): NextInstructionSummary | undefined {
   const frame = snapshot.callStack.at(-1);
@@ -45,7 +48,7 @@ export function describeNextInstruction(
 
   return {
     effects: effectsOf(instruction, pool),
-    explanation: explain(instruction, frame, pool),
+    explanation: explain(instruction, frame, listing, pool),
     cpChain: constant?.chain,
   };
 }
@@ -297,17 +300,23 @@ const COMPARISON: Readonly<Record<string, string>> = {
   ifle: '≤',
 };
 
+/** Only ever applied to the operands of an instruction the run is about to execute. */
 const ARITHMETIC: Readonly<
   Record<string, { readonly symbol: string; readonly apply: (a: number, b: number) => number }>
 > = {
-  iadd: { symbol: '+', apply: (a, b) => (a + b) | 0 },
-  isub: { symbol: '−', apply: (a, b) => (a - b) | 0 },
-  imul: { symbol: '×', apply: (a, b) => Math.imul(a, b) },
-  idiv: { symbol: '÷', apply: (a, b) => (b === 0 ? 0 : (a / b) | 0) },
-  irem: { symbol: 'mod', apply: (a, b) => (b === 0 ? 0 : a % b) },
+  iadd: { symbol: '+', apply: iadd },
+  isub: { symbol: '−', apply: isub },
+  imul: { symbol: '×', apply: imul },
+  idiv: { symbol: '÷', apply: idiv },
+  irem: { symbol: 'mod', apply: irem },
 };
 
-function explain(instruction: Instruction, frame: StackFrame, pool: ConstantPool): string {
+function explain(
+  instruction: Instruction,
+  frame: StackFrame,
+  listing: MethodListing | undefined,
+  pool: ConstantPool,
+): string {
   const { mnemonic } = instruction;
   const top = frame.operandStack.at(-1);
   const below = frame.operandStack.at(-2);
@@ -327,7 +336,7 @@ function explain(instruction: Instruction, frame: StackFrame, pool: ConstantPool
 
   if (mnemonic.startsWith('istore')) {
     const slot = slotOf(instruction);
-    return `Pops ${valueText(top)} into local slot ${String(slot)} (${nameOfSlot(frame, slot)}).`;
+    return `Pops ${valueText(top)} into local slot ${String(slot)} (${storedName(frame, listing, instruction, slot)}).`;
   }
 
   if (mnemonic === 'iinc') {
@@ -348,7 +357,7 @@ function explain(instruction: Instruction, frame: StackFrame, pool: ConstantPool
   if (mnemonic === 'ineg') {
     return top === undefined
       ? 'Negates the value on top of the operand stack.'
-      : `Pops ${String(top)} and pushes ${String(-top | 0)}.`;
+      : `Pops ${String(top)} and pushes ${String(ineg(top))}.`;
   }
 
   const arithmetic = ARITHMETIC[mnemonic];
@@ -369,7 +378,7 @@ function explain(instruction: Instruction, frame: StackFrame, pool: ConstantPool
     const left = comparesPair ? below : top;
     const right = comparesPair ? top : 0;
     const popped = comparesPair ? 'Pops both values' : 'Pops the top value';
-    return `${popped} and jumps to pc ${String(target ?? 0)} when ${valueText(left)} ${operator} ${String(right)}; otherwise falls through.`;
+    return `${popped} and jumps to pc ${String(target ?? 0)} when ${valueText(left)} ${operator} ${valueText(right)}; otherwise falls through.`;
   }
 
   if (mnemonic === 'goto') {
@@ -406,6 +415,36 @@ function valueText(value: number | undefined): string {
 
 function nameOfSlot(frame: StackFrame, slot: number): string {
   return frame.localNames[slot] ?? `slot ${String(slot)}`;
+}
+
+/**
+ * Name of the slot a store writes to. javac opens the scope of a variable at the instruction
+ * *after* the store that initialises it (JVMS §4.7.13), so the frame's own names — taken at
+ * the store itself — still call the slot anonymous. The value being stored is the variable,
+ * so the name is looked up one instruction ahead.
+ */
+function storedName(
+  frame: StackFrame,
+  listing: MethodListing | undefined,
+  instruction: Instruction,
+  slot: number,
+): string {
+  if (listing !== undefined) {
+    const index = listing.instructions.findIndex((entry) => entry.offset === instruction.offset);
+    const nextOffset = index < 0 ? undefined : listing.instructions[index + 1]?.offset;
+    const name = nextOffset === undefined ? undefined : localNameAt(listing, nextOffset, slot);
+    if (name !== undefined) {
+      return name;
+    }
+  }
+  return nameOfSlot(frame, slot);
+}
+
+/** LocalVariableTable name of `slot` in scope at `pc`, if the table has one. */
+function localNameAt(listing: MethodListing, pc: number, slot: number): string | undefined {
+  return listing.localVariables.find(
+    (entry) => entry.index === slot && pc >= entry.startPc && pc < entry.startPc + entry.length,
+  )?.name;
 }
 
 function describeSlot(frame: StackFrame, slot: number): string {
@@ -503,8 +542,12 @@ function utf8(pool: ConstantPool, index: number): string | undefined {
 
 /**
  * Walks the method forward from the current instruction, tracking the operand stack height,
- * and reports which instruction eventually consumes the value at `targetIndex`. Straight-line
- * only — good enough to label a value as "waiting for imul" while a call runs.
+ * and reports which instruction eventually consumes the value at `targetIndex`.
+ *
+ * Conditional branches are followed through to the fall-through path, but an unconditional
+ * `goto` never falls through: reading straight past it would blame whatever instruction the
+ * loop body happens to be laid out next to. Each instruction is visited at most once, so a
+ * backward jump ends the walk instead of looping.
  */
 function consumerOf(
   listing: MethodListing,
@@ -513,17 +556,21 @@ function consumerOf(
   height: number,
   targetIndex: number,
 ): string | undefined {
-  const start = listing.instructions.findIndex((entry) => entry.offset === fromOffset);
-  if (start < 0) {
+  const indexByOffset = new Map(listing.instructions.map((entry, index) => [entry.offset, index]));
+  const start = indexByOffset.get(fromOffset);
+  if (start === undefined) {
     return undefined;
   }
 
+  const visited = new Set<number>();
   let stackHeight = height;
   for (let index = start; index < listing.instructions.length; index++) {
     const instruction = listing.instructions[index];
-    if (instruction === undefined) {
+    if (instruction === undefined || visited.has(index)) {
       return undefined;
     }
+    visited.add(index);
+
     const effect = stackDeltaOf(instruction, pool);
     if (effect === undefined) {
       return undefined;
@@ -532,6 +579,18 @@ function consumerOf(
       return instruction.mnemonic;
     }
     stackHeight = stackHeight - effect.pops + effect.pushes;
+
+    if (instruction.mnemonic === 'goto') {
+      const target =
+        instruction.branchTarget === undefined
+          ? undefined
+          : indexByOffset.get(instruction.branchTarget);
+      if (target === undefined) {
+        return undefined;
+      }
+      // The loop increment takes it to `target`.
+      index = target - 1;
+    }
   }
   return undefined;
 }

@@ -57,19 +57,22 @@ function maxOverlap(arcs: readonly Arc[], rowCount: number): number {
  * through the offset→index map.
  */
 export function BranchGutter({ instructions, currentIndex, hoveredIndex }: BranchGutterProps) {
-  const visible = useMemo(() => {
+  // The arcs and their density are a property of the method alone. Folding the pc and the
+  // pointer into this memo re-ran an O(arcs × rows) count on every step of the playback.
+  const gutter = useMemo(() => {
     const arcs = buildArcs(instructions);
-    if (maxOverlap(arcs, instructions.length) <= MAX_OVERLAP) {
-      return arcs;
-    }
-    // Too dense to read: keep the current jump plus whatever touches the hovered row.
-    return arcs.filter(
-      (arc) =>
-        arc.fromIndex === currentIndex ||
-        arc.fromIndex === hoveredIndex ||
-        arc.toIndex === hoveredIndex,
-    );
-  }, [instructions, currentIndex, hoveredIndex]);
+    return { arcs, crowded: maxOverlap(arcs, instructions.length) > MAX_OVERLAP };
+  }, [instructions]);
+
+  // Too dense to read: keep the current jump plus whatever touches the hovered row.
+  const visible = gutter.crowded
+    ? gutter.arcs.filter(
+        (arc) =>
+          arc.fromIndex === currentIndex ||
+          arc.fromIndex === hoveredIndex ||
+          arc.toIndex === hoveredIndex,
+      )
+    : gutter.arcs;
 
   return (
     <div aria-hidden="true" className="pointer-events-none absolute inset-y-0 left-0 w-[26px]">

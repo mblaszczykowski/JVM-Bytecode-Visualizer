@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 
 export interface TransportShortcuts {
   /** Off while there is no history to move through. */
@@ -36,15 +36,22 @@ export function handlesKeyItself(target: EventTarget | null, key: string): boole
   }
 }
 
-/** Space plays and pauses, arrows step, Home/End jump to the ends of the history. */
-export function useTransportShortcuts({
-  enabled,
-  onTogglePlay,
-  onStepForward,
-  onStepBack,
-  onSeekToStart,
-  onSeekToEnd,
-}: TransportShortcuts): void {
+/**
+ * Space plays and pauses, arrows step, Home/End jump to the ends of the history.
+ *
+ * The callbacks are read through a ref rather than listed as dependencies: every one of them
+ * changes identity on every step, and at 8× that would tear down and re-register the window
+ * listener a dozen times a second. The subscription depends on `enabled` alone; a key press
+ * always reaches the newest callbacks because it happens between renders, never during one.
+ */
+export function useTransportShortcuts(shortcuts: TransportShortcuts): void {
+  const { enabled } = shortcuts;
+  const latest = useRef(shortcuts);
+
+  useEffect(() => {
+    latest.current = shortcuts;
+  });
+
   useEffect(() => {
     if (!enabled) {
       return;
@@ -58,21 +65,22 @@ export function useTransportShortcuts({
         return;
       }
 
+      const transport = latest.current;
       switch (event.key) {
         case ' ':
-          onTogglePlay();
+          transport.onTogglePlay();
           break;
         case 'ArrowRight':
-          onStepForward();
+          transport.onStepForward();
           break;
         case 'ArrowLeft':
-          onStepBack();
+          transport.onStepBack();
           break;
         case 'Home':
-          onSeekToStart();
+          transport.onSeekToStart();
           break;
         case 'End':
-          onSeekToEnd();
+          transport.onSeekToEnd();
           break;
         default:
           return;
@@ -86,5 +94,5 @@ export function useTransportShortcuts({
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [enabled, onTogglePlay, onStepForward, onStepBack, onSeekToStart, onSeekToEnd]);
+  }, [enabled]);
 }

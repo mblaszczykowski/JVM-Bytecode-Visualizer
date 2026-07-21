@@ -42,7 +42,12 @@ function terminalSnapshot(program: LoadedProgram): Snapshot {
 }
 
 function summaryOf(program: LoadedProgram, mnemonic: string) {
-  const summary = describeNextInstruction(firstSnapshotOf(program, mnemonic), program.classFile);
+  const snapshot = firstSnapshotOf(program, mnemonic);
+  const summary = describeNextInstruction(
+    snapshot,
+    listingFor(program, snapshot),
+    program.classFile,
+  );
   if (summary === undefined) {
     throw new Error(`no summary for ${mnemonic}`);
   }
@@ -92,9 +97,9 @@ describe('next instruction summary', () => {
     expect(summaryOf(program, 'iload_0').explanation).toBe(
       'Pushes local 0 (n = 4) onto the operand stack.',
     );
-    // `result` enters scope at the pc the store jumps to (LocalVariableTable start_pc 5), so
-    // at the store itself slot 1 still has no name of its own.
-    expect(summaryOf(program, 'istore_1').explanation).toBe('Pops 24 into local slot 1 (slot 1).');
+    // `result` only enters scope at the instruction after the store (LocalVariableTable
+    // start_pc 5), and the store is what puts it there — so it is named, not numbered.
+    expect(summaryOf(program, 'istore_1').explanation).toBe('Pops 24 into local slot 1 (result).');
   });
 
   it('spells out a comparison and its branch target', () => {
@@ -124,7 +129,33 @@ describe('next instruction summary', () => {
   it('has nothing to say about the terminal snapshot', () => {
     const program = factorialProgram();
 
-    expect(describeNextInstruction(terminalSnapshot(program), program.classFile)).toBeUndefined();
+    expect(
+      describeNextInstruction(terminalSnapshot(program), program.entry, program.classFile),
+    ).toBeUndefined();
+  });
+
+  it('says the operands are unknown rather than printing "undefined"', () => {
+    // if_icmpgt on an empty stack: the snapshot precedes the underflow that stops the run.
+    const program = buildProgram({
+      origin: { kind: 'upload', fileName: 'Underflow.class' },
+      classFile: syntheticClass({
+        methods: [
+          {
+            name: 'main',
+            descriptor: '([Ljava/lang/String;)V',
+            // if_icmpgt +4, nop, return
+            code: [0xa3, 0x00, 0x04, 0x00, 0xb1],
+          },
+        ],
+      }),
+    });
+
+    const { explanation } = summaryOf(program, 'if_icmpgt');
+
+    expect(explanation).not.toContain('undefined');
+    expect(explanation).toBe(
+      'Pops both values and jumps to pc 4 when the top value > the top value; otherwise falls through.',
+    );
   });
 
   it('warns that an unsupported instruction ends the run', () => {
@@ -158,6 +189,29 @@ describe('operand stack roles', () => {
     const roles = describeOperandRoles(snapshot, listingFor(program, snapshot), program.classFile);
 
     expect(roles).toEqual(['waiting for imul', '→ arg 0']);
+  });
+
+  it('follows an unconditional jump instead of blaming the instruction below it', () => {
+    const program = buildProgram({
+      origin: { kind: 'upload', fileName: 'Jump.class' },
+      classFile: syntheticClass({
+        methods: [
+          {
+            name: 'main',
+            descriptor: '([Ljava/lang/String;)V',
+            // 0: iconst_1, 1: iconst_2, 2: goto +6 → 8, 5: imul (never reached),
+            // 6: pop, 7: nop, 8: iadd, 9: pop, 10: return
+            code: [0x04, 0x05, 0xa7, 0x00, 0x06, 0x68, 0x57, 0x00, 0x60, 0x57, 0xb1],
+          },
+        ],
+      }),
+    });
+    const snapshot = firstSnapshotOf(program, 'goto');
+
+    const roles = describeOperandRoles(snapshot, listingFor(program, snapshot), program.classFile);
+
+    // `imul` sits right after the jump in the listing, but the run never arrives there.
+    expect(roles).toEqual([undefined, 'waiting for iadd']);
   });
 
   it('has no roles to report on the terminal snapshot', () => {

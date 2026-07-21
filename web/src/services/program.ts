@@ -5,11 +5,12 @@
  * derived here rather than in render, so replaying the history stays a lookup by index.
  */
 
-import type { ClassFile, LineNumberEntry } from '../core/classfile';
+import type { ClassFile, LineNumberEntry, LocalVariableEntry } from '../core/classfile';
 import { disassemble, type Instruction } from '../core/disassembler';
 import {
   DEFAULT_MAX_STEPS,
   execute,
+  findEntryMethod,
   type Snapshot,
   type StackFrame,
   type VmError,
@@ -26,6 +27,8 @@ export interface MethodListing {
   /** Set when decoding stopped early — the panel renders a `… not decoded` row for it. */
   readonly truncatedAtOffset: number | undefined;
   readonly lineNumbers: readonly LineNumberEntry[];
+  /** LocalVariableTable entries with their pc ranges — a slot can name several variables. */
+  readonly localVariables: readonly LocalVariableEntry[];
   /** Offsets reached by this run; everything else is dead code in this run. */
   readonly executedOffsets: ReadonlySet<number>;
 }
@@ -101,16 +104,28 @@ export function buildProgram({
         instructions: decoded.instructions,
         truncatedAtOffset: decoded.truncatedAtOffset,
         lineNumbers: code.lineNumberTable ?? [],
+        localVariables: code.localVariableTable ?? [],
         executedOffsets: executed.get(methodKey(method.name, method.descriptor)) ?? EMPTY_OFFSETS,
       },
     ];
   });
 
+  // The same rule the interpreter starts from, so the panel never opens on a method the run
+  // would have refused: static, with a Code attribute and a descriptor inside the int subset.
+  const entryPoint = findEntryMethod(classFile);
+
   return {
     origin,
     classFile,
     methods,
-    entry: methods.find((method) => method.name === ENTRY_METHOD_NAME),
+    entry:
+      entryPoint === undefined
+        ? undefined
+        : methods.find(
+            (method) =>
+              method.name === entryPoint.method.name &&
+              method.descriptor === entryPoint.method.descriptor,
+          ),
     sourceFileName: source?.fileName ?? fileNameOf(origin),
     sourceLines: source === undefined ? NO_SOURCE_LINES : source.text.split(/\r?\n/),
     snapshots: result.snapshots,
@@ -119,7 +134,6 @@ export function buildProgram({
   };
 }
 
-const ENTRY_METHOD_NAME = 'main';
 const EMPTY_OFFSETS: ReadonlySet<number> = new Set<number>();
 
 export function findListing(

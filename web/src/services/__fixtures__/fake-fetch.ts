@@ -48,7 +48,8 @@ export function statusResponse(status: number): Response {
   } as unknown as Response;
 }
 
-export type FakeRoute = () => Response;
+/** Returning a promise lets a test hold an answer back and land it at a chosen moment. */
+export type FakeRoute = () => Response | Promise<Response>;
 
 export function stubFetch(routes: Readonly<Record<string, FakeRoute>>) {
   const fetchMock = vi.fn((input: unknown) => {

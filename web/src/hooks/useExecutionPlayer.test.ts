@@ -145,7 +145,7 @@ describe('useExecutionPlayer', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it('does not start playing when it is already on the last step', () => {
+  it('replays from the top when play is pressed on the last step', () => {
     const { result } = renderPlayer(historyOf(3));
 
     act(() => {
@@ -155,8 +155,11 @@ describe('useExecutionPlayer', () => {
       result.current.play();
     });
 
-    expect(result.current.isPlaying).toBe(false);
-    expect(vi.getTimerCount()).toBe(0);
+    expect(result.current.stepIndex).toBe(0);
+    expect(result.current.isPlaying).toBe(true);
+
+    advance(BASE_STEP_INTERVAL_MS);
+    expect(result.current.stepIndex).toBe(1);
   });
 
   it('clamps stepping at both ends of the history', () => {
