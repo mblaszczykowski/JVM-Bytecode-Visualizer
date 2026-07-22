@@ -2,7 +2,7 @@
   "name": "jvm-bytecode-visualizer",
   "version": "0.1.0",
   "private": true,
-  "description": "Wizualizator wykonania bajtkodu JVM krok po kroku",
+  "description": "A browser-based JVM bytecode visualizer: load a .class file or write Java, then watch the virtual machine execute it one instruction at a time",
   "license": "MIT",
   "type": "module",
   "workspaces": [

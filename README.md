@@ -41,10 +41,12 @@ instruction runs, closed by a terminal snapshot. The UI never executes anything;
 
 The optional Java compile service is the other half of the story, and it is deliberately boring: it
 compiles source to bytecode in memory with `javax.tools.JavaCompiler` and returns the bytes. It
-never loads a class, never starts a JVM for user code, never writes to disk. The compiled bytecode
-executes on the client, in the same interpreter that handles uploads. That inversion — the server
-compiles, the client executes — removes remote code execution from the threat model instead of
-trying to sandbox it ([ADR-0003](docs/adr/0003-backend-compiles-never-executes.md)).
+never loads a class, never runs what it compiled, never writes to disk. javac itself runs in a
+short-lived child JVM that is killed outright once the deadline passes — the only kind of timeout
+that actually stops a compiler. The compiled bytecode executes on the client, in the same
+interpreter that handles uploads. That inversion — the server compiles, the client executes —
+removes remote code execution from the threat model instead of trying to sandbox it
+([ADR-0003](docs/adr/0003-backend-compiles-never-executes.md)).
 
 ```mermaid
 flowchart LR
@@ -59,7 +61,7 @@ flowchart LR
     history --> ui["React UI<br/>replay = index lookup"]
   end
   subgraph backend["compile-service — optional"]
-    javac["javac in memory<br/>never executes"]
+    javac["javac in a child JVM<br/>in memory, never executes"]
   end
   editor -->|"POST /api/compile"| javac
   javac -->|"class bytes, base64"| bytes
@@ -190,6 +192,12 @@ Requires a JDK 21+ on `PATH`. The script compiles the sources in `web/fixtures/s
 `web/public/examples/` together with `manifest.json`. Those artifacts are committed, which is why CI
 and deployment need no JDK.
 
+### Deploying it
+
+The frontend is a static bundle and the compile service is a container, so the two deploy
+independently and neither waits for the other. [`docs/deployment.md`](docs/deployment.md) walks
+through Vercel for the frontend and Fly.io for the server, and lists the placeholders to fill in.
+
 ## Design decisions
 
 Architecture decision records live in [`docs/adr/`](docs/adr/), and
@@ -204,8 +212,9 @@ error taxonomy.
   A closed instruction set that can be implemented and tested completely, rather than a broad one
   that is right in patches.
 - [**ADR-0003 — The backend compiles, it never executes user code.**](docs/adr/0003-backend-compiles-never-executes.md)
-  Compilation happens in memory with `-proc:none`, an empty class path, a size cap, a timeout and
-  rate limiting; execution happens in the user's own browser.
+  Compilation happens in memory with `-proc:none`, an empty class path and a size cap, inside a
+  child JVM that is killed at the deadline and rationed by a bounded pool and a per-IP rate limit;
+  execution happens in the user's own browser.
 - [**ADR-0004 — The backend is progressive enhancement, not a dependency.**](docs/adr/0004-backend-as-progressive-enhancement.md)
   The demo, the local setup and the frontend CI all work with no server running.
 

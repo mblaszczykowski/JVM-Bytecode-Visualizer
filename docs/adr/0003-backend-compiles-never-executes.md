@@ -29,7 +29,14 @@ The residual risks of `javac` itself are mitigated explicitly:
 
 - **`-proc:none`** — annotation processing is the only vector that runs _foreign_ code inside
   javac; it must be off.
-- Source ≤ 64 KiB, a 10 s compilation timeout (`Future.get(timeout)`), an empty user class path,
+- **A child JVM per compilation.** javac runs in a short-lived process with a small heap and stack,
+  gets the source on stdin, and is killed with `destroyForcibly()` when the 10 s deadline passes. An
+  in-process timeout cannot do this: `Future.cancel(true)` only raises an interrupt flag, javac
+  never polls it, and the thread keeps burning CPU long after the client has its answer.
+- **Bounded concurrency.** A compilation costs a whole JVM, so the number in flight is capped;
+  a saturated service answers 503 with `Retry-After` instead of queueing requests that each hold a
+  process.
+- Source ≤ 64 KiB, refused before the request body is buffered; an empty user class path;
   `--release 21`.
 - Rate limiting (10 requests/minute/IP), CORS restricted to the frontend origin.
 
@@ -48,7 +55,11 @@ The residual risks of `javac` itself are mitigated explicitly:
 - The user does not see "the result from a real JVM" — they see the result from our interpreter,
   with its limitations (ADR-0002). A program using out-of-scope instructions compiles but will not
   run.
-- The risk of `javac` itself exhausting resources (pathological sources) remains — hence the size
-  limit, the timeout and rate limiting.
+- The risk of `javac` itself exhausting resources (pathological sources) remains, but it is bounded
+  instead of argued away: a runaway compilation costs one child JVM for at most the deadline, and
+  the process is killed rather than asked to stop.
+- Forking is not free. Every compilation pays a JVM start-up, and the child is launched with the
+  parent's `java.class.path` — so the deployment has to run exploded rather than from a repackaged
+  Spring Boot jar, which the Dockerfile does and the service warns about at start-up.
 - Compilation diagnostics have to travel over the API as structured data (line, column, kind,
   message) rather than as text.

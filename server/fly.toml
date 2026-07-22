@@ -1,0 +1,57 @@
+# Fly.io configuration for the compile service.
+#
+# Deploy from this directory: `fly deploy` uses server/ as the build context, which is what the
+# Dockerfile expects (it copies pom.xml and src/).
+#
+# Before the first deploy, replace the two placeholders below:
+#   app                             the name reserved with `fly apps create` / `fly launch --no-deploy`
+#   COMPILE_SERVICE_ALLOWED_ORIGIN  the exact origin the frontend is served from
+#
+# docs/deployment.md has the full walk-through.
+
+app = "CHANGE-ME-compile-service"
+primary_region = "fra"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  # The Dockerfile already runs on a JDK image, which the service requires: without the
+  # jdk.compiler module ToolProvider.getSystemJavaCompiler() returns null.
+  PORT = "8080"
+
+  # No trailing slash, no "*" — the application refuses to start with a wildcard origin.
+  COMPILE_SERVICE_ALLOWED_ORIGIN = "https://CHANGE-ME.vercel.app"
+
+  # Fly's proxy appends the client address to X-Forwarded-For, and it is the last entry.
+  # Without this the rate limiter would bucket every request under the proxy's own address.
+  COMPILE_SERVICE_TRUST_FORWARDED_FOR = "true"
+  COMPILE_SERVICE_TRUSTED_PROXY_HOPS = "1"
+
+  # Each concurrent compilation is a child JVM capped at 128 MB of heap; keep this in step with
+  # the memory below.
+  COMPILE_SERVICE_MAX_CONCURRENT_COMPILATIONS = "2"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  # A stopped machine costs nothing, but the first request after a stop pays a cold start. The
+  # frontend gives the health check 2 s before it hides the editor, so set min_machines_running
+  # to 1 if the editor has to be there on the first visit.
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [[http_service.checks]]
+    method = "GET"
+    path = "/actuator/health"
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "30s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  # The parent JVM takes at most half of this (-XX:MaxRAMPercentage=50 in the Dockerfile); the
+  # rest is for the compiler processes, up to max-concurrent-compilations x 128 MB of heap plus
+  # their own overhead. Lower it to 512 MB only together with max-concurrent-compilations = 1.
+  memory = "1gb"

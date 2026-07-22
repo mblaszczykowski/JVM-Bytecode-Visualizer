@@ -153,8 +153,17 @@ Three distinct failure kinds, deliberately not collapsed into one:
 | Kind             | Where              | Shape                                                                                                                  | What it means                                                                                                                     |
 | ---------------- | ------------------ | ---------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
 | `ClassFileError` | `core/classfile`   | `bad-magic`, `truncated`, `unknown-constant-tag`, `bad-index`, `malformed-utf8`, `malformed-structure`, bad descriptor | These bytes are not a class file this parser can read. Thrown, always with a byte offset and context.                             |
-| `VmError`        | `core/interpreter` | `unsupported-opcode`, `division-by-zero`, `unsupported-call`, `invalid-state`                                          | The file parsed, but the run cannot continue. Returned, never thrown, together with the history so far.                           |
+| `VmError`        | `core/interpreter` | `unsupported-opcode`, `division-by-zero`, `unsupported-call`, `invalid-state`, `stack-overflow`, `bad-branch-target`   | The file parsed, but the run cannot continue. Returned, never thrown, together with the history so far.                           |
 | `step-limit`     | `core/interpreter` | `{ kind: 'step-limit', limit }`                                                                                        | Not an error at all — the run was cut short. The history is complete and playable up to the limit, and the UI offers to raise it. |
+
+Two of the `VmError` kinds exist because the interpreter has no bytecode verifier and refuses to run
+off its own rails. `stack-overflow` stops the run at `DEFAULT_MAX_CALL_DEPTH` (1,500 frames) and
+borrows the wording of a real `StackOverflowError`, so recursion without a reachable base case is
+named for what it is rather than reported as a step limit — and it stops long before the history
+exhausts the browser tab. `bad-branch-target` rejects a jump that does not land on the first byte of
+an instruction of the same method (JVMS §4.9.1); it is checked once when a method is prepared, so a
+target inside another instruction's operands is named at the branch instead of surfacing later as
+whatever byte the pc happened to hit.
 
 `web/src/services/errors.ts` widens those into one `AppError` union that also covers failures which
 only exist at the application boundary — an example that would not download, a file over the 512 KiB
@@ -177,38 +186,112 @@ POST /api/compile  { "source": "public class Foo { … }" }
 200 → { "success": true,  "className": "Foo", "classFileBase64": "yv66vg…", "diagnostics": [] }
 200 → { "success": false, "className": null,  "classFileBase64": null,
         "diagnostics": [{ "line": 3, "column": 12, "kind": "ERROR", "message": "';' expected" }] }
-400 → empty source, source over the size cap, or no public top-level class
+400 → empty source, a body or a source over the size cap, or no public top-level class
 429 → rate limited
+503 → every compile slot is taken; carries Retry-After
 ```
 
-The pipeline is `CompileController` → `CompileService` → `SourceValidator` → `InMemoryCompiler`.
-Nothing touches the filesystem: an `InMemoryFileManager` extends `ForwardingJavaFileManager` and
-hands javac an `InMemoryClassFile` for every output it asks to write, collecting the bytes in a map.
-Reads still go through the delegate, because `--release 21` needs the platform classes.
+The pipeline is `CompileController` → `CompileService` → `SourceValidator` → `ForkedCompiler`, and
+the compilation itself happens one process further out.
+
+### One child JVM per compilation
+
+`InMemoryCompiler`, the class that actually calls javac, has no timeout of its own, because a
+runaway javac cannot be stopped from inside the JVM that hosts it. `Future.cancel(true)` raises an
+interrupt flag javac never polls, so a source with pathological type inference kept a thread at
+100% CPU long after the client had its answer — one thread per request. `destroyForcibly()` on a
+child process is the construction that actually reclaims a running compiler, so that is the one the
+service uses.
+
+```mermaid
+sequenceDiagram
+  participant Client
+  participant Parent as ForkedCompiler
+  participant Watchdog as watchdog
+  participant Child as child JVM
+  Client->>Parent: POST /api/compile
+  Parent->>Parent: submit to a bounded pool
+  Note over Parent: saturated pool answers 503
+  Parent->>Child: spawn, source on stdin
+  Parent->>Watchdog: arm the deadline
+  Child-->>Parent: result document on stdout
+  Watchdog-->>Child: destroyForcibly at the deadline
+  Parent-->>Client: class bytes, diagnostics, or timed out
+```
+
+- **The parent bounds concurrency.** A `ThreadPoolExecutor` over a `SynchronousQueue` with an abort
+  policy holds `compile.max-concurrent-compilations` slots, two by default. Nothing queues: a
+  compilation costs a whole JVM, and a queue of requests each holding one is worse for everyone than
+  telling the caller to come back, so a saturated pool answers 503 with `Retry-After`.
+- **The child is small and short-lived.** `java -Xmx128m -Xss1m … CompilerProcessMain` — plus the
+  serial collector, `-XX:TieredStopAtLevel=1` because start-up dominates the wall clock here, and no
+  perf data file — reads the source from stdin, runs the same `InMemoryCompiler`, writes a JSON
+  result document to stdout and halts. It takes the real stdout for itself and points `System.out`
+  at stderr, so a stray `println` cannot corrupt the protocol, and a `StackOverflowError` or an
+  `OutOfMemoryError` lands in a process that exists to absorb it.
+- **The deadline is a kill, not a request.** A watchdog scheduled at `compile.timeout` (10 s) calls
+  `destroyForcibly()`, which closes both pipes, so no read can outlast it. The request thread waits
+  that budget plus a five second reaping grace, and the `finally` block destroys the process again:
+  no orphan survives the method, whatever went wrong.
+- **The child runs on the parent's `java.class.path`,** so the deployment has to expose one a plain
+  `java -cp` understands. The Dockerfile runs the application exploded for exactly that reason, and
+  `ForkedCompiler` logs an error at start-up if it finds itself inside a repackaged jar, rather than
+  failing one request at a time in production.
+
+Nothing touches the filesystem on the way through: an `InMemoryFileManager` extends
+`ForwardingJavaFileManager` and hands javac an `InMemoryClassFile` for every output it asks to write,
+collecting the bytes in a map. Reads still go through the delegate, because `--release 21` needs the
+platform classes.
 
 A compilation that succeeds must produce exactly one class file. More than one means nested, local
 or anonymous classes, which the visualizer cannot load — that is reported as a diagnostic rather
 than silently returning the first one.
 
-**Hardening** — the point of [ADR-0003](adr/0003-backend-compiles-never-executes.md) is that the
-service compiles and never executes, so the sandboxing problem is removed rather than mitigated.
-What remains is javac's own resource appetite:
+### Hardening
 
-- `-proc:none`. Annotation processing is the one path that runs foreign code inside javac. A test
+The point of [ADR-0003](adr/0003-backend-compiles-never-executes.md) is that the service compiles
+and never executes, so the sandboxing problem is removed rather than mitigated. What remains is
+javac's own resource appetite and the ordinary exposure of a public endpoint.
+
+- **A child process per compilation**, bounded in number and killed at the deadline — the section
+  above.
+- **`-proc:none`.** Annotation processing is the one path that runs foreign code inside javac. A test
   puts a processor on the processor path and asserts it never ran.
-- An empty user class path. Left unset, javac falls back to the working directory.
-- `--release 21`, which also pins the class file version the browser interpreter expects, and `-g`,
-  which gives the UI its local variable names.
-- No class loader. `getClassLoader()` returns `null`, keeping the guarantee local to the file
+- **An empty user class path.** Left unset, javac falls back to the working directory; emptied, the
+  only types a source can reach are the platform classes.
+- **`--release 21`**, which also pins the class file version the browser interpreter expects, and
+  `-g`, which gives the UI its local variable names.
+- **No class loader.** `getClassLoader()` returns `null`, keeping the guarantee local to the file
   manager instead of relying on the compiler flags alone.
-- Source capped at 64 KiB and rejected before javac is invoked.
-- A 10 s timeout: the task runs on a daemon thread and is collected with `Future.get(timeout)`, then
-  cancelled.
-- A per-IP fixed-window rate limit, 10 requests per minute, applied by a filter scoped to `/api/*`
-  so health checks are never throttled. `X-Forwarded-For` is trusted only when explicitly enabled,
-  because a client can otherwise forge it.
-- CORS restricted to the configured frontend origin, `POST`/`OPTIONS` only.
-- Actuator exposes `health` and nothing else, with `show-details: never`.
+- **No output other than class files.** `getFileForOutput` throws, so `-s`, `-h` and any `Filer`
+  resource fail loudly instead of quietly writing a file relative to the working directory.
+- **Size caps that hold before anything is buffered.** `RequestSizeLimitFilter` refuses a body over
+  `compile.max-request-size` (256 KiB) on `Content-Length`, and wraps the stream in a counting one
+  for a chunked request that declares no length; Jackson's maximum string length is lowered to 70 KiB
+  for the body that stays small but declares one enormous field; `SourceValidator` then rejects a
+  source over 64 KiB before javac is invoked. The check used to live only in the service, on the
+  already-parsed string, which put an out-of-memory exit one request away.
+- **A per-IP fixed window rate limit,** 10 requests per minute, held in a Caffeine cache bounded to
+  10,000 clients and expiring with the window — a plain map grew with every address seen, which one
+  attacker with a large range turns into unbounded memory and an O(n) sweep per request. The key is
+  the address counted from the _right_ of `X-Forwarded-For`, `compile.rate-limit.trusted-proxy-hops`
+  entries in, and only when the header is explicitly trusted and the entry parses as an IP literal;
+  everything to the left of the trusted hop is written by the caller. Preflights are not counted, and
+  the filter is scoped to `/api/*` so health checks are never throttled.
+- **CORS ahead of the limiter.** The CORS filter runs at the highest precedence, before the rate
+  limit and the size cap, so a 429 or a 400 still carries `Access-Control-Allow-Origin` and the page
+  can read the error it caused; MVC's own CORS handling runs far too late for that. It allows the
+  configured origin only, `POST`/`OPTIONS` and `Content-Type`, and an `allowed-origin` of `*` is
+  rejected at start-up.
+- **One error shape.** Every failure leaves as `{ error, message }`. `ApiExceptionHandler` extends
+  `ResponseEntityExceptionHandler`, which is what brings the paths nobody thinks about — 404, 405,
+  415 — under that contract; without it Spring answers those with a `ProblemDetail` body the client's
+  zod schema rejects, and a wrong `Content-Type` reads as "the service is broken".
+- **No regex over untrusted source.** `SourceNames` finds the public top-level type in a single
+  linear scan that skips comments and literals. The regular expression it replaced recursed once per
+  repetition of a modifier list, so `"public " + "final ".repeat(3000)` raised a `StackOverflowError`
+  — which no `@RestControllerAdvice` can catch.
+- **Actuator exposes `health` and nothing else,** with `show-details: never`.
 
 On the client side, `compile-client.ts` validates every response with zod before it becomes a domain
 value and returns typed results instead of throwing. The editor renders only when
