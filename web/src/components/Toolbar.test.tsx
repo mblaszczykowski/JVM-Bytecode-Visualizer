@@ -30,16 +30,16 @@ describe('Toolbar', () => {
     expect(
       screen.getByRole('heading', { level: 1, name: 'JVM Bytecode Visualizer' }),
     ).toBeVisible();
-    expect(screen.getByRole('group', { name: 'Example programs' })).toBeInTheDocument();
+    expect(screen.getByRole('radiogroup', { name: 'Example programs' })).toBeInTheDocument();
     expect(screen.getByText('Open .class…')).toBeInTheDocument();
   });
 
   it('reports the selected example', () => {
     const { onExampleSelected } = renderToolbar();
 
-    expect(screen.getByRole('button', { name: 'Factorial', pressed: true })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'Factorial', checked: true })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Gcd' }));
+    fireEvent.click(screen.getByRole('radio', { name: 'Gcd' }));
 
     expect(onExampleSelected).toHaveBeenCalledWith('gcd');
   });

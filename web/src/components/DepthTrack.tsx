@@ -121,9 +121,10 @@ export function DepthTrack({ depths, stepIndex, onSeek, label, className = '' }:
   return (
     // The input that carries the focus is transparent, so the ring has to sit on the chart.
     <div className={`focus-ring-within relative h-11 grow rounded-md md:h-[34px] ${className}`}>
+      {/* Loud enough to read the shape of the recursion through the glass, still not chrome. */}
       <div
         aria-hidden="true"
-        className="absolute inset-x-0 top-0 bottom-[6px] flex items-end gap-px opacity-50"
+        className="absolute inset-x-0 top-0 bottom-[6px] flex items-end gap-px opacity-70"
       >
         {bars.map((bar) => {
           const inCurrentFrame =
@@ -134,7 +135,7 @@ export function DepthTrack({ depths, stepIndex, onSeek, label, className = '' }:
               key={bar.firstStep}
               data-testid="depth-bar"
               className={`min-h-[2px] flex-1 rounded-[1px] ${
-                inCurrentFrame ? 'bg-[rgb(108_178_255/0.65)]' : 'bg-white/16'
+                inCurrentFrame ? 'bg-[rgb(108_178_255/0.65)]' : 'bg-white/22'
               }`}
               style={{ height: `${String((bar.depth / maxDepth) * 100)}%` }}
             />
@@ -150,9 +151,13 @@ export function DepthTrack({ depths, stepIndex, onSeek, label, className = '' }:
           className="h-full rounded-full bg-accent shadow-scrubber"
           style={{ width: `${String(progress)}%` }}
         />
+        {/*
+          The handle is 18px wide, so its centre has to travel between 9px and 9px-from-the-end
+          rather than 0–100%; otherwise it hangs over both ends of the track.
+        */}
         <span
           className="absolute top-1/2 h-[18px] w-[18px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow-handle"
-          style={{ left: `${String(progress)}%` }}
+          style={{ left: `calc(9px + (100% - 18px) * ${String(progress / 100)})` }}
         />
       </div>
 

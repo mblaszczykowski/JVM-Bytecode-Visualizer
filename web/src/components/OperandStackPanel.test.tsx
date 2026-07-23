@@ -42,11 +42,12 @@ describe('OperandStackPanel', () => {
     render(
       <OperandStackPanel
         frame={frameWithValues}
-        annotations={['waiting for imul', '→ operand', '→ operand']}
+        annotations={['waiting for imul', '→ left', '→ right']}
       />,
     );
 
-    expect(within(cellAt(0)).getByText('→ operand')).toBeInTheDocument();
+    expect(within(cellAt(0)).getByText('→ right')).toBeInTheDocument();
+    expect(within(cellAt(1)).getByText('→ left')).toBeInTheDocument();
     expect(within(cellAt(2)).getByText('waiting for imul')).toBeInTheDocument();
   });
 

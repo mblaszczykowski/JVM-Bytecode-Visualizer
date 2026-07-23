@@ -1,5 +1,5 @@
-import { render, screen, within } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { fireEvent, render, screen, within } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
 
 import { commentsFor } from './__fixtures__/mock-derivations';
 import { mockFactorialMethod, mockUnsupportedMethod } from './__fixtures__/mock-history';
@@ -109,6 +109,74 @@ describe('BytecodePanel', () => {
 
     expect(screen.getAllByText('unsupported')).toHaveLength(2);
     expect(screen.getByTestId('current-instruction')).toHaveTextContent('getstatic');
+  });
+
+  it('colours only the operands that point elsewhere in the class file', () => {
+    render(
+      <BytecodePanel
+        methodName="loop"
+        methodDescriptor="(I)V"
+        maxStack={2}
+        maxLocals={2}
+        instructions={[
+          // iinc 1, 1 — a local slot and an immediate; neither refers to anything.
+          { offset: 0, opcode: 0x84, mnemonic: 'iinc', operands: [1, 1] },
+          { offset: 3, opcode: 0xb8, mnemonic: 'invokestatic', operands: [7] },
+          { offset: 6, opcode: 0xa7, mnemonic: 'goto', operands: [-6], branchTarget: 0 },
+        ]}
+        currentOffset={undefined}
+      />,
+    );
+
+    const accented = (text: string): boolean =>
+      screen.getAllByText(text).some((node) => node.className.includes('text-accent-dim'));
+
+    expect(accented('#7')).toBe(true);
+    expect(accented('0')).toBe(true);
+    // Two `1`s on the iinc row: the slot and the increment, both plain numbers.
+    expect(accented('1')).toBe(false);
+  });
+
+  it('seeks to the first step at a row, by pointer and by keyboard', () => {
+    const onSeek = vi.fn();
+    render(
+      <BytecodePanel
+        methodName={mockFactorialMethod.name}
+        methodDescriptor={mockFactorialMethod.descriptor}
+        maxStack={mockFactorialMethod.maxStack}
+        maxLocals={mockFactorialMethod.maxLocals}
+        instructions={mockFactorialMethod.instructions}
+        currentOffset={0}
+        stepForOffset={new Map([[11, 9]])}
+        onSeek={onSeek}
+      />,
+    );
+
+    // Only the offsets the run reached are seekable; the rest are read-only rows.
+    const targets = screen.getAllByRole('button');
+    expect(targets).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Go to pc 11, invokestatic' }));
+    expect(onSeek).toHaveBeenCalledWith(9);
+  });
+
+  it('explains any mnemonic on hover, including the rows this run never reached', () => {
+    render(
+      <BytecodePanel
+        methodName={mockFactorialMethod.name}
+        methodDescriptor={mockFactorialMethod.descriptor}
+        maxStack={mockFactorialMethod.maxStack}
+        maxLocals={mockFactorialMethod.maxLocals}
+        instructions={mockFactorialMethod.instructions}
+        currentOffset={undefined}
+        help={new Map([['imul', 'Pops two ints and pushes their product.']])}
+      />,
+    );
+
+    expect(screen.getByText('imul').closest('li')).toHaveAttribute(
+      'title',
+      'Pops two ints and pushes their product.',
+    );
   });
 
   it('reports the rest of the method as undecoded after a variable-length instruction', () => {

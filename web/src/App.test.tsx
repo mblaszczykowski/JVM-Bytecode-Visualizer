@@ -23,12 +23,12 @@ const COMPILE_URL = `${COMPILE_API}/api/compile`;
 /** Renders the app and waits for the manifest to arrive. */
 async function openApp(compileApiUrl?: string) {
   render(<App compileApiUrl={compileApiUrl} />);
-  await screen.findByRole('button', { name: 'Factorial' });
+  await screen.findByRole('radio', { name: 'Factorial' });
 }
 
 async function openFactorial() {
   await openApp();
-  fireEvent.click(screen.getByRole('button', { name: 'Factorial' }));
+  fireEvent.click(screen.getByRole('radio', { name: 'Factorial' }));
   await screen.findByTestId('step-counter');
 }
 
@@ -98,6 +98,32 @@ describe('welcome screen', () => {
     expect(screen.getAllByTestId('file-drop-zone').length).toBeGreaterThan(0);
   });
 
+  it('shows a one-line tagline on every card, not a truncated description', async () => {
+    stubFetch(exampleRoutes());
+    await openApp();
+
+    const [factorial] = screen.getAllByTestId('welcome-example');
+
+    expect(factorial).toHaveTextContent('Five frames deep and back: 4! = 24.');
+    // The long text belongs to the toolbar tooltip, not to the card.
+    expect(factorial).not.toHaveTextContent('the clearest way to see');
+    expect(screen.getByRole('radio', { name: 'Factorial' })).toHaveAttribute(
+      'title',
+      expect.stringContaining('the clearest way to see'),
+    );
+  });
+
+  it('measures each example so the cards say how long the run is and how deep it goes', async () => {
+    stubFetch(exampleRoutes());
+    await openApp();
+
+    const factorial = screen.getAllByTestId('welcome-example')[0] ?? document.body;
+    await waitFor(() => {
+      expect(factorial).toHaveTextContent('40 steps · depth 5');
+    });
+    expect(within(factorial).getAllByTestId('welcome-sparkline-bar')).toHaveLength(32);
+  });
+
   it('reports a manifest the schema rejects and still renders', async () => {
     stubFetch({
       [exampleUrl(MANIFEST_FILE)]: () => okResponse({ json: { version: 1, examples: [] } }),
@@ -125,7 +151,7 @@ describe('welcome screen', () => {
     expect(screen.getByTestId('current-instruction')).toBeInTheDocument();
     // Only the examples are gone, and the banner says so.
     expect(screen.getByTestId('error-banner')).toHaveTextContent('Could not download');
-    expect(screen.queryByRole('button', { name: 'Factorial' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('radio', { name: 'Factorial' })).not.toBeInTheDocument();
   });
 });
 
@@ -157,8 +183,13 @@ describe('running an example', () => {
     expect(chain.getByText('#7')).toBeInTheDocument();
     expect(chain.getByText('Methodref')).toBeInTheDocument();
     expect(chain.getByText('Factorial.factorial:(I)I')).toBeInTheDocument();
+    // The card resolves the call, not just the premise: where control goes and where it
+    // comes back to.
     expect(
-      screen.getByText('Pops 4 and calls factorial(I)I with it in slot 0.'),
+      screen.getByText(
+        'Pops 4 and calls factorial(I)I with it in slot 0 — the callee starts at pc 0 and ' +
+          'main resumes at pc 4.',
+      ),
     ).toBeInTheDocument();
   });
 
@@ -189,12 +220,55 @@ describe('running an example', () => {
     expect(locals.getByText('24')).toBeInTheDocument();
   });
 
+  it('ends on the result rather than on three empty panels', async () => {
+    stubFetch(exampleRoutes());
+    await openFactorial();
+
+    seekTo(FACTORIAL_STEPS - 1);
+
+    const card = within(screen.getByTestId('completion-card'));
+    expect(card.getByText('result')).toBeInTheDocument();
+    expect(card.getByText('24')).toBeInTheDocument();
+    expect(card.getByText('40')).toBeInTheDocument();
+    expect(card.getByText('5 frames')).toBeInTheDocument();
+    expect(card.getByText(/Matches the value a real JVM computed/)).toBeInTheDocument();
+
+    // The frame that produced it is still described, instead of blanking with the stack.
+    const locals = within(screen.getByRole('region', { name: 'Locals' }));
+    expect(locals.getByText('result')).toBeInTheDocument();
+    expect(locals.getByText('24')).toBeInTheDocument();
+    expect(screen.getByText('Left behind by main')).toBeInTheDocument();
+  });
+
+  it('seeks to the first step at an instruction when its row is clicked', async () => {
+    stubFetch(exampleRoutes());
+    await openFactorial();
+    seekTo(20);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Go to pc 11, invokestatic' }));
+
+    expect(screen.getByTestId('step-counter')).toHaveTextContent(
+      `step 10 / ${String(FACTORIAL_STEPS)}`,
+    );
+    expect(screen.getByTestId('current-instruction')).toHaveTextContent('invokestatic');
+  });
+
+  it('seeks to the first step on a source line when its row is clicked', async () => {
+    stubFetch(exampleRoutes());
+    await openFactorial();
+    seekTo(20);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Go to line 27' }));
+
+    expect(screen.getByTestId('current-source-line')).toHaveTextContent('return 1;');
+  });
+
   it('rewinds to the first step when another example is chosen', async () => {
     stubFetch(exampleRoutes());
     await openFactorial();
     seekTo(20);
 
-    fireEvent.click(screen.getByRole('button', { name: 'GCD' }));
+    fireEvent.click(screen.getByRole('radio', { name: 'GCD' }));
 
     await waitFor(() => {
       expect(screen.getByTestId('step-counter')).toHaveTextContent('step 1 / 43');
@@ -207,7 +281,7 @@ describe('running an example', () => {
     stubFetch({ ...routes, [exampleUrl('Factorial.class')]: () => statusResponse(503) });
     await openApp();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Factorial' }));
+    fireEvent.click(screen.getByRole('radio', { name: 'Factorial' }));
 
     expect(await screen.findByTestId('error-banner')).toHaveTextContent('the server answered 503');
     expect(screen.getAllByTestId('welcome-example')).toHaveLength(4);
@@ -259,9 +333,27 @@ describe('uploads', () => {
       'Not a .class file: expected the 0xcafebabe header',
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Factorial' }));
+    fireEvent.click(screen.getByRole('radio', { name: 'Factorial' }));
     await screen.findByTestId('step-counter');
     expect(screen.queryByTestId('error-banner')).not.toBeInTheDocument();
+  });
+
+  it('reports the rejection next to the drop zone, and lets it be dismissed', async () => {
+    stubFetch(exampleRoutes());
+    await openApp();
+
+    chooseFile(uploadFile('notes.txt', new TextEncoder().encode('just some text')));
+
+    // The welcome screen owns the whole grid, so the message belongs inside it — not pinned
+    // to the bottom of the shell, half a screen away from the zone that produced it.
+    const banner = await screen.findByTestId('error-banner');
+    expect(banner.closest('footer')).toBeNull();
+    expect(screen.getByTestId('welcome-screen')).toContainElement(banner);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss this message' }));
+
+    expect(screen.queryByTestId('error-banner')).not.toBeInTheDocument();
+    expect(screen.getAllByTestId('welcome-example')).toHaveLength(4);
   });
 
   it('rejects a file over the size limit', async () => {
@@ -522,7 +614,7 @@ describe('the compile editor', () => {
   it('returns to what was on screen before when Escape closes it', async () => {
     stubFetch(compileRoutes(compiledGcd));
     await openApp(COMPILE_API);
-    fireEvent.click(screen.getByRole('button', { name: 'Factorial' }));
+    fireEvent.click(screen.getByRole('radio', { name: 'Factorial' }));
     await screen.findByTestId('step-counter');
 
     await openEditor();
@@ -542,7 +634,7 @@ describe('the compile editor', () => {
     await openApp(COMPILE_API);
     await openEditor();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Factorial' }));
+    fireEvent.click(screen.getByRole('radio', { name: 'Factorial' }));
 
     expect(await screen.findByTestId('step-counter')).toBeInTheDocument();
     expect(screen.queryByTestId('compile-editor')).not.toBeInTheDocument();
@@ -551,7 +643,7 @@ describe('the compile editor', () => {
   it('lets the editor keep the keys the transport also listens for', async () => {
     stubFetch(compileRoutes(compiledGcd));
     await openApp(COMPILE_API);
-    fireEvent.click(screen.getByRole('button', { name: 'Factorial' }));
+    fireEvent.click(screen.getByRole('radio', { name: 'Factorial' }));
     await screen.findByTestId('step-counter');
     const textarea = await openEditor();
 

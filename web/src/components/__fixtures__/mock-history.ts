@@ -326,8 +326,28 @@ export function mockSnapshotAt(index: number): Snapshot {
 
 /** Example programs — at mock stage they only populate the toolbar picker. */
 export const mockExamples: readonly ExampleOption[] = [
-  { id: 'factorial', name: 'Factorial', description: 'Recursion — factorial(4) = 24' },
-  { id: 'fibonacci', name: 'Fibonacci', description: 'Branching recursion — fib(7) = 13' },
-  { id: 'sum-of-squares', name: 'SumOfSquares', description: 'Nested for loops — 441' },
-  { id: 'gcd', name: 'Gcd', description: 'while loop + irem — gcd(1071, 462) = 21' },
+  {
+    id: 'factorial',
+    name: 'Factorial',
+    tagline: 'Five frames deep and back.',
+    description: 'Recursion — factorial(4) = 24',
+  },
+  {
+    id: 'fibonacci',
+    name: 'Fibonacci',
+    tagline: 'Every call splits in two.',
+    description: 'Branching recursion — fib(7) = 13',
+  },
+  {
+    id: 'sum-of-products',
+    name: 'SumOfProducts',
+    tagline: 'Flat stack, long run.',
+    description: 'Nested for loops — 441',
+  },
+  {
+    id: 'gcd',
+    name: 'Gcd',
+    tagline: "Euclid's loop on (1071, 462).",
+    description: 'while loop + irem — gcd(1071, 462) = 21',
+  },
 ];

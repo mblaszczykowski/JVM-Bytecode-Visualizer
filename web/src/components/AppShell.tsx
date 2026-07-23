@@ -5,6 +5,8 @@ interface AppShellProps {
   /** The three panels of the grid: Source, Bytecode, State. */
   readonly children: ReactNode;
   readonly footer: ReactNode;
+  /** Drawn over everything while a file is dragged across the window. */
+  readonly isDropTarget?: boolean;
 }
 
 /**
@@ -17,13 +19,29 @@ interface AppShellProps {
  * Below 768px the glass gives up its margin and its corners and fills the screen; the caller
  * shows one panel at a time, so the grid drops to a single cell.
  */
-export function AppShell({ toolbar, children, footer }: AppShellProps) {
+export function AppShell({ toolbar, children, footer, isDropTarget = false }: AppShellProps) {
   return (
     <div className="p-0 md:p-4 xl:p-[28px]">
       <div
         data-testid="app-shell"
-        className="flex h-dvh min-h-0 flex-col rounded-none border-white/12 bg-shell shadow-shell backdrop-blur-[40px] backdrop-saturate-[1.8] md:h-[calc(100dvh-32px)] md:rounded-shell md:border xl:h-[calc(100dvh-56px)]"
+        className="relative flex h-dvh min-h-0 flex-col rounded-none border-white/12 bg-shell shadow-shell backdrop-blur-[40px] backdrop-saturate-[1.8] md:h-[calc(100dvh-32px)] md:rounded-shell md:border xl:h-[calc(100dvh-56px)]"
       >
+        {/*
+          The whole sheet is the drop target, so a file does not have to be aimed at the small
+          zone. Pointer events stay off: the drop is handled on the window, not here.
+        */}
+        {isDropTarget ? (
+          <div
+            data-testid="drop-overlay"
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center rounded-[inherit] bg-app/70 shadow-[inset_0_0_0_2px_rgb(10_132_255/0.55)] backdrop-blur-[2px]"
+          >
+            <p className="rounded-row bg-accent/[0.22] px-[18px] py-[11px] text-[13px] text-accent-text shadow-current">
+              Drop a .class file to run it
+            </p>
+          </div>
+        ) : null}
+
         {toolbar}
 
         {/*

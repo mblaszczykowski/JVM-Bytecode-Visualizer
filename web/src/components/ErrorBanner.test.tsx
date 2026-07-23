@@ -44,6 +44,29 @@ describe('ErrorBanner', () => {
     expect(onAction).toHaveBeenCalledTimes(1);
   });
 
+  it('writes the severity as a word, not as spaced-out capitals', () => {
+    render(<ErrorBanner severity="error" message="Something went wrong." />);
+
+    const label = screen.getByText('Error');
+
+    expect(label.className).not.toMatch(/uppercase|tracking-/);
+  });
+
+  it('can be closed when the caller offers a way back', () => {
+    const onDismiss = vi.fn();
+    render(<ErrorBanner severity="error" message="Not a .class file." onDismiss={onDismiss} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss this message' }));
+
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it('has no dismiss button when there is nothing to dismiss to', () => {
+    render(<ErrorBanner severity="error" message="Not a .class file." />);
+
+    expect(screen.queryByRole('button', { name: 'Dismiss this message' })).not.toBeInTheDocument();
+  });
+
   it('renders the informational variant', () => {
     render(<ErrorBanner severity="info" message="Demo data." />);
 

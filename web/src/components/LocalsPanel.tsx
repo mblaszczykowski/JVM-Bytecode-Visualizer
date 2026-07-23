@@ -10,6 +10,8 @@ interface LocalsPanelProps {
   readonly frame: StackFrame | undefined;
   /** Depth of that frame — a different depth is a different set of variables. */
   readonly frameIndex?: number;
+  /** Replaces the slot count in the header when the panel is showing a frame that is gone. */
+  readonly caption?: string | undefined;
 }
 
 /** `undefined` in the contract means "not initialised yet", not zero. */
@@ -57,13 +59,13 @@ function usePulses(frameIndex: number, locals: Locals): readonly number[] {
   return tracked.pulses;
 }
 
-export function LocalsPanel({ frame, frameIndex = 0 }: LocalsPanelProps) {
+export function LocalsPanel({ frame, frameIndex = 0, caption }: LocalsPanelProps) {
   const reduced = useReducedMotion() ?? false;
   const pulses = usePulses(frameIndex, frame?.locals ?? NO_LOCALS);
 
   if (frame === undefined) {
     return (
-      <Panel title="Locals" meta="—" variant="state" scrolls={false}>
+      <Panel title="Locals" meta="—" variant="state" bodyFill="capped">
         <p className="px-[18px] py-3 text-[12px] text-white/55">No active frame.</p>
       </Panel>
     );
@@ -72,7 +74,12 @@ export function LocalsPanel({ frame, frameIndex = 0 }: LocalsPanelProps) {
   const { locals, localNames } = frame;
 
   return (
-    <Panel title="Locals" meta={`${String(locals.length)} slots`} variant="state" scrolls={false}>
+    <Panel
+      title="Locals"
+      meta={caption ?? `${String(locals.length)} slots`}
+      variant="state"
+      bodyFill="capped"
+    >
       {locals.length === 0 ? (
         <p className="px-[23px] py-2 text-[12px] text-white/55">no local slots</p>
       ) : (

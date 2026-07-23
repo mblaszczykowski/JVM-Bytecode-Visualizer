@@ -42,4 +42,21 @@ describe('FileUpload', () => {
     expect(zone).toHaveAttribute('data-dragging', 'false');
     expect(onFileSelected).not.toHaveBeenCalled();
   });
+
+  it('stays highlighted while the pointer crosses the elements inside the zone', () => {
+    render(<FileUpload onFileSelected={vi.fn()} variant="zone" />);
+
+    const zone = screen.getByTestId('file-drop-zone');
+    const label = screen.getByText('Open .class…');
+
+    // A drag entering a child fires `dragleave` on the parent first; counting the two
+    // against each other is what stops the highlight flickering on every element crossed.
+    fireEvent.dragEnter(zone);
+    fireEvent.dragEnter(label);
+    fireEvent.dragLeave(zone);
+    expect(zone).toHaveAttribute('data-dragging', 'true');
+
+    fireEvent.dragLeave(label);
+    expect(zone).toHaveAttribute('data-dragging', 'false');
+  });
 });

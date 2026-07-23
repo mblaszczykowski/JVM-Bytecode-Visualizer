@@ -3,6 +3,7 @@ import { Panel } from './Panel';
 import { CODE_ROW } from './rhythm';
 import { TOKEN_CLASS, tokenizeJava } from './syntax';
 import { Pill } from './ui/Pill';
+import { useRowNavigation } from './useRowNavigation';
 import { useScrollFollow } from './useScrollFollow';
 
 interface SourcePanelProps {
@@ -18,6 +19,9 @@ interface SourcePanelProps {
   readonly pcRange?: { readonly from: number; readonly to: number } | undefined;
   /** How the current line was chosen — spells out the LineNumberTable rule. */
   readonly lineMappingNote?: string | undefined;
+  /** First step of the run that reached each line; a line without one cannot be sought to. */
+  readonly stepForLine?: ReadonlyMap<number, number> | undefined;
+  readonly onSeek?: ((step: number) => void) | undefined;
   /** Slide the highlight between lines; switched off above 4× playback. */
   readonly animateHighlight?: boolean;
   readonly className?: string;
@@ -29,12 +33,15 @@ export function SourcePanel({
   currentLine,
   pcRange,
   lineMappingNote,
+  stepForLine,
+  onSeek,
   animateHighlight = false,
   className = '',
 }: SourcePanelProps) {
   const currentIndex = currentLine === undefined ? undefined : currentLine - 1;
   const isMapped = currentIndex !== undefined && currentIndex >= 0 && currentIndex < lines.length;
   const contentRef = useScrollFollow(isMapped ? currentIndex : undefined);
+  const rows = useRowNavigation(lines.length, isMapped ? currentIndex : undefined);
 
   // Anything that does not fit on a code row goes to the footer rather than growing the row.
   const footer = !isMapped ? undefined : (
@@ -56,6 +63,9 @@ export function SourcePanel({
       meta={fileName}
       contentRef={contentRef}
       footer={footer}
+      // A long line is cut by the panel edge; the fade says so instead of letting it end
+      // mid-word as if the text were complete.
+      bodyClassName="fade-right"
       className={className}
     >
       {/* `isolate` keeps the highlight's negative z-index from sinking below the panel. */}
@@ -63,6 +73,7 @@ export function SourcePanel({
         {lines.map((line, index) => {
           const lineNumber = index + 1;
           const isCurrent = lineNumber === currentLine;
+          const step = stepForLine?.get(lineNumber);
 
           return (
             <li
@@ -92,6 +103,23 @@ export function SourcePanel({
                   </span>
                 ))}
               </span>
+
+              {step === undefined || onSeek === undefined ? null : (
+                <button
+                  type="button"
+                  data-row-index={index}
+                  tabIndex={index === rows.anchorIndex ? 0 : -1}
+                  aria-label={`Go to line ${String(lineNumber)}`}
+                  onClick={() => {
+                    onSeek(step);
+                  }}
+                  onKeyDown={(event) => {
+                    rows.onKeyDown(event, index);
+                  }}
+                  // The row is already drawn; this only has to be the target you can hit.
+                  className="focus-ring absolute inset-0 rounded-code"
+                />
+              )}
             </li>
           );
         })}

@@ -87,11 +87,13 @@ export function TransportControls({
         >
           <StepBackIcon />
         </Segment>
+        {/* Raised at rest as well as when playing: it is the primary action of the screen. */}
         <Segment
           label={isPlaying ? 'Pause' : 'Play'}
           title="Play / pause (space)"
           selected={isPlaying}
           tone="inverted"
+          prominent
           onClick={onTogglePlay}
           className="h-11 w-12 md:h-8 md:w-[46px]"
         >
@@ -108,9 +110,13 @@ export function TransportControls({
         </Segment>
       </SegmentedControl>
 
+      {/*
+        The label carries the value: an aria-label overrides the visible `1×`, so without it
+        a screen reader is told there is a speed control but never told what it is set to.
+      */}
       <button
         type="button"
-        aria-label="Playback speed"
+        aria-label={`Playback speed ${String(speed)}×`}
         title="Playback speed — click to cycle 0.5× to 8×"
         onClick={() => {
           onSpeedChange(nextSpeed(speed));
@@ -128,8 +134,13 @@ export function TransportControls({
         className="order-last basis-full md:order-none md:basis-auto"
       />
 
+      {/*
+        `<output>` is a live region by default, which at 8× is thirteen announcements a
+        second. It goes quiet while playing and reports the position again on pause.
+      */}
       <output
         data-testid="step-counter"
+        aria-live={isPlaying ? 'off' : 'polite'}
         className="shrink-0 font-mono text-[12px] text-white/60 tabular-nums"
       >
         step {stepIndex + 1} / {stepCount}

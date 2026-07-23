@@ -18,7 +18,12 @@
       property="og:description"
       content="Watch a Java program run, one bytecode instruction at a time — call stack, operand stack and locals, replayable like a video."
     />
-    <meta property="og:image" content="docs/screenshots/app-ready.png" />
+    <!--
+      Root-relative so it resolves under any host. Facebook, X and Slack all require an
+      ABSOLUTE URL here, so replace it with https://<deployed-domain>/og-image.png once the
+      domain is fixed — the preview stays blank until then.
+    -->
+    <meta property="og:image" content="/og-image.png" />
     <meta name="twitter:card" content="summary_large_image" />
   </head>
   <body>

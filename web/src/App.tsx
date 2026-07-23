@@ -13,7 +13,9 @@ import { Toolbar, type CompilerStatus, type PanelName } from './components/Toolb
 import { TransportControls } from './components/TransportControls';
 import { WelcomeScreen, type WelcomeExample } from './components/WelcomeScreen';
 import type { Snapshot, StackFrame } from './core/interpreter';
+import { useExamplePreviews } from './hooks/useExamplePreviews';
 import { useExecutionPlayer } from './hooks/useExecutionPlayer';
+import { useFileDropGuard } from './hooks/useFileDropGuard';
 import { useTransportShortcuts } from './hooks/useTransportShortcuts';
 import {
   appReducer,
@@ -39,15 +41,20 @@ import {
   constantPoolComments,
   describeNextInstruction,
   describeOperandRoles,
+  explainMnemonic,
 } from './services/derivations';
 import { describeAppError, describeCompileFailure, toAppError } from './services/errors';
 import { fetchExampleManifest, shortTitleOf } from './services/examples';
 import {
   deadOffsetsOf,
   depthsOf,
+  firstStepByLine,
+  firstStepByOffset,
+  lastLiveSnapshot,
   lineMappingNote,
   listingFor,
   offsetsForLine,
+  runSummaryOf,
   topFrameOf,
 } from './services/program';
 
@@ -103,6 +110,8 @@ export function App({ compileApiUrl = compileApiBaseUrl() }: AppProps = {}) {
   /** Kept outside the model so closing and reopening the editor does not throw the draft away. */
   const [draft, setDraft] = useState(SEED_SOURCE);
   const [visiblePanel, setVisiblePanel] = useState<PanelName>('bytecode');
+  /** Message of the banner the reader closed, so the same one does not come straight back. */
+  const [dismissed, setDismissed] = useState<string | undefined>(undefined);
 
   const tokenRef = useRef(0);
   const issueToken = useCallback(() => {
@@ -184,6 +193,10 @@ export function App({ compileApiUrl = compileApiBaseUrl() }: AppProps = {}) {
     [startLoad],
   );
 
+  // Without this a file dropped anywhere but the small zone navigates the tab away from the
+  // app, taking the loaded run with it.
+  const isDropTarget = useFileDropGuard(selectFile);
+
   const openEditor = useCallback(() => {
     dispatch({ kind: 'editor-opened' });
   }, []);
@@ -244,11 +257,14 @@ export function App({ compileApiUrl = compileApiBaseUrl() }: AppProps = {}) {
     onSeekToEnd: seekToEnd,
   });
 
+  const previews = useExamplePreviews(examples);
+
   const exampleOptions: readonly ExampleOption[] = useMemo(
     () =>
       examples.map((entry) => ({
         id: entry.id,
         name: shortTitleOf(entry),
+        tagline: entry.tagline,
         description: entry.description,
       })),
     [examples],
@@ -258,9 +274,10 @@ export function App({ compileApiUrl = compileApiBaseUrl() }: AppProps = {}) {
       examples.map((entry) => ({
         id: entry.id,
         title: entry.title,
-        description: entry.description,
+        tagline: entry.tagline,
+        preview: previews.get(entry.id),
       })),
-    [examples],
+    [examples, previews],
   );
 
   const listing = program === undefined ? undefined : listingFor(program, snapshot);
@@ -306,6 +323,24 @@ export function App({ compileApiUrl = compileApiBaseUrl() }: AppProps = {}) {
     [snapshot, listing, program],
   );
 
+  // Click-to-seek: both code panels know their rows by offset and by line, so the run only
+  // has to be indexed the same way once per program.
+  const stepForOffset = useMemo(() => firstStepByOffset(snapshots, listing), [snapshots, listing]);
+  const stepForLine = useMemo(() => firstStepByLine(snapshots), [snapshots]);
+  const mnemonicHelp = useMemo(() => {
+    const help = new Map<string, string>();
+    for (const instruction of listing?.instructions ?? []) {
+      const explanation = explainMnemonic(instruction.mnemonic);
+      if (explanation !== undefined) {
+        help.set(instruction.mnemonic, explanation);
+      }
+    }
+    return help;
+  }, [listing]);
+
+  const summary = program === undefined ? undefined : runSummaryOf(program);
+  const lastLive = useMemo(() => lastLiveSnapshot(snapshots), [snapshots]);
+
   const failure = state.status === 'error' ? describeAppError(state.error) : undefined;
   const examplesError = examplesErrorOf(model.examples);
   const examplesFailure = examplesError === undefined ? undefined : describeAppError(examplesError);
@@ -326,7 +361,14 @@ export function App({ compileApiUrl = compileApiBaseUrl() }: AppProps = {}) {
 
   // The compile attempt is the newer event, so its banner wins over a stale run failure;
   // examples that never arrived are the oldest news of the three.
-  const notice = compileNotice ?? failure ?? examplesFailure;
+  const raised = compileNotice ?? failure ?? examplesFailure;
+  // A message stays dismissed until a different one takes its place — no effect needed, the
+  // text of the current notice is the identity of the current notice.
+  const notice = raised?.message === dismissed ? undefined : raised;
+  const dismissNotice = useCallback(() => {
+    setDismissed(raised?.message);
+  }, [raised]);
+
   const raiseLimit = useMemo(
     () =>
       compileNotice !== undefined || nextStepLimit === undefined || program === undefined
@@ -341,6 +383,18 @@ export function App({ compileApiUrl = compileApiBaseUrl() }: AppProps = {}) {
           },
     [compileNotice, nextStepLimit, program, startLoad],
   );
+
+  /**
+   * A failed upload belongs next to the drop zone that caused it, not 500px away at the foot
+   * of the shell. Once there is a run on screen the grid owns that space, so a run failure
+   * goes back to the footer, right above the transport it still applies to.
+   */
+  const showsWelcome = editor.kind === 'closed' && state.status !== 'loading' && !canReplay;
+  const welcomeNotice =
+    showsWelcome && notice !== undefined
+      ? { severity: notice.severity, message: notice.message, onDismiss: dismissNotice }
+      : undefined;
+  const footerNotice = showsWelcome ? undefined : notice;
 
   return (
     <AppShell
@@ -360,14 +414,16 @@ export function App({ compileApiUrl = compileApiBaseUrl() }: AppProps = {}) {
           }
         />
       }
+      isDropTarget={isDropTarget}
       footer={
         <>
-          {notice === undefined ? null : (
+          {footerNotice === undefined ? null : (
             <div className="px-[18px] pt-[14px]">
               <ErrorBanner
-                severity={notice.severity}
-                message={notice.message}
+                severity={footerNotice.severity}
+                message={footerNotice.message}
                 action={raiseLimit}
+                onDismiss={dismissNotice}
               />
             </div>
           )}
@@ -417,6 +473,8 @@ export function App({ compileApiUrl = compileApiBaseUrl() }: AppProps = {}) {
             currentLine={snapshot?.sourceLine}
             pcRange={pcRange}
             lineMappingNote={mappingNote}
+            stepForLine={stepForLine}
+            onSeek={seekTo}
             animateHighlight={smoothHighlight}
             className={visibilityOf('source', visiblePanel)}
           />
@@ -431,6 +489,9 @@ export function App({ compileApiUrl = compileApiBaseUrl() }: AppProps = {}) {
             deadOffsets={deadOffsets}
             truncatedAtOffset={listing.truncatedAtOffset}
             next={next}
+            help={mnemonicHelp}
+            stepForOffset={stepForOffset}
+            onSeek={seekTo}
             animateHighlight={smoothHighlight}
             isPlaying={player.isPlaying}
             className={visibilityOf('bytecode', visiblePanel)}
@@ -438,6 +499,8 @@ export function App({ compileApiUrl = compileApiBaseUrl() }: AppProps = {}) {
           <StateColumn
             frames={snapshot?.callStack ?? NO_FRAMES}
             operandAnnotations={operandRoles}
+            lastLiveFrames={lastLive?.callStack}
+            summary={summary}
             className={`md:col-span-2 lg:col-span-1 ${visibilityOf('state', visiblePanel)}`}
           />
         </ErrorBoundary>
@@ -447,6 +510,7 @@ export function App({ compileApiUrl = compileApiBaseUrl() }: AppProps = {}) {
           onExampleSelected={selectExample}
           onFileSelected={selectFile}
           onWriteJava={writeJava}
+          notice={welcomeNotice}
         />
       )}
     </AppShell>

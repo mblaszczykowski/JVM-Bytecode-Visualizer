@@ -111,12 +111,16 @@ const SUPPORTED_SIGNATURE = /^(?:\w+\s+)*?(?:int|void)\s+\w+\(\s*(?:int(?:\s*,\s
 /**
  * Examples in the order they are presented in the UI. Each `id` must match the key printed by
  * the harness — the script checks this, so a name mismatch fails the build, not a test.
+ *
+ * `tagline` is the one line the welcome card shows; `description` is the longer text behind
+ * the toolbar tooltip. Two fields rather than one truncated string, so neither is cut mid-word.
  */
 const EXAMPLES = Object.freeze([
   {
     id: 'factorial',
     className: 'Factorial',
     title: 'Factorial — recursion',
+    tagline: 'Five frames deep and back: 4! = 24.',
     description:
       'Recursive 4! = 24. Watch the call stack grow to five frames (main plus four calls) ' +
       'and unwind again, multiplying results on the way back — the clearest way to see how ' +
@@ -126,24 +130,27 @@ const EXAMPLES = Object.freeze([
     id: 'fibonacci',
     className: 'Fibonacci',
     title: 'Fibonacci — branching recursion',
+    tagline: 'Every call splits in two: fib(7) = 13.',
     description:
       'Naive fib(7) = 13. Every call branches into two more, so the stack grows and unwinds ' +
       'dozens of times. A vivid look at the cost of naive recursion: the same subproblems ' +
       'are recomputed from scratch again and again.',
   },
   {
-    id: 'sum-of-squares',
-    className: 'SumOfSquares',
+    id: 'sum-of-products',
+    className: 'SumOfProducts',
     title: 'Sum of products — nested for loops',
+    tagline: 'Flat stack, long run: Σ i·j over a 6×6 grid.',
     description:
-      'Sum of i*j over a 6x6 grid (the diagonal holds the squares, hence the name). A flat ' +
-      'call stack but hundreds of steps: it showcases iinc (incrementing a counter in place, ' +
-      'without touching the operand stack), the if_icmpgt condition and the backward goto.',
+      'Sum of i*j over a 6x6 grid. A flat call stack but hundreds of steps: it showcases ' +
+      'iinc (incrementing a counter in place, without touching the operand stack), the ' +
+      'if_icmpgt condition and the backward goto.',
   },
   {
     id: 'gcd',
     className: 'Gcd',
     title: 'GCD — while loop and remainder',
+    tagline: "Euclid's loop on (1071, 462) = 21.",
     description:
       "Euclid's algorithm for (1071, 462) = 21. A loop driven by a condition rather than a " +
       'counter: instead of iinc there is ifne on the remainder (irem), plus values being ' +
@@ -396,6 +403,7 @@ function writeArtifacts(classesDir, expectedResults) {
     return {
       id: example.id,
       title: example.title,
+      tagline: example.tagline,
       description: example.description,
       classFile,
       sourceFile,

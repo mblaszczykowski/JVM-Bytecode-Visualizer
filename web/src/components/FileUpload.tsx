@@ -1,4 +1,4 @@
-import { type ChangeEvent, type DragEvent, useId, useState } from 'react';
+import { type ChangeEvent, type DragEvent, useId, useRef, useState } from 'react';
 
 /** `compact` is the toolbar pill; `zone` is the drop target on the welcome screen. */
 export type FileUploadVariant = 'compact' | 'zone';
@@ -22,6 +22,12 @@ const IDLE_SURFACE: Record<FileUploadVariant, string> = {
 export function FileUpload({ onFileSelected, variant = 'compact' }: FileUploadProps) {
   const inputId = useId();
   const [isDragging, setIsDragging] = useState(false);
+  /**
+   * Dragging over a child fires `dragleave` on the parent before `dragenter` on the child,
+   * so a naive flag flickers off and on for every element the pointer crosses. Counting
+   * enters against leaves means only the drag actually leaving the zone turns it off.
+   */
+  const depth = useRef(0);
 
   function handleInputChange(event: ChangeEvent<HTMLInputElement>): void {
     const file = event.target.files?.[0];
@@ -32,11 +38,19 @@ export function FileUpload({ onFileSelected, variant = 'compact' }: FileUploadPr
 
   function handleDrop(event: DragEvent<HTMLDivElement>): void {
     event.preventDefault();
+    // The window guard catches everything dropped outside a zone; this one is a zone.
+    event.stopPropagation();
+    depth.current = 0;
     setIsDragging(false);
     const file = event.dataTransfer.files[0];
     if (file !== undefined) {
       onFileSelected(file);
     }
+  }
+
+  function handleDragEnter(): void {
+    depth.current += 1;
+    setIsDragging(true);
   }
 
   function handleDragOver(event: DragEvent<HTMLDivElement>): void {
@@ -45,7 +59,10 @@ export function FileUpload({ onFileSelected, variant = 'compact' }: FileUploadPr
   }
 
   function handleDragLeave(): void {
-    setIsDragging(false);
+    depth.current = Math.max(0, depth.current - 1);
+    if (depth.current === 0) {
+      setIsDragging(false);
+    }
   }
 
   return (
@@ -54,6 +71,7 @@ export function FileUpload({ onFileSelected, variant = 'compact' }: FileUploadPr
       data-variant={variant}
       data-dragging={isDragging}
       onDrop={handleDrop}
+      onDragEnter={handleDragEnter}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       // The input itself is `sr-only`, so the focus ring has to be drawn around the label.

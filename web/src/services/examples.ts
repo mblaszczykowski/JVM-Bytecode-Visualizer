@@ -77,6 +77,11 @@ export async function fetchExampleManifest(): Promise<ExampleManifest> {
   return parsed.data;
 }
 
+/** Just the bytes — the welcome screen previews a run without needing the source next to it. */
+export function fetchExampleClass(entry: ExampleEntry): Promise<ArrayBuffer> {
+  return fetchBinary(exampleUrl(entry.classFile));
+}
+
 /** The `.class` and its `.java` source; both are needed before anything can be shown. */
 export async function fetchExampleResources(entry: ExampleEntry): Promise<ExampleResources> {
   const [classBytes, source] = await Promise.all([

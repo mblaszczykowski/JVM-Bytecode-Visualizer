@@ -9,7 +9,7 @@ const BYTECODE_ROWS = '[data-testid$="instruction"]';
 
 async function openFactorial(page: Page): Promise<void> {
   await page.goto('/');
-  await page.getByRole('button', { name: 'Factorial', exact: true }).click();
+  await page.getByRole('radio', { name: 'Factorial', exact: true }).click();
   await expect(page.getByTestId('step-counter')).toHaveText(`step 1 / ${String(FACTORIAL_STEPS)}`);
 }
 
@@ -19,7 +19,7 @@ test('replays a recursive program from the welcome screen to its result', async 
   await expect(page.getByTestId('welcome-example')).toHaveCount(4);
   await expect(page.getByTestId('step-counter')).toHaveCount(0);
 
-  await page.getByRole('button', { name: 'Factorial', exact: true }).click();
+  await page.getByRole('radio', { name: 'Factorial', exact: true }).click();
 
   await expect(page.getByTestId('step-counter')).toHaveText(`step 1 / ${String(FACTORIAL_STEPS)}`);
   await expect(page.getByTestId('current-instruction')).toContainText('iconst_4');
@@ -43,13 +43,56 @@ test('replays a recursive program from the welcome screen to its result', async 
     `step ${String(FACTORIAL_STEPS)} / ${String(FACTORIAL_STEPS)}`,
   );
 
-  // The terminal snapshot has no frames; the step before it still holds main's locals.
+  // The last snapshot is the payoff, not three empty panels: the value the program
+  // computed, the length of the run and how deep it went.
   await expect(page.getByTestId('call-frame')).toHaveCount(0);
-  await page.getByRole('button', { name: 'Step back' }).click();
+  const completion = page.getByTestId('completion-card');
+  await expect(completion).toContainText('result');
+  await expect(completion).toContainText('24');
+  await expect(completion).toContainText('5 frames');
+  await expect(completion).toContainText(String(FACTORIAL_STEPS));
 
+  // The frame that produced it is still described rather than blanked with the stack.
   const locals = page.getByRole('region', { name: 'Locals' });
   await expect(locals).toContainText('result');
   await expect(locals).toContainText('24');
+});
+
+test('clicking an instruction row seeks to the first step that reached it', async ({ page }) => {
+  await openFactorial(page);
+  // The listing follows the top frame, so the recursive method has to be on screen first.
+  await page.getByRole('slider', { name: 'Execution history position' }).fill('20');
+
+  await page.getByRole('button', { name: 'Go to pc 11, invokestatic' }).click();
+
+  await expect(page.getByTestId('step-counter')).toHaveText(`step 10 / ${String(FACTORIAL_STEPS)}`);
+  await expect(page.getByTestId('current-instruction')).toContainText('invokestatic');
+
+  // And the same from the source side, by keyboard.
+  const line = page.getByRole('button', { name: 'Go to line 27' });
+  await line.focus();
+  await line.press('Enter');
+  await expect(page.getByTestId('current-source-line')).toContainText('return 1;');
+});
+
+test('a file dropped outside the zone never navigates the tab away', async ({ page }) => {
+  await openFactorial(page);
+
+  const navigated = await page.evaluate(() => {
+    const transfer = new DataTransfer();
+    transfer.items.add(new File([new Uint8Array([0, 1])], 'Stray.class'));
+    const event = new DragEvent('dragover', {
+      dataTransfer: transfer,
+      bubbles: true,
+      cancelable: true,
+    });
+    document.body.dispatchEvent(event);
+    // An unprevented dragover is the browser keeping the drop for itself.
+    return !event.defaultPrevented;
+  });
+
+  expect(navigated).toBe(false);
+  await expect(page.getByTestId('step-counter')).toBeVisible();
 });
 
 test('scrubbing into the recursion shows the whole call stack', async ({ page }) => {
@@ -69,6 +112,9 @@ test('scrubbing into the recursion shows the whole call stack', async ({ page })
 
 test('the right arrow key advances the step counter', async ({ page }) => {
   await openFactorial(page);
+  // The click left the focus on the example picker, and a radio group owns the arrow keys
+  // while it has the focus. Dropping the focus hands them back to the transport.
+  await page.getByRole('heading', { level: 1 }).click();
 
   await page.keyboard.press('ArrowRight');
 
@@ -98,7 +144,7 @@ test('a full pass through the app writes nothing to the console', async ({ page 
   await expect(page.getByRole('button', { name: 'Play', exact: true })).toBeVisible({
     timeout: 20_000,
   });
-  await page.getByRole('button', { name: 'GCD', exact: true }).click();
+  await page.getByRole('radio', { name: 'GCD', exact: true }).click();
   await expect(page.getByTestId('step-counter')).toHaveText(/^step 1 \/ \d+$/);
 
   expect(complaints).toEqual([]);

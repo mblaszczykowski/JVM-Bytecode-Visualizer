@@ -4,6 +4,7 @@
     {
       "id": "factorial",
       "title": "Factorial — recursion",
+      "tagline": "Five frames deep and back: 4! = 24.",
       "description": "Recursive 4! = 24. Watch the call stack grow to five frames (main plus four calls) and unwind again, multiplying results on the way back — the clearest way to see how the JVM resumes a method exactly where it left off.",
       "classFile": "Factorial.class",
       "sourceFile": "Factorial.java",
@@ -14,6 +15,7 @@
     {
       "id": "fibonacci",
       "title": "Fibonacci — branching recursion",
+      "tagline": "Every call splits in two: fib(7) = 13.",
       "description": "Naive fib(7) = 13. Every call branches into two more, so the stack grows and unwinds dozens of times. A vivid look at the cost of naive recursion: the same subproblems are recomputed from scratch again and again.",
       "classFile": "Fibonacci.class",
       "sourceFile": "Fibonacci.java",
@@ -22,11 +24,12 @@
       "expectedResult": 13
     },
     {
-      "id": "sum-of-squares",
+      "id": "sum-of-products",
       "title": "Sum of products — nested for loops",
-      "description": "Sum of i*j over a 6x6 grid (the diagonal holds the squares, hence the name). A flat call stack but hundreds of steps: it showcases iinc (incrementing a counter in place, without touching the operand stack), the if_icmpgt condition and the backward goto.",
-      "classFile": "SumOfSquares.class",
-      "sourceFile": "SumOfSquares.java",
+      "tagline": "Flat stack, long run: Σ i·j over a 6×6 grid.",
+      "description": "Sum of i*j over a 6x6 grid. A flat call stack but hundreds of steps: it showcases iinc (incrementing a counter in place, without touching the operand stack), the if_icmpgt condition and the backward goto.",
+      "classFile": "SumOfProducts.class",
+      "sourceFile": "SumOfProducts.java",
       "entryMethod": "main",
       "resultVariable": "result",
       "expectedResult": 441
@@ -34,6 +37,7 @@
     {
       "id": "gcd",
       "title": "GCD — while loop and remainder",
+      "tagline": "Euclid's loop on (1071, 462) = 21.",
       "description": "Euclid's algorithm for (1071, 462) = 21. A loop driven by a condition rather than a counter: instead of iinc there is ifne on the remainder (irem), plus values being copied between local variable slots.",
       "classFile": "Gcd.class",
       "sourceFile": "Gcd.java",

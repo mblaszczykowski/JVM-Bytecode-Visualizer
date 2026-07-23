@@ -1,5 +1,5 @@
-import { render, screen, within } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { fireEvent, render, screen, within } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
 
 import { mockSourceFileName, mockSourceLines } from './__fixtures__/mock-history';
 import { SourcePanel } from './SourcePanel';
@@ -72,5 +72,56 @@ describe('SourcePanel', () => {
     render(<SourcePanel fileName={mockSourceFileName} lines={mockSourceLines} currentLine={999} />);
 
     expect(screen.queryByTestId('current-source-line')).not.toBeInTheDocument();
+  });
+
+  it('seeks to the first step a line was reached on, and keeps one tab stop', () => {
+    const onSeek = vi.fn();
+    render(
+      <SourcePanel
+        fileName={mockSourceFileName}
+        lines={mockSourceLines}
+        currentLine={6}
+        stepForLine={
+          new Map([
+            [3, 2],
+            [6, 5],
+          ])
+        }
+        onSeek={onSeek}
+      />,
+    );
+
+    // Only lines the run actually reached are seekable.
+    const targets = screen.getAllByRole('button');
+    expect(targets.map((target) => target.getAttribute('aria-label'))).toEqual([
+      'Go to line 3',
+      'Go to line 6',
+    ]);
+    // The current line holds the tab stop; the arrow keys reach the rest.
+    expect(targets.map((target) => target.getAttribute('tabindex'))).toEqual(['-1', '0']);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Go to line 3' }));
+    expect(onSeek).toHaveBeenCalledWith(2);
+  });
+
+  it('moves the focus between rows with the arrow keys', () => {
+    render(
+      <SourcePanel
+        fileName={mockSourceFileName}
+        lines={mockSourceLines}
+        currentLine={3}
+        stepForLine={
+          new Map([
+            [3, 2],
+            [4, 3],
+          ])
+        }
+        onSeek={vi.fn()}
+      />,
+    );
+
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Go to line 3' }), { key: 'ArrowDown' });
+
+    expect(screen.getByRole('button', { name: 'Go to line 4' })).toHaveFocus();
   });
 });

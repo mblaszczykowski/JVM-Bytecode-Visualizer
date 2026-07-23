@@ -85,7 +85,7 @@ describe('TransportControls', () => {
     expect(screen.getByRole('button', { name: 'Pause' })).toHaveAttribute('aria-pressed', 'true');
   });
 
-  it('blocks stepping past either end of the history', () => {
+  it('reports the end of the history without leaving the tab order', () => {
     const spies = handlers();
     const { rerender } = render(
       <TransportControls
@@ -98,8 +98,18 @@ describe('TransportControls', () => {
       />,
     );
 
-    expect(screen.getByRole('button', { name: 'Step back' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Step forward' })).toBeEnabled();
+    // aria-disabled rather than the attribute: a `disabled` button drops out of the tab
+    // order, so the transport would change shape at either end of the history.
+    expect(screen.getByRole('button', { name: 'Step back' })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
+    expect(screen.getByRole('button', { name: 'Step forward' })).not.toHaveAttribute(
+      'aria-disabled',
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Step back' }));
+    expect(spies.onStepBack).not.toHaveBeenCalled();
 
     rerender(
       <TransportControls
@@ -112,8 +122,11 @@ describe('TransportControls', () => {
       />,
     );
 
-    expect(screen.getByRole('button', { name: 'Step back' })).toBeEnabled();
-    expect(screen.getByRole('button', { name: 'Step forward' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Step back' })).not.toHaveAttribute('aria-disabled');
+    expect(screen.getByRole('button', { name: 'Step forward' })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
   });
 
   it('exposes the depth chart as the scrubber slider', () => {
@@ -153,7 +166,9 @@ describe('TransportControls', () => {
       />,
     );
 
-    const speedPill = screen.getByRole('button', { name: 'Playback speed' });
+    // The value belongs in the label; an aria-label of "Playback speed" alone would hide
+    // the visible `1×` from a screen reader without replacing it.
+    const speedPill = screen.getByRole('button', { name: 'Playback speed 1×' });
     expect(speedPill).toHaveTextContent('1×');
 
     fireEvent.click(speedPill);
@@ -170,7 +185,7 @@ describe('TransportControls', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Playback speed' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Playback speed 8×' }));
     expect(spies.onSpeedChange).toHaveBeenLastCalledWith(0.5);
   });
 });

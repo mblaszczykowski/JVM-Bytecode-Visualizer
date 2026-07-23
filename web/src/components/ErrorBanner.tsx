@@ -10,6 +10,8 @@ interface ErrorBannerProps {
   readonly severity: BannerSeverity;
   /** Optional recovery affordance, e.g. raising the step limit. */
   readonly action?: BannerAction | undefined;
+  /** When given, the banner can be closed — nothing here blocks the rest of the screen. */
+  readonly onDismiss?: (() => void) | undefined;
 }
 
 /**
@@ -31,7 +33,7 @@ const SEVERITY_LABEL: Record<BannerSeverity, string> = {
   info: 'Info',
 };
 
-export function ErrorBanner({ message, severity, action }: ErrorBannerProps) {
+export function ErrorBanner({ message, severity, action, onDismiss }: ErrorBannerProps) {
   return (
     <div
       role={severity === 'error' ? 'alert' : 'status'}
@@ -39,7 +41,8 @@ export function ErrorBanner({ message, severity, action }: ErrorBannerProps) {
       data-severity={severity}
       className={`flex items-baseline gap-3 rounded-row px-[14px] py-[9px] text-[12px] ${SEVERITY_STYLE[severity]}`}
     >
-      <span className="shrink-0 text-[10px] font-semibold tracking-[0.08em] uppercase opacity-80">
+      {/* Plain sentence case: small caps and letterspacing here would read as a dashboard. */}
+      <span className="shrink-0 text-[11.5px] font-semibold opacity-85">
         {SEVERITY_LABEL[severity]}
       </span>
       <span className="grow">{message}</span>
@@ -50,6 +53,16 @@ export function ErrorBanner({ message, severity, action }: ErrorBannerProps) {
           className="focus-ring shrink-0 rounded-full bg-white/10 px-[10px] py-[3px] text-[11px] hover:bg-white/20"
         >
           {action.label}
+        </button>
+      )}
+      {onDismiss === undefined ? null : (
+        <button
+          type="button"
+          aria-label="Dismiss this message"
+          onClick={onDismiss}
+          className="focus-ring -my-1 shrink-0 self-center rounded-full px-[7px] py-[3px] text-[13px] leading-none opacity-70 hover:bg-white/10 hover:opacity-100"
+        >
+          <span aria-hidden="true">×</span>
         </button>
       )}
     </div>

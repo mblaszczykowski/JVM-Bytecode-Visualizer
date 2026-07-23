@@ -10,16 +10,42 @@ describe('ExamplePicker', () => {
       <ExamplePicker examples={mockExamples} selectedId={undefined} onExampleSelected={vi.fn()} />,
     );
 
-    expect(screen.getByRole('group', { name: 'Example programs' })).toBeInTheDocument();
-    expect(screen.getAllByRole('button')).toHaveLength(mockExamples.length);
-    expect(screen.getByRole('button', { name: 'Fibonacci' })).toBeInTheDocument();
+    expect(screen.getByRole('radiogroup', { name: 'Example programs' })).toBeInTheDocument();
+    expect(screen.getAllByRole('radio')).toHaveLength(mockExamples.length);
+    expect(screen.getByRole('radio', { name: 'Fibonacci' })).toBeInTheDocument();
   });
 
   it('marks the selected example', () => {
     render(<ExamplePicker examples={mockExamples} selectedId="gcd" onExampleSelected={vi.fn()} />);
 
-    expect(screen.getByRole('button', { name: 'Gcd', pressed: true })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Factorial', pressed: false })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'Gcd', checked: true })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'Factorial', checked: false })).toBeInTheDocument();
+  });
+
+  it('keeps one tab stop and moves the focus with the arrow keys', () => {
+    const onExampleSelected = vi.fn();
+    render(
+      <ExamplePicker
+        examples={mockExamples}
+        selectedId="gcd"
+        onExampleSelected={onExampleSelected}
+      />,
+    );
+
+    const options = screen.getAllByRole('radio');
+    expect(options.map((option) => option.getAttribute('tabindex'))).toEqual([
+      '-1',
+      '-1',
+      '-1',
+      '0',
+    ]);
+
+    fireEvent.keyDown(screen.getByRole('radio', { name: 'Gcd' }), { key: 'ArrowRight' });
+
+    // Wraps round to the first option, and selection does not follow focus: opening an
+    // example parses and runs a whole class file.
+    expect(screen.getAllByRole('radio')[0]).toHaveFocus();
+    expect(onExampleSelected).not.toHaveBeenCalled();
   });
 
   it('reports the id of the example that was clicked', () => {
@@ -32,8 +58,8 @@ describe('ExamplePicker', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'SumOfSquares' }));
+    fireEvent.click(screen.getByRole('radio', { name: 'SumOfProducts' }));
 
-    expect(onExampleSelected).toHaveBeenCalledWith('sum-of-squares');
+    expect(onExampleSelected).toHaveBeenCalledWith('sum-of-products');
   });
 });

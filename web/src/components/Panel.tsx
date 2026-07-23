@@ -17,9 +17,16 @@ interface PanelProps {
   readonly contentRef?: RefObject<HTMLDivElement> | undefined;
   /**
    * Whether the body scrolls on its own. A scrollable body must be reachable by keyboard,
-   * so it takes a tab stop; the State sections size to their content and take none.
+   * so it takes a tab stop.
    */
   readonly scrolls?: boolean;
+  /**
+   * Whether the scrolling body fills the panel or is capped. `capped` is the State column,
+   * where three sections share a fixed height and none may push the others off screen.
+   */
+  readonly bodyFill?: 'grow' | 'capped';
+  /** Extra classes on the scroll container, e.g. the Source panel's right-edge fade. */
+  readonly bodyClassName?: string;
   readonly className?: string;
   readonly children: ReactNode;
 }
@@ -45,9 +52,17 @@ export function Panel({
   footer,
   contentRef,
   scrolls = true,
+  bodyFill = 'grow',
+  bodyClassName = '',
   className = '',
   children,
 }: PanelProps) {
+  const body = scrolls
+    ? `focus-ring scroll-visible overflow-auto ${
+        bodyFill === 'grow' ? 'min-h-0 flex-1' : 'max-h-[240px] shrink-0'
+      }`
+    : 'shrink-0';
+
   return (
     <section
       role="region"
@@ -65,7 +80,7 @@ export function Panel({
       <div
         ref={contentRef}
         tabIndex={scrolls ? 0 : undefined}
-        className={scrolls ? 'focus-ring scroll-slim min-h-0 flex-1 overflow-auto' : 'shrink-0'}
+        className={`${body} ${bodyClassName}`}
       >
         {children}
       </div>

@@ -16,9 +16,11 @@ export const exampleEntrySchema = z
     /** Stable kebab-case identifier; used in the URL and in differential tests. */
     id: z
       .string()
-      .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'id must be kebab-case (e.g. "sum-of-squares")'),
+      .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'id must be kebab-case (e.g. "sum-of-products")'),
     /** Example name shown in the UI. */
     title: nonEmptyText,
+    /** One line for the welcome card — short enough that it never has to be truncated. */
+    tagline: nonEmptyText.max(60),
     /** Educational description: what the example demonstrates in bytecode terms. */
     description: nonEmptyText,
     /** File name inside `public/examples/`, not a path — the directory is fixed. */

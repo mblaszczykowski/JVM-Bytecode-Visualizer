@@ -36,6 +36,16 @@ interface SegmentProps {
   readonly selected?: boolean | undefined;
   /** `inverted` is the playing state of the transport: light fill, dark glyph. */
   readonly tone?: 'default' | 'inverted';
+  /**
+   * Keeps the raised surface even when unselected. The play button is the one control the
+   * reader is looking for, so it has to read as the primary action before it is pressed.
+   */
+  readonly prominent?: boolean;
+  /**
+   * Reported as `aria-disabled`, not as the `disabled` attribute: a disabled button drops
+   * out of the tab order, and losing the tab stop at both ends of the history means a
+   * keyboard walk through the transport changes shape depending on the current step.
+   */
   readonly disabled?: boolean;
   readonly title?: string | undefined;
   readonly label: string;
@@ -53,6 +63,7 @@ const RESTING = 'text-white/52 hover:text-white/85';
 export function Segment({
   selected,
   tone = 'default',
+  prominent = false,
   disabled = false,
   title,
   label,
@@ -61,17 +72,22 @@ export function Segment({
   onClick,
   children,
 }: SegmentProps) {
-  const active = selected !== true ? RESTING : tone === 'inverted' ? INVERTED : RAISED;
+  const active =
+    selected === true ? (tone === 'inverted' ? INVERTED : RAISED) : prominent ? RAISED : RESTING;
 
   return (
     <button
       type="button"
       aria-pressed={selected}
       aria-label={labelIsVisible ? undefined : label}
+      aria-disabled={disabled || undefined}
       title={title ?? label}
-      disabled={disabled}
-      onClick={onClick}
-      className={`focus-ring flex items-center justify-center rounded-full text-[12px] transition-colors disabled:opacity-30 ${active} ${className}`}
+      onClick={() => {
+        if (!disabled) {
+          onClick();
+        }
+      }}
+      className={`focus-ring flex items-center justify-center rounded-full text-[12px] transition-colors aria-disabled:cursor-default aria-disabled:opacity-30 ${active} ${className}`}
     >
       {children}
     </button>

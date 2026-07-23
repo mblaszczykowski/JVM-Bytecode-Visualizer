@@ -51,7 +51,7 @@ describe('example manifest', () => {
     expect(manifest.examples.map((example) => example.id)).toEqual([
       'factorial',
       'fibonacci',
-      'sum-of-squares',
+      'sum-of-products',
       'gcd',
     ]);
   });
@@ -85,6 +85,8 @@ describe('example manifest', () => {
       expect(example.entryMethod).toBe('main');
       expect(example.resultVariable).toBe('result');
       expect(example.description.length).toBeGreaterThan(20);
+      // The welcome card shows the tagline whole, so it has to fit on one line.
+      expect(example.tagline.length, example.id).toBeLessThanOrEqual(60);
     }
   });
 });

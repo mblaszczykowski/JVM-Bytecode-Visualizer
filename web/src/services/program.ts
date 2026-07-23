@@ -216,6 +216,155 @@ export function topFrameOf(snapshot: Snapshot | undefined): StackFrame | undefin
   return snapshot?.callStack.at(-1);
 }
 
+export interface RunPreview {
+  readonly steps: number;
+  readonly maxDepth: number;
+  /** Call stack depth bucketed down to a fixed width — the sparkline on a welcome card. */
+  readonly profile: readonly number[];
+}
+
+/** Nobody browses the welcome screen to watch a runaway loop; a preview gives up early. */
+const PREVIEW_MAX_STEPS = 5_000;
+
+const PREVIEW_BUCKETS = 32;
+
+/**
+ * The shape of a run, without loading it: how long it is and how deep it goes. Cheap enough
+ * to do for all four examples while someone reads the headline — the bundled programs are a
+ * few hundred instructions each.
+ */
+export function previewProgram(classFile: ClassFile): RunPreview {
+  const depths = depthsOf(execute(classFile, { maxSteps: PREVIEW_MAX_STEPS }).snapshots);
+  const profile: number[] = [];
+
+  for (let bucket = 0; bucket < PREVIEW_BUCKETS; bucket++) {
+    const first = Math.floor((bucket * depths.length) / PREVIEW_BUCKETS);
+    const last = Math.max(first, Math.floor(((bucket + 1) * depths.length) / PREVIEW_BUCKETS) - 1);
+    let deepest = 0;
+    for (let step = first; step <= last; step++) {
+      deepest = Math.max(deepest, depths[step] ?? 0);
+    }
+    profile.push(deepest);
+  }
+
+  return {
+    steps: depths.length,
+    maxDepth: depths.reduce((deepest, depth) => Math.max(deepest, depth), 0),
+    profile,
+  };
+}
+
+export interface RunSummary {
+  /** Name of the local the program leaves its answer in, e.g. `result`. */
+  readonly resultName: string;
+  /** Value that local held on the last snapshot that still had a frame. */
+  readonly resultValue: number | undefined;
+  readonly totalSteps: number;
+  readonly maxDepth: number;
+  /**
+   * What a real JVM computed for this example during the fixtures build. Present only for
+   * the bundled examples, and only shown once it agrees with what the run produced.
+   */
+  readonly referenceValue: number | undefined;
+}
+
+/** The local `main` was left holding, by name — the answer the program was written to produce. */
+function resultOf(frame: StackFrame | undefined, name: string): number | undefined {
+  if (frame === undefined) {
+    return undefined;
+  }
+  const slot = frame.localNames.indexOf(name);
+  return slot < 0 ? undefined : frame.locals[slot];
+}
+
+/** Last snapshot that still had a frame — the terminal one is empty by definition. */
+export function lastLiveSnapshot(snapshots: readonly Snapshot[]): Snapshot | undefined {
+  for (let index = snapshots.length - 1; index >= 0; index--) {
+    const snapshot = snapshots[index];
+    if (snapshot !== undefined && snapshot.callStack.length > 0) {
+      return snapshot;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * What the terminal snapshot has to say. The call stack is empty there, so the numbers come
+ * from the history around it: the last frame that still existed carries the result, and the
+ * depths carry how far the recursion went.
+ *
+ * `undefined` for a run that did not finish — a stopped run has an error banner instead.
+ */
+export function runSummaryOf(program: LoadedProgram): RunSummary | undefined {
+  if (program.outcome.kind !== 'completed') {
+    return undefined;
+  }
+
+  const entry = program.origin.kind === 'example' ? program.origin.entry : undefined;
+  const resultName = entry?.resultVariable ?? 'result';
+  const lastLive = lastLiveSnapshot(program.snapshots);
+  const resultValue = resultOf(lastLive?.callStack[0], resultName) ?? program.outcome.returnValue;
+
+  let maxDepth = 0;
+  for (const snapshot of program.snapshots) {
+    maxDepth = Math.max(maxDepth, snapshot.callStack.length);
+  }
+
+  return {
+    resultName,
+    resultValue,
+    totalSteps: program.snapshots.length,
+    maxDepth,
+    // A reference the run disagrees with is a bug report, not a badge; it is simply not shown.
+    referenceValue:
+      entry !== undefined && entry.expectedResult === resultValue
+        ? entry.expectedResult
+        : undefined,
+  };
+}
+
+/**
+ * First step of the run that stood at each byte offset of `listing`. Clicking an instruction
+ * row seeks there, so the map is keyed by offset and scoped to one method — the same offset
+ * in another method is another instruction.
+ */
+export function firstStepByOffset(
+  snapshots: readonly Snapshot[],
+  listing: MethodListing | undefined,
+): ReadonlyMap<number, number> {
+  const steps = new Map<number, number>();
+  if (listing === undefined) {
+    return steps;
+  }
+
+  snapshots.forEach((snapshot, index) => {
+    const frame = snapshot.callStack.at(-1);
+    const offset = snapshot.currentInstruction?.offset;
+    if (
+      frame?.methodName !== listing.name ||
+      frame.methodDescriptor !== listing.descriptor ||
+      offset === undefined ||
+      steps.has(offset)
+    ) {
+      return;
+    }
+    steps.set(offset, index);
+  });
+  return steps;
+}
+
+/** Same idea for the source panel: the first step the run spent on each line of the file. */
+export function firstStepByLine(snapshots: readonly Snapshot[]): ReadonlyMap<number, number> {
+  const steps = new Map<number, number>();
+  snapshots.forEach((snapshot, index) => {
+    const { sourceLine } = snapshot;
+    if (sourceLine !== undefined && !steps.has(sourceLine)) {
+      steps.set(sourceLine, index);
+    }
+  });
+  return steps;
+}
+
 function methodKey(name: string, descriptor: string): string {
   return `${name}${descriptor}`;
 }

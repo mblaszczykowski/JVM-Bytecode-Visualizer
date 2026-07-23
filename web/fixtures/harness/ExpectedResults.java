@@ -22,7 +22,7 @@ public final class ExpectedResults {
     public static void main(String[] args) {
         System.out.println("factorial=" + Factorial.factorial(4));
         System.out.println("fibonacci=" + Fibonacci.fib(7));
-        System.out.println("sum-of-squares=" + SumOfSquares.sumOfSquares(6));
+        System.out.println("sum-of-products=" + SumOfProducts.sumOfProducts(6));
         System.out.println("gcd=" + Gcd.gcd(1071, 462));
     }
 }

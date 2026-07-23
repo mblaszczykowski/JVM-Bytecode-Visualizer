@@ -31,7 +31,7 @@ export function OperandStackPanel({ frame, frameIndex = 0, annotations }: Operan
 
   if (frame === undefined) {
     return (
-      <Panel title="Operand stack" meta="—" variant="state" scrolls={false}>
+      <Panel title="Operand stack" meta="—" variant="state" bodyFill="capped">
         <p className="px-[18px] py-3 text-[12px] text-white/55">No active frame.</p>
       </Panel>
     );
@@ -45,7 +45,7 @@ export function OperandStackPanel({ frame, frameIndex = 0, annotations }: Operan
       title="Operand stack"
       meta={`height ${String(operandStack.length)}`}
       variant="state"
-      scrolls={false}
+      bodyFill="capped"
     >
       {/* The list stays mounted even when empty: unmounting it would cut the exit short. */}
       <ol className="flex flex-col gap-[5px] px-[10px]">

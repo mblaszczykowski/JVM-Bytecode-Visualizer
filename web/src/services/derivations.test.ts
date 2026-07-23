@@ -80,7 +80,8 @@ describe('next instruction summary', () => {
     const program = factorialProgram();
 
     expect(summaryOf(program, 'invokestatic').explanation).toBe(
-      'Pops 4 and calls factorial(I)I with it in slot 0.',
+      'Pops 4 and calls factorial(I)I with it in slot 0 — the callee starts at pc 0 and ' +
+        'main resumes at pc 4.',
     );
   });
 
@@ -106,7 +107,7 @@ describe('next instruction summary', () => {
     const program = factorialProgram();
 
     expect(summaryOf(program, 'if_icmpgt').explanation).toBe(
-      'Pops both values and jumps to pc 7 when 4 > 1; otherwise falls through.',
+      'Pops both values and compares 4 > 1 — true, so execution jumps to pc 7.',
     );
   });
 
@@ -154,7 +155,8 @@ describe('next instruction summary', () => {
 
     expect(explanation).not.toContain('undefined');
     expect(explanation).toBe(
-      'Pops both values and jumps to pc 4 when the top value > the top value; otherwise falls through.',
+      'Pops both values and compares the top value > the top value; a true comparison jumps ' +
+        'to pc 4, otherwise execution falls through.',
     );
   });
 
@@ -189,6 +191,26 @@ describe('operand stack roles', () => {
     const roles = describeOperandRoles(snapshot, listingFor(program, snapshot), program.classFile);
 
     expect(roles).toEqual(['waiting for imul', '→ arg 0']);
+  });
+
+  it('names the two operands of a binary instruction by position', () => {
+    const program = factorialProgram();
+    const snapshot = firstSnapshotOf(program, 'if_icmpgt');
+
+    const roles = describeOperandRoles(snapshot, listingFor(program, snapshot), program.classFile);
+
+    // Two cells both reading "→ operand" would hide the one thing that matters here: which
+    // side of `4 > 1` each value is.
+    expect(roles).toEqual(['→ left', '→ right']);
+  });
+
+  it('names a single operand after the instruction about to take it', () => {
+    const program = factorialProgram();
+    const snapshot = firstSnapshotOf(program, 'istore_1');
+
+    const roles = describeOperandRoles(snapshot, listingFor(program, snapshot), program.classFile);
+
+    expect(roles).toEqual(['→ istore_1']);
   });
 
   it('follows an unconditional jump instead of blaming the instruction below it', () => {

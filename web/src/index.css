@@ -1,6 +1,14 @@
 @import 'tailwindcss';
 
 /*
+ * JetBrains Mono, self-hosted as woff2 (no CDN, no render-blocking third party). Only the
+ * latin subset and the two weights the UI actually asks for — regular for code and figures,
+ * medium for the one number the completion card leads with.
+ */
+@import '@fontsource/jetbrains-mono/latin-400.css';
+@import '@fontsource/jetbrains-mono/latin-500.css';
+
+/*
  * Design tokens. Defined once here and consumed through Tailwind utilities — no raw
  * rgba() literals scattered across components.
  *
@@ -124,4 +132,52 @@
 @utility scroll-slim {
   scrollbar-width: thin;
   scrollbar-color: rgb(255 255 255 / 0.18) transparent;
+}
+
+/*
+ * Styling the scrollbar at all switches WebKit from overlay bars to classic ones, which is
+ * the point: a panel that scrolls sideways has to say so without being touched first.
+ */
+@utility scroll-visible {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(255 255 255 / 0.18) transparent;
+
+  &::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: rgb(255 255 255 / 0.18);
+    border-radius: 999px;
+  }
+
+  &::-webkit-scrollbar-thumb:hover {
+    background: rgb(255 255 255 / 0.3);
+  }
+
+  &::-webkit-scrollbar-track,
+  &::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+}
+
+/*
+ * A code row never wraps, so a long line simply ends at the panel edge. The fade says the
+ * text continues instead of letting it stop mid-word as if it were complete.
+ *
+ * Two mask layers, not one: the second keeps the 8px scrollbar gutter fully opaque, because
+ * a gradient across the whole width would take the vertical scrollbar with it.
+ */
+@utility fade-right {
+  mask-image:
+    linear-gradient(to right, black calc(100% - 24px), transparent 100%),
+    linear-gradient(black, black);
+  mask-size:
+    calc(100% - 8px) 100%,
+    8px 100%;
+  mask-position:
+    left top,
+    right top;
+  mask-repeat: no-repeat;
 }

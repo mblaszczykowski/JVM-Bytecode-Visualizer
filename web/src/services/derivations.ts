@@ -72,10 +72,9 @@ export function describeOperandRoles(
   const roles: (string | undefined)[] = frame.operandStack.map(() => undefined);
   const topIndex = frame.operandStack.length - 1;
   const effect = stackDeltaOf(instruction, pool) ?? { pops: 0, pushes: 0 };
-  const isCall = instruction.mnemonic === 'invokestatic';
 
   for (let taken = 0; taken < effect.pops && topIndex - taken >= 0; taken++) {
-    roles[topIndex - taken] = isCall ? `→ arg ${String(effect.pops - 1 - taken)}` : '→ operand';
+    roles[topIndex - taken] = operandRole(instruction.mnemonic, effect.pops, taken);
   }
 
   const survivor = topIndex - effect.pops;
@@ -93,6 +92,24 @@ export function describeOperandRoles(
   }
 
   return roles;
+}
+
+/**
+ * What one cell about to be popped is *for*. Two cells that both read "operand" say nothing:
+ * on a binary instruction the JVM order matters, so they are named by position, and a call
+ * names the argument slot each value lands in.
+ *
+ * @param taken 0 for the top of the stack, counting downwards
+ */
+function operandRole(mnemonic: string, pops: number, taken: number): string {
+  if (mnemonic === 'invokestatic') {
+    return `→ arg ${String(pops - 1 - taken)}`;
+  }
+  // `value1 op value2` with value2 on top (JVMS §6.5 iadd, if_icmp<cond>).
+  if (pops === 2) {
+    return taken === 0 ? '→ right' : '→ left';
+  }
+  return `→ ${mnemonic}`;
 }
 
 /** javap-style trailing comments, keyed by instruction offset. */
@@ -378,7 +395,17 @@ function explain(
     const left = comparesPair ? below : top;
     const right = comparesPair ? top : 0;
     const popped = comparesPair ? 'Pops both values' : 'Pops the top value';
-    return `${popped} and jumps to pc ${String(target ?? 0)} when ${valueText(left)} ${operator} ${valueText(right)}; otherwise falls through.`;
+    const premise = `${popped} and compares ${valueText(left)} ${operator} ${valueText(right)}`;
+
+    // The snapshot already holds the values, so the branch is not a maybe — it is decided.
+    const taken = comparisonHolds(mnemonic, left, right);
+    if (taken === undefined) {
+      return `${premise}; a true comparison jumps to pc ${String(target ?? 0)}, otherwise execution falls through.`;
+    }
+    const fallThrough = offsetAfter(listing, instruction.offset);
+    return taken
+      ? `${premise} — true, so execution jumps to pc ${String(target ?? 0)}.`
+      : `${premise} — false, so execution falls through to pc ${String(fallThrough ?? instruction.offset)}.`;
   }
 
   if (mnemonic === 'goto') {
@@ -391,11 +418,17 @@ function explain(
       return 'Calls a static method resolved through the constant pool.';
     }
     const args = frame.operandStack.slice(frame.operandStack.length - callee.arity);
+    const resume = offsetAfter(listing, instruction.offset);
+    // Where control actually goes, both ways: into the callee now, back here on the return.
+    const handover =
+      resume === undefined
+        ? ` — the callee starts at pc 0.`
+        : ` — the callee starts at pc 0 and ${frame.methodName} resumes at pc ${String(resume)}.`;
     if (args.length === 0) {
-      return `Calls ${callee.name}${callee.descriptor} with no arguments and opens a frame for it.`;
+      return `Calls ${callee.name}${callee.descriptor} with no arguments and opens a frame for it${handover}`;
     }
     const slots = args.length === 1 ? 'it in slot 0' : `them in slots 0–${String(args.length - 1)}`;
-    return `Pops ${args.map(String).join(' and ')} and calls ${callee.name}${callee.descriptor} with ${slots}.`;
+    return `Pops ${args.map(String).join(' and ')} and calls ${callee.name}${callee.descriptor} with ${slots}${handover}`;
   }
 
   if (mnemonic === 'ireturn') {
@@ -409,8 +442,112 @@ function explain(
   return `Executes ${mnemonic}.`;
 }
 
+/**
+ * What a mnemonic does in general, with no snapshot behind it — the tooltip on every row of
+ * the listing, including the rows this run never reached.
+ *
+ * By family rather than per opcode: `iload_0` and `iload_3` differ only in the slot they
+ * name, and the opcode table already knows which family an instruction belongs to.
+ */
+export function explainMnemonic(mnemonic: string): string | undefined {
+  const family = MNEMONIC_HELP[mnemonic];
+  if (family !== undefined) {
+    return family;
+  }
+
+  const slot = /^i(load|store)_(\d)$/.exec(mnemonic);
+  if (slot !== null) {
+    return slot[1] === 'load'
+      ? `Pushes local variable slot ${String(slot[2])} onto the operand stack.`
+      : `Pops the top of the operand stack into local variable slot ${String(slot[2])}.`;
+  }
+
+  const constant = /^iconst_(m1|\d)$/.exec(mnemonic);
+  if (constant !== null) {
+    const value = constant[1] === 'm1' ? '−1' : constant[1];
+    return `Pushes the int constant ${String(value)} onto the operand stack.`;
+  }
+
+  return undefined;
+}
+
+const MNEMONIC_HELP: Readonly<Record<string, string>> = {
+  nop: 'Does nothing.',
+  bipush: 'Pushes a one-byte signed constant, widened to an int.',
+  sipush: 'Pushes a two-byte signed constant, widened to an int.',
+  iload: 'Pushes the local variable slot named by the operand onto the operand stack.',
+  istore: 'Pops the top of the operand stack into the local variable slot named by the operand.',
+  iinc: 'Adds a constant to a local variable in place, without touching the operand stack.',
+  pop: 'Discards the top value of the operand stack.',
+  dup: 'Duplicates the top value of the operand stack.',
+  iadd: 'Pops two ints and pushes their sum, wrapping around on overflow.',
+  isub: 'Pops two ints and pushes the lower minus the upper.',
+  imul: 'Pops two ints and pushes their product, wrapping around on overflow.',
+  idiv: 'Pops two ints and pushes the quotient, truncated towards zero; zero divisor throws.',
+  irem: 'Pops two ints and pushes the remainder of the division.',
+  ineg: 'Pops an int and pushes its negation.',
+  if_icmpeq: 'Pops two ints and branches when they are equal.',
+  if_icmpne: 'Pops two ints and branches when they differ.',
+  if_icmplt: 'Pops two ints and branches when the lower one is smaller.',
+  if_icmpge: 'Pops two ints and branches when the lower one is greater or equal.',
+  if_icmpgt: 'Pops two ints and branches when the lower one is greater.',
+  if_icmple: 'Pops two ints and branches when the lower one is smaller or equal.',
+  ifeq: 'Pops an int and branches when it is zero.',
+  ifne: 'Pops an int and branches when it is not zero.',
+  iflt: 'Pops an int and branches when it is negative.',
+  ifge: 'Pops an int and branches when it is zero or positive.',
+  ifgt: 'Pops an int and branches when it is positive.',
+  ifle: 'Pops an int and branches when it is zero or negative.',
+  goto: 'Jumps to the target offset unconditionally.',
+  invokestatic:
+    'Resolves a static method through the constant pool, pops its arguments into the new ' +
+    "frame's slots and starts executing it.",
+  ireturn: "Pops an int, discards this frame and pushes the value onto the caller's stack.",
+  return: 'Discards this frame and returns no value.',
+};
+
 function valueText(value: number | undefined): string {
   return value === undefined ? 'the top value' : String(value);
+}
+
+/** Whether the branch is taken, or `undefined` when a value is missing from the snapshot. */
+function comparisonHolds(
+  mnemonic: string,
+  left: number | undefined,
+  right: number | undefined,
+): boolean | undefined {
+  if (left === undefined || right === undefined) {
+    return undefined;
+  }
+  const operator = COMPARISON[mnemonic];
+  if (operator === '=') {
+    return left === right;
+  }
+  if (operator === '≠') {
+    return left !== right;
+  }
+  if (operator === '<') {
+    return left < right;
+  }
+  if (operator === '≥') {
+    return left >= right;
+  }
+  if (operator === '>') {
+    return left > right;
+  }
+  if (operator === '≤') {
+    return left <= right;
+  }
+  return undefined;
+}
+
+/** Offset of the instruction laid out after `offset` — where a branch falls through to. */
+function offsetAfter(listing: MethodListing | undefined, offset: number): number | undefined {
+  if (listing === undefined) {
+    return undefined;
+  }
+  const index = listing.instructions.findIndex((entry) => entry.offset === offset);
+  return index < 0 ? undefined : listing.instructions[index + 1]?.offset;
 }
 
 function nameOfSlot(frame: StackFrame, slot: number): string {
