@@ -72,6 +72,66 @@
         </configuration>
       </plugin>
 
+      <!-- Coverage gate on the code an attacker reaches first: the compiler sandbox and the
+           filters in front of it. The agent line is prepended to surefire's @{argLine}. -->
+      <plugin>
+        <groupId>org.jacoco</groupId>
+        <artifactId>jacoco-maven-plugin</artifactId>
+        <!-- Pinned: the parent POM does not manage JaCoCo, and a gate whose version drifts
+             with whatever is newest in the repository is not a gate. -->
+        <version>0.8.15</version>
+        <executions>
+          <execution>
+            <id>prepare-agent</id>
+            <goals>
+              <goal>prepare-agent</goal>
+            </goals>
+          </execution>
+          <execution>
+            <id>report</id>
+            <phase>test</phase>
+            <goals>
+              <goal>report</goal>
+            </goals>
+          </execution>
+          <execution>
+            <id>check-security-critical-packages</id>
+            <phase>verify</phase>
+            <goals>
+              <goal>check</goal>
+            </goals>
+            <configuration>
+              <rules>
+                <!-- Each package is measured on its own. The minima sit just under what the
+                     suite reaches today (compiler 75.7% lines / 66.4% branches, config 81.4%
+                     / 63.6%), so the gate catches a regression rather than describing a goal.
+                     CompilerProcessMain runs in the forked JVM, which the agent never sees —
+                     that alone accounts for 13 uncovered lines in the compiler package. -->
+                <rule>
+                  <element>PACKAGE</element>
+                  <includes>
+                    <include>dev.jvmvisualizer.compileservice.compiler</include>
+                    <include>dev.jvmvisualizer.compileservice.config</include>
+                  </includes>
+                  <limits>
+                    <limit>
+                      <counter>LINE</counter>
+                      <value>COVEREDRATIO</value>
+                      <minimum>0.75</minimum>
+                    </limit>
+                    <limit>
+                      <counter>BRANCH</counter>
+                      <value>COVEREDRATIO</value>
+                      <minimum>0.63</minimum>
+                    </limit>
+                  </limits>
+                </rule>
+              </rules>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+
       <plugin>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-maven-plugin</artifactId>

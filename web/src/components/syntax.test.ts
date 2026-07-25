@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { mockSourceLines } from './__fixtures__/mock-history';
+import { sourceLines } from './__fixtures__/factorial-run';
 import { type Token, type TokenKind, tokenizeJava } from './syntax';
 
 function kindOf(tokens: readonly Token[], text: string): TokenKind | undefined {
@@ -9,7 +9,8 @@ function kindOf(tokens: readonly Token[], text: string): TokenKind | undefined {
 
 describe('tokenizeJava', () => {
   it('keeps the line intact when the tokens are concatenated', () => {
-    for (const line of mockSourceLines) {
+    // Every line of the shipped Factorial.java, javadoc and code alike.
+    for (const line of sourceLines()) {
       const rebuilt = tokenizeJava(line)
         .map((token) => token.text)
         .join('');

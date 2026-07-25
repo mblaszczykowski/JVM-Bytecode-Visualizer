@@ -1,8 +1,11 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
-import { mockExamples } from './__fixtures__/mock-history';
+import { exampleOptions } from './__fixtures__/factorial-run';
 import { Toolbar, type CompilerStatus } from './Toolbar';
+
+/** The four options App builds from the shipped manifest. */
+const examples = exampleOptions();
 
 function renderToolbar(compilerStatus: CompilerStatus = 'hidden', onWriteJava?: () => void) {
   const onExampleSelected = vi.fn();
@@ -11,7 +14,7 @@ function renderToolbar(compilerStatus: CompilerStatus = 'hidden', onWriteJava?: 
   render(
     <Toolbar
       appName="JVM Bytecode Visualizer"
-      examples={mockExamples}
+      examples={examples}
       selectedExampleId="factorial"
       onExampleSelected={onExampleSelected}
       onFileSelected={onFileSelected}
@@ -39,7 +42,7 @@ describe('Toolbar', () => {
 
     expect(screen.getByRole('radio', { name: 'Factorial', checked: true })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('radio', { name: 'Gcd' }));
+    fireEvent.click(screen.getByRole('radio', { name: 'GCD' }));
 
     expect(onExampleSelected).toHaveBeenCalledWith('gcd');
   });

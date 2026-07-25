@@ -1,10 +1,13 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
-import { mockDepths } from './__fixtures__/mock-derivations';
+import { depths } from './__fixtures__/factorial-run';
 import { DepthTrack } from './DepthTrack';
 
 const LABEL = 'Execution history position';
+
+/** Call stack depth per step of the real `factorial(4)` run: 40 steps, five frames deep. */
+const runDepths = depths();
 
 /** Bars of the frame that is on top at the given step are drawn in the accent colour. */
 function accentBars(): number {
@@ -15,18 +18,18 @@ function accentBars(): number {
 
 describe('DepthTrack', () => {
   it('exposes the scrubber as a slider over the whole history', () => {
-    render(<DepthTrack depths={mockDepths} stepIndex={7} onSeek={vi.fn()} label={LABEL} />);
+    render(<DepthTrack depths={runDepths} stepIndex={7} onSeek={vi.fn()} label={LABEL} />);
 
     const slider = screen.getByRole('slider', { name: LABEL });
 
     expect(slider).toHaveAttribute('min', '0');
-    expect(slider).toHaveAttribute('max', String(mockDepths.length - 1));
-    expect(slider).toHaveAttribute('aria-valuetext', `step 8 of ${String(mockDepths.length)}`);
+    expect(slider).toHaveAttribute('max', String(runDepths.length - 1));
+    expect(slider).toHaveAttribute('aria-valuetext', `step 8 of ${String(runDepths.length)}`);
   });
 
   it('reports the step the user seeks to', () => {
     const onSeek = vi.fn();
-    render(<DepthTrack depths={mockDepths} stepIndex={0} onSeek={onSeek} label={LABEL} />);
+    render(<DepthTrack depths={runDepths} stepIndex={0} onSeek={onSeek} label={LABEL} />);
 
     fireEvent.change(screen.getByRole('slider', { name: LABEL }), { target: { value: '12' } });
 
@@ -34,9 +37,9 @@ describe('DepthTrack', () => {
   });
 
   it('draws one bar per step for a short history', () => {
-    render(<DepthTrack depths={mockDepths} stepIndex={0} onSeek={vi.fn()} label={LABEL} />);
+    render(<DepthTrack depths={runDepths} stepIndex={0} onSeek={vi.fn()} label={LABEL} />);
 
-    expect(screen.getAllByTestId('depth-bar')).toHaveLength(mockDepths.length);
+    expect(screen.getAllByTestId('depth-bar')).toHaveLength(runDepths.length);
   });
 
   it('buckets a long history down to a readable number of bars', () => {
@@ -61,14 +64,21 @@ describe('DepthTrack', () => {
   });
 
   it('highlights the steps the current frame is alive for', () => {
-    // Steps 10–14 are the only ones with three frames, i.e. the lifetime of factorial(1).
+    // Steps 26–30 are the only ones with five frames: the lifetime of factorial(1).
     const { rerender } = render(
-      <DepthTrack depths={mockDepths} stepIndex={12} onSeek={vi.fn()} label={LABEL} />,
+      <DepthTrack depths={runDepths} stepIndex={28} onSeek={vi.fn()} label={LABEL} />,
     );
 
     expect(accentBars()).toBe(5);
 
-    rerender(<DepthTrack depths={mockDepths} stepIndex={19} onSeek={vi.fn()} label={LABEL} />);
+    rerender(
+      <DepthTrack
+        depths={runDepths}
+        stepIndex={runDepths.length - 1}
+        onSeek={vi.fn()}
+        label={LABEL}
+      />,
+    );
 
     // The terminal snapshot has no frame at all, so nothing is highlighted.
     expect(accentBars()).toBe(0);

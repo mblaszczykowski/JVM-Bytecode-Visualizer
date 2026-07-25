@@ -1,8 +1,11 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
-import { mockDepths } from './__fixtures__/mock-derivations';
+import { depths } from './__fixtures__/factorial-run';
 import { TransportControls } from './TransportControls';
+
+/** Call stack depth per step of the real `factorial(4)` run. */
+const runDepths = depths();
 
 function handlers() {
   return {
@@ -134,10 +137,10 @@ describe('TransportControls', () => {
     render(
       <TransportControls
         stepIndex={7}
-        stepCount={mockDepths.length}
+        stepCount={runDepths.length}
         isPlaying={false}
         speed={1}
-        depths={mockDepths}
+        depths={runDepths}
         {...spies}
       />,
     );
@@ -145,9 +148,9 @@ describe('TransportControls', () => {
     const scrubber = screen.getByRole('slider', { name: 'Execution history position' });
 
     expect(scrubber).toHaveAttribute('min', '0');
-    expect(scrubber).toHaveAttribute('max', '19');
-    expect(scrubber).toHaveAttribute('aria-valuetext', 'step 8 of 20');
-    expect(screen.getAllByTestId('depth-bar')).toHaveLength(mockDepths.length);
+    expect(scrubber).toHaveAttribute('max', String(runDepths.length - 1));
+    expect(scrubber).toHaveAttribute('aria-valuetext', `step 8 of ${String(runDepths.length)}`);
+    expect(screen.getAllByTestId('depth-bar')).toHaveLength(runDepths.length);
 
     fireEvent.change(scrubber, { target: { value: '12' } });
     expect(spies.onSeek).toHaveBeenCalledWith(12);

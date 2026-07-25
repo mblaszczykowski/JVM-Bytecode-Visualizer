@@ -42,7 +42,9 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['text', 'html', 'lcov'],
       include: ['src/**/*.{ts,tsx}'],
-      exclude: ['src/**/*.test.{ts,tsx}', 'src/test/**', 'src/main.tsx'],
+      // Test fixtures are scaffolding, not shipped behaviour: counting them moves the
+      // thresholds for reasons that have nothing to do with the code under test.
+      exclude: ['src/**/*.test.{ts,tsx}', 'src/**/__fixtures__/**', 'src/test/**', 'src/main.tsx'],
       thresholds: {
         // The domain layer is the part that has to be correct; CI enforces it, not review.
         'src/core/**/*.ts': { lines: 90, branches: 90, functions: 90 },

@@ -1,35 +1,48 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
-import { commentsFor } from './__fixtures__/mock-derivations';
-import { mockFactorialMethod, mockUnsupportedMethod } from './__fixtures__/mock-history';
+import type { MethodListing } from '../services/program';
+
+import { commentsOf, constructorListing, factorialListing } from './__fixtures__/factorial-run';
 import { BytecodePanel } from './BytecodePanel';
 import { ROW_HEIGHT } from './rhythm';
 
-function renderFactorial(currentOffset: number | undefined) {
+/** The real disassembly of a method of the committed `Factorial.class`. */
+const factorial = factorialListing();
+const constructor = constructorListing();
+
+type ExtraProps = Partial<Parameters<typeof BytecodePanel>[0]>;
+
+function renderListing(
+  listing: MethodListing,
+  currentOffset: number | undefined,
+  extra?: ExtraProps,
+) {
   return render(
     <BytecodePanel
-      methodName={mockFactorialMethod.name}
-      methodDescriptor={mockFactorialMethod.descriptor}
-      maxStack={mockFactorialMethod.maxStack}
-      maxLocals={mockFactorialMethod.maxLocals}
-      instructions={mockFactorialMethod.instructions}
+      methodName={listing.name}
+      methodDescriptor={listing.descriptor}
+      maxStack={listing.maxStack}
+      maxLocals={listing.maxLocals}
+      instructions={listing.instructions}
       currentOffset={currentOffset}
+      {...extra}
     />,
   );
 }
 
 describe('BytecodePanel', () => {
   it('renders the listing of the current method with its signature and Code limits', () => {
-    renderFactorial(undefined);
+    renderListing(factorial, undefined);
 
     expect(screen.getByRole('region', { name: 'Bytecode' })).toBeInTheDocument();
-    expect(screen.getByText('factorial(I)I · max 2/1')).toBeInTheDocument();
-    expect(screen.getAllByRole('listitem')).toHaveLength(mockFactorialMethod.instructions.length);
+    // stack=3, locals=1 in the Code attribute javap prints for factorial(int).
+    expect(screen.getByText('factorial(I)I · max 3/1')).toBeInTheDocument();
+    expect(screen.getAllByRole('listitem')).toHaveLength(factorial.instructions.length);
   });
 
   it('highlights the instruction under the pc of the top frame', () => {
-    renderFactorial(11);
+    renderListing(factorial, 11);
 
     const current = screen.getByTestId('current-instruction');
 
@@ -40,20 +53,20 @@ describe('BytecodePanel', () => {
   });
 
   it('announces the current instruction for assistive technology', () => {
-    renderFactorial(11);
+    renderListing(factorial, 11);
 
     expect(screen.getByText('pc 11 · invokestatic #7')).toBeInTheDocument();
   });
 
   it('highlights nothing when the call stack is empty', () => {
-    renderFactorial(undefined);
+    renderListing(factorial, undefined);
 
     expect(screen.queryByTestId('current-instruction')).not.toBeInTheDocument();
     expect(screen.getByText('No active instruction.')).toBeInTheDocument();
   });
 
   it('shows the absolute jump target instead of the raw delta', () => {
-    renderFactorial(2);
+    renderListing(factorial, 2);
     const row = within(screen.getByTestId('current-instruction'));
 
     expect(row.getByText('if_icmpgt')).toBeInTheDocument();
@@ -63,13 +76,13 @@ describe('BytecodePanel', () => {
   });
 
   it('renders the invokestatic operand as a constant pool reference', () => {
-    renderFactorial(11);
+    renderListing(factorial, 11);
 
     expect(within(screen.getByTestId('current-instruction')).getByText('#7')).toBeInTheDocument();
   });
 
   it('draws a branch arc spanning the rows between the jump and its target', () => {
-    renderFactorial(2);
+    renderListing(factorial, 2);
 
     const arc = screen.getByTestId('branch-arc');
 
@@ -78,37 +91,21 @@ describe('BytecodePanel', () => {
   });
 
   it('shows the resolved constant pool entry as a javap-style comment', () => {
-    render(
-      <BytecodePanel
-        methodName={mockFactorialMethod.name}
-        methodDescriptor={mockFactorialMethod.descriptor}
-        maxStack={mockFactorialMethod.maxStack}
-        maxLocals={mockFactorialMethod.maxLocals}
-        instructions={mockFactorialMethod.instructions}
-        currentOffset={11}
-        comments={commentsFor(mockFactorialMethod)}
-      />,
-    );
+    renderListing(factorial, 11, { comments: commentsOf(factorial) });
 
     expect(
-      within(screen.getByTestId('current-instruction')).getByText('// Method factorial:(I)I'),
+      within(screen.getByTestId('current-instruction')).getByText(
+        '// Method Factorial.factorial:(I)I',
+      ),
     ).toBeInTheDocument();
   });
 
   it('marks instructions outside the supported subset as unsupported', () => {
-    render(
-      <BytecodePanel
-        methodName={mockUnsupportedMethod.name}
-        methodDescriptor={mockUnsupportedMethod.descriptor}
-        maxStack={mockUnsupportedMethod.maxStack}
-        maxLocals={mockUnsupportedMethod.maxLocals}
-        instructions={mockUnsupportedMethod.instructions}
-        currentOffset={0}
-      />,
-    );
+    // The constructor javac generates: aload_0 and invokespecial, neither of them executable.
+    renderListing(constructor, 0);
 
     expect(screen.getAllByText('unsupported')).toHaveLength(2);
-    expect(screen.getByTestId('current-instruction')).toHaveTextContent('getstatic');
+    expect(screen.getByTestId('current-instruction')).toHaveTextContent('aload_0');
   });
 
   it('colours only the operands that point elsewhere in the class file', () => {
@@ -139,18 +136,7 @@ describe('BytecodePanel', () => {
 
   it('seeks to the first step at a row, by pointer and by keyboard', () => {
     const onSeek = vi.fn();
-    render(
-      <BytecodePanel
-        methodName={mockFactorialMethod.name}
-        methodDescriptor={mockFactorialMethod.descriptor}
-        maxStack={mockFactorialMethod.maxStack}
-        maxLocals={mockFactorialMethod.maxLocals}
-        instructions={mockFactorialMethod.instructions}
-        currentOffset={0}
-        stepForOffset={new Map([[11, 9]])}
-        onSeek={onSeek}
-      />,
-    );
+    renderListing(factorial, 0, { stepForOffset: new Map([[11, 9]]), onSeek });
 
     // Only the offsets the run reached are seekable; the rest are read-only rows.
     const targets = screen.getAllByRole('button');
@@ -161,17 +147,9 @@ describe('BytecodePanel', () => {
   });
 
   it('explains any mnemonic on hover, including the rows this run never reached', () => {
-    render(
-      <BytecodePanel
-        methodName={mockFactorialMethod.name}
-        methodDescriptor={mockFactorialMethod.descriptor}
-        maxStack={mockFactorialMethod.maxStack}
-        maxLocals={mockFactorialMethod.maxLocals}
-        instructions={mockFactorialMethod.instructions}
-        currentOffset={undefined}
-        help={new Map([['imul', 'Pops two ints and pushes their product.']])}
-      />,
-    );
+    renderListing(factorial, undefined, {
+      help: new Map([['imul', 'Pops two ints and pushes their product.']]),
+    });
 
     expect(screen.getByText('imul').closest('li')).toHaveAttribute(
       'title',
@@ -180,17 +158,7 @@ describe('BytecodePanel', () => {
   });
 
   it('reports the rest of the method as undecoded after a variable-length instruction', () => {
-    render(
-      <BytecodePanel
-        methodName={mockUnsupportedMethod.name}
-        methodDescriptor={mockUnsupportedMethod.descriptor}
-        maxStack={mockUnsupportedMethod.maxStack}
-        maxLocals={mockUnsupportedMethod.maxLocals}
-        instructions={mockUnsupportedMethod.instructions}
-        currentOffset={0}
-        truncatedAtOffset={7}
-      />,
-    );
+    renderListing(constructor, 0, { truncatedAtOffset: 5 });
 
     expect(screen.getByText('… not decoded')).toBeInTheDocument();
   });

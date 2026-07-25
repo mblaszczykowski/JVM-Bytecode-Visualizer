@@ -45,8 +45,44 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      # Coverage, not a bare run: the src/core thresholds in vite.config.ts are the gate.
       - name: Test
-        run: npm test
+        run: npm run test:coverage -w web
 
       - name: Build
         run: npm run build
+
+  # Separate job, because it is the only one that needs a JDK: it recompiles the examples and
+  # re-runs them on a real JVM, so a drift between an example's source, its committed class
+  # file and its recorded result cannot reach main unnoticed.
+  fixtures:
+    name: example fixtures match the JDK
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Setup JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Rebuild the examples
+        run: npm run fixtures -w web
+
+      # `git add` first: a rebuild that produced a file nobody committed is drift too, and a
+      # plain `git diff` would not see it.
+      - name: Fail on any drift
+        run: |
+          git add --all web/public/examples
+          git diff --cached --exit-code web/public/examples

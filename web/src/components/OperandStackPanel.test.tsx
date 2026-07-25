@@ -3,11 +3,12 @@ import { describe, expect, it } from 'vitest';
 
 import type { StackFrame } from '../core/interpreter/types';
 
-import { mockSnapshotAt } from './__fixtures__/mock-history';
+import { firstStepOf, frameAt, operandRolesAt } from './__fixtures__/factorial-run';
 import { OperandStackPanel } from './OperandStackPanel';
 
-/** Step 8 of the mock: factorial(2) just before `isub`, stack [2, 2, 1] from base to top. */
-const frameWithValues = mockSnapshotAt(8).callStack.at(-1);
+/** factorial(4) just before its `isub`: the stack holds [4, 4, 1] from base to top. */
+const isubStep = firstStepOf('isub');
+const frameWithValues = frameAt(isubStep);
 
 const emptyStackFrame: StackFrame = {
   methodName: 'factorial',
@@ -39,12 +40,8 @@ describe('OperandStackPanel', () => {
   });
 
   it('annotates each cell with the role it plays for the current instruction', () => {
-    render(
-      <OperandStackPanel
-        frame={frameWithValues}
-        annotations={['waiting for imul', '→ left', '→ right']}
-      />,
-    );
+    // The two operands of `isub`, and below them the `n` that `imul` is still waiting for.
+    render(<OperandStackPanel frame={frameWithValues} annotations={operandRolesAt(isubStep)} />);
 
     expect(within(cellAt(0)).getByText('→ right')).toBeInTheDocument();
     expect(within(cellAt(1)).getByText('→ left')).toBeInTheDocument();

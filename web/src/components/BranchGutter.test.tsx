@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { Instruction } from '../core/disassembler/types';
 
-import { mockFactorialMethod } from './__fixtures__/mock-history';
+import { factorialListing } from './__fixtures__/factorial-run';
 import { BranchGutter } from './BranchGutter';
 import { ROW_HEIGHT } from './rhythm';
 
@@ -32,7 +32,7 @@ const denseMethod: readonly Instruction[] = [
 
 describe('BranchGutter', () => {
   it('spans exactly the rows between the jump and its target', () => {
-    render(<BranchGutter instructions={mockFactorialMethod.instructions} currentIndex={2} />);
+    render(<BranchGutter instructions={factorialListing().instructions} currentIndex={2} />);
 
     const arc = screen.getByTestId('branch-arc');
 
