@@ -46,17 +46,25 @@ class WebConfig {
 
     @Bean
     FilterRegistrationBean<CorsFilter> corsFilterRegistration() {
-        CorsConfiguration cors = new CorsConfiguration();
-        cors.setAllowedOrigins(List.of(properties.allowedOrigin()));
-        cors.setAllowedMethods(List.of("POST", "OPTIONS"));
-        cors.setAllowedHeaders(List.of("Content-Type"));
-        cors.setMaxAge(3600L);
+        CorsConfiguration api = new CorsConfiguration();
+        api.setAllowedOrigins(List.of(properties.allowedOrigin()));
+        api.setAllowedMethods(List.of("POST", "OPTIONS"));
+        api.setAllowedHeaders(List.of("Content-Type"));
+        api.setMaxAge(3600L);
+
+        // The browser probes /actuator/health before it reveals the editor, so that GET has to be
+        // readable cross-origin too — otherwise the feature stays hidden on any split deployment.
+        CorsConfiguration health = new CorsConfiguration();
+        health.setAllowedOrigins(List.of(properties.allowedOrigin()));
+        health.setAllowedMethods(List.of("GET", "OPTIONS"));
+        health.setMaxAge(3600L);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        source.registerCorsConfiguration("/api/**", cors);
+        source.registerCorsConfiguration("/api/**", api);
+        source.registerCorsConfiguration("/actuator/health", health);
 
         FilterRegistrationBean<CorsFilter> registration = new FilterRegistrationBean<>(new CorsFilter(source));
-        registration.addUrlPatterns("/api/*");
+        registration.addUrlPatterns("/api/*", "/actuator/health");
         registration.setOrder(CORS_ORDER);
         return registration;
     }
