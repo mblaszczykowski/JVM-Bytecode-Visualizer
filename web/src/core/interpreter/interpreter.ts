@@ -11,13 +11,14 @@ import {
   type MethodDescriptor,
   type MethodInfo,
 } from '../classfile';
-import { lookupOpcode, type Instruction } from '../disassembler';
+import { arrayTypeName, lookupOpcode, T_INT, type Instruction } from '../disassembler';
 import { isVmFault, toVmError, VmFault } from './errors';
 import {
   createFrame,
   loadLocal,
-  peek,
+  peekAny,
   pop,
+  popAny,
   prepareMethod,
   push,
   setPc,
@@ -25,6 +26,7 @@ import {
   type Frame,
   type PreparedMethod,
 } from './frame';
+import { Heap, NULL_REFERENCE } from './heap';
 import { iadd, idiv, imul, ineg, irem, isub } from './int32';
 import { createTerminalSnapshot, SnapshotWriter, sourceLineAt } from './snapshot';
 import {
@@ -33,6 +35,7 @@ import {
   type ExecuteOptions,
   type ExecutionResult,
   type Snapshot,
+  type ValueKind,
 } from './types';
 
 /**
@@ -80,6 +83,7 @@ export function execute(classFile: ClassFile, options: ExecuteOptions = {}): Exe
     prepared,
     maxCallDepth: atLeastOne(options.maxCallDepth, DEFAULT_MAX_CALL_DEPTH),
     callStack: [entryFrame],
+    heap: new Heap(),
     returnValue: undefined,
   };
 
@@ -96,7 +100,13 @@ export function execute(classFile: ClassFile, options: ExecuteOptions = {}): Exe
     try {
       const fetched = fetchAt(frame);
       snapshots.push(
-        writer.next(snapshots.length, machine.callStack, fetched.instruction, sourceLineAt(frame)),
+        writer.next(
+          snapshots.length,
+          machine.callStack,
+          machine.heap,
+          fetched.instruction,
+          sourceLineAt(frame),
+        ),
       );
       // Advance before dispatching: a call pushed by this instruction must leave the caller
       // pointing at its continuation, which is where the frame resumes after the callee returns.
@@ -107,7 +117,7 @@ export function execute(classFile: ClassFile, options: ExecuteOptions = {}): Exe
     }
   }
 
-  snapshots.push(createTerminalSnapshot(snapshots.length));
+  snapshots.push(createTerminalSnapshot(snapshots.length, machine.heap));
   return {
     kind: 'completed',
     snapshots: Object.freeze(snapshots),
@@ -148,7 +158,7 @@ function atLeastOne(value: number | undefined, fallback: number): number {
 
 /**
  * Entry points the interpreter can start from. The `String[]` of `main` stays an empty slot
- * — no supported instruction can read a reference — and the no-argument forms exist so a
+ * — nothing in the subset can allocate that array — and the no-argument forms exist so a
  * single method can be run directly.
  */
 const ENTRY_DESCRIPTORS: ReadonlySet<string> = new Set(['([Ljava/lang/String;)V', '()V', '()I']);
@@ -156,6 +166,7 @@ const ENTRY_DESCRIPTORS: ReadonlySet<string> = new Set(['([Ljava/lang/String;)V'
 /** The executable subset of JVMS §6.5, as a union type so the dispatch switch stays exhaustive. */
 const Op = {
   nop: 0x00,
+  aconst_null: 0x01,
   iconst_m1: 0x02,
   iconst_0: 0x03,
   iconst_1: 0x04,
@@ -166,15 +177,27 @@ const Op = {
   bipush: 0x10,
   sipush: 0x11,
   iload: 0x15,
+  aload: 0x19,
   iload_0: 0x1a,
   iload_1: 0x1b,
   iload_2: 0x1c,
   iload_3: 0x1d,
+  aload_0: 0x2a,
+  aload_1: 0x2b,
+  aload_2: 0x2c,
+  aload_3: 0x2d,
+  iaload: 0x2e,
   istore: 0x36,
+  astore: 0x3a,
   istore_0: 0x3b,
   istore_1: 0x3c,
   istore_2: 0x3d,
   istore_3: 0x3e,
+  astore_0: 0x4b,
+  astore_1: 0x4c,
+  astore_2: 0x4d,
+  astore_3: 0x4e,
+  iastore: 0x4f,
   pop: 0x57,
   dup: 0x59,
   iadd: 0x60,
@@ -200,6 +223,8 @@ const Op = {
   ireturn: 0xac,
   return: 0xb1,
   invokestatic: 0xb8,
+  newarray: 0xbc,
+  arraylength: 0xbe,
 } as const;
 
 type Op = (typeof Op)[keyof typeof Op];
@@ -216,6 +241,8 @@ interface Machine {
   readonly prepared: Map<MethodInfo, PreparedMethod>;
   readonly maxCallDepth: number;
   readonly callStack: Frame[];
+  /** Shared by every frame of the run, and never unwound (JVMS §2.5.3). */
+  readonly heap: Heap;
   /** Set when the entry frame returns a value — the result of the whole run. */
   returnValue: number | undefined;
 }
@@ -258,76 +285,134 @@ function step(machine: Machine, frame: Frame, instruction: Instruction): void {
     case Op.nop:
       break;
 
+    case Op.aconst_null:
+      push(frame, NULL_REFERENCE, 'ref');
+      break;
     case Op.iconst_m1:
-      push(frame, -1);
+      push(frame, -1, 'int');
       break;
     case Op.iconst_0:
-      push(frame, 0);
+      push(frame, 0, 'int');
       break;
     case Op.iconst_1:
-      push(frame, 1);
+      push(frame, 1, 'int');
       break;
     case Op.iconst_2:
-      push(frame, 2);
+      push(frame, 2, 'int');
       break;
     case Op.iconst_3:
-      push(frame, 3);
+      push(frame, 3, 'int');
       break;
     case Op.iconst_4:
-      push(frame, 4);
+      push(frame, 4, 'int');
       break;
     case Op.iconst_5:
-      push(frame, 5);
+      push(frame, 5, 'int');
       break;
     case Op.bipush:
     case Op.sipush:
-      push(frame, operand(instruction, 0));
+      push(frame, operand(instruction, 0), 'int');
       break;
 
     case Op.iload:
-      push(frame, loadLocal(frame, operand(instruction, 0)));
+      pushLocal(frame, operand(instruction, 0), 'int');
       break;
     case Op.iload_0:
-      push(frame, loadLocal(frame, 0));
+      pushLocal(frame, 0, 'int');
       break;
     case Op.iload_1:
-      push(frame, loadLocal(frame, 1));
+      pushLocal(frame, 1, 'int');
       break;
     case Op.iload_2:
-      push(frame, loadLocal(frame, 2));
+      pushLocal(frame, 2, 'int');
       break;
     case Op.iload_3:
-      push(frame, loadLocal(frame, 3));
+      pushLocal(frame, 3, 'int');
+      break;
+    case Op.aload:
+      pushLocal(frame, operand(instruction, 0), 'ref');
+      break;
+    case Op.aload_0:
+      pushLocal(frame, 0, 'ref');
+      break;
+    case Op.aload_1:
+      pushLocal(frame, 1, 'ref');
+      break;
+    case Op.aload_2:
+      pushLocal(frame, 2, 'ref');
+      break;
+    case Op.aload_3:
+      pushLocal(frame, 3, 'ref');
       break;
     case Op.istore:
-      storeLocal(frame, operand(instruction, 0), pop(frame));
+      popIntoLocal(frame, operand(instruction, 0), 'int');
       break;
     case Op.istore_0:
-      storeLocal(frame, 0, pop(frame));
+      popIntoLocal(frame, 0, 'int');
       break;
     case Op.istore_1:
-      storeLocal(frame, 1, pop(frame));
+      popIntoLocal(frame, 1, 'int');
       break;
     case Op.istore_2:
-      storeLocal(frame, 2, pop(frame));
+      popIntoLocal(frame, 2, 'int');
       break;
     case Op.istore_3:
-      storeLocal(frame, 3, pop(frame));
+      popIntoLocal(frame, 3, 'int');
+      break;
+    case Op.astore:
+      popIntoLocal(frame, operand(instruction, 0), 'ref');
+      break;
+    case Op.astore_0:
+      popIntoLocal(frame, 0, 'ref');
+      break;
+    case Op.astore_1:
+      popIntoLocal(frame, 1, 'ref');
+      break;
+    case Op.astore_2:
+      popIntoLocal(frame, 2, 'ref');
+      break;
+    case Op.astore_3:
+      popIntoLocal(frame, 3, 'ref');
       break;
     case Op.iinc: {
       // Increments the slot in place — the operand stack is not touched, which is why every
       // `for` loop needs this instruction.
       const slot = operand(instruction, 0);
-      storeLocal(frame, slot, iadd(loadLocal(frame, slot), operand(instruction, 1)));
+      storeLocal(frame, slot, iadd(loadLocal(frame, slot, 'int'), operand(instruction, 1)), 'int');
+      break;
+    }
+
+    case Op.newarray:
+      allocateArray(machine, frame, operand(instruction, 0));
+      break;
+    case Op.arraylength:
+      push(frame, machine.heap.lengthOf(pop(frame, 'ref')), 'int');
+      break;
+    case Op.iaload: {
+      // JVMS §6.5 iaload: `…, arrayref, index → …, value`, so the index comes off first.
+      const index = pop(frame, 'int');
+      const arrayref = pop(frame, 'ref');
+      push(frame, machine.heap.loadInt(arrayref, index), 'int');
+      break;
+    }
+    case Op.iastore: {
+      // JVMS §6.5 iastore: `…, arrayref, index, value →`, popped in reverse of that order.
+      const value = pop(frame, 'int');
+      const index = pop(frame, 'int');
+      const arrayref = pop(frame, 'ref');
+      machine.heap.storeInt(arrayref, index, value);
       break;
     }
 
     case Op.pop:
-      pop(frame);
+      popAny(frame);
       break;
-    case Op.dup:
-      push(frame, peek(frame));
+    case Op.dup: {
+      // Type-agnostic (JVMS §6.5 dup): duplicating a reference must not turn it into an int.
+      const top = peekAny(frame);
+      push(frame, top.value, top.kind);
       break;
+    }
 
     case Op.iadd:
       binary(frame, iadd);
@@ -345,26 +430,26 @@ function step(machine: Machine, frame: Frame, instruction: Instruction): void {
       divide(frame, irem);
       break;
     case Op.ineg:
-      push(frame, ineg(pop(frame)));
+      push(frame, ineg(pop(frame, 'int')), 'int');
       break;
 
     case Op.ifeq:
-      branchIf(frame, instruction, equal(pop(frame), 0));
+      branchIf(frame, instruction, equal(pop(frame, 'int'), 0));
       break;
     case Op.ifne:
-      branchIf(frame, instruction, notEqual(pop(frame), 0));
+      branchIf(frame, instruction, notEqual(pop(frame, 'int'), 0));
       break;
     case Op.iflt:
-      branchIf(frame, instruction, less(pop(frame), 0));
+      branchIf(frame, instruction, less(pop(frame, 'int'), 0));
       break;
     case Op.ifge:
-      branchIf(frame, instruction, greaterOrEqual(pop(frame), 0));
+      branchIf(frame, instruction, greaterOrEqual(pop(frame, 'int'), 0));
       break;
     case Op.ifgt:
-      branchIf(frame, instruction, greater(pop(frame), 0));
+      branchIf(frame, instruction, greater(pop(frame, 'int'), 0));
       break;
     case Op.ifle:
-      branchIf(frame, instruction, lessOrEqual(pop(frame), 0));
+      branchIf(frame, instruction, lessOrEqual(pop(frame, 'int'), 0));
       break;
     case Op.if_icmpeq:
       branchIf(frame, instruction, comparePair(frame, equal));
@@ -392,7 +477,7 @@ function step(machine: Machine, frame: Frame, instruction: Instruction): void {
       invokeStatic(machine, frame, operand(instruction, 0));
       break;
     case Op.ireturn:
-      returnFromFrame(machine, pop(frame));
+      returnFromFrame(machine, pop(frame, 'int'));
       break;
     case Op.return:
       returnFromFrame(machine, undefined);
@@ -402,6 +487,34 @@ function step(machine: Machine, frame: Frame, instruction: Instruction): void {
       opcode satisfies never;
       break;
   }
+}
+
+/** `iload`/`aload`: the slot must already hold a value of the kind the instruction reads. */
+function pushLocal(frame: Frame, slot: number, kind: ValueKind): void {
+  push(frame, loadLocal(frame, slot, kind), kind);
+}
+
+/** `istore`/`astore`: what the instruction takes off the stack is what the slot then holds. */
+function popIntoLocal(frame: Frame, slot: number, kind: ValueKind): void {
+  storeLocal(frame, slot, pop(frame, kind), kind);
+}
+
+/**
+ * JVMS §6.5 newarray: `…, count → …, arrayref`.
+ *
+ * The element type is fixed by the instruction rather than by the stack, so it is rejected
+ * before anything is popped — a `long[]` is not a program this interpreter can continue.
+ */
+function allocateArray(machine: Machine, frame: Frame, atype: number): void {
+  if (atype !== T_INT) {
+    const element = arrayTypeName(atype);
+    throw new VmFault({
+      kind: 'unsupported-array-type',
+      typeName: element === undefined ? `atype ${String(atype)}` : `${element}[]`,
+    });
+  }
+  const count = pop(frame, 'int');
+  push(frame, machine.heap.allocateIntArray(count), 'ref');
 }
 
 type IntComparison = (value1: number, value2: number) => boolean;
@@ -415,24 +528,24 @@ const lessOrEqual: IntComparison = (value1, value2) => value1 <= value2;
 
 /** JVMS §6.5 if_icmp<cond>: the stack holds `…, value1, value2`, so value2 comes off first. */
 function comparePair(frame: Frame, holds: IntComparison): boolean {
-  const value2 = pop(frame);
-  const value1 = pop(frame);
+  const value2 = pop(frame, 'int');
+  const value1 = pop(frame, 'int');
   return holds(value1, value2);
 }
 
 function binary(frame: Frame, apply: (value1: number, value2: number) => number): void {
-  const value2 = pop(frame);
-  const value1 = pop(frame);
-  push(frame, apply(value1, value2));
+  const value2 = pop(frame, 'int');
+  const value1 = pop(frame, 'int');
+  push(frame, apply(value1, value2), 'int');
 }
 
 function divide(frame: Frame, apply: (dividend: number, divisor: number) => number): void {
-  const divisor = pop(frame);
-  const dividend = pop(frame);
+  const divisor = pop(frame, 'int');
+  const dividend = pop(frame, 'int');
   if (divisor === 0) {
     throw new VmFault({ kind: 'division-by-zero' });
   }
-  push(frame, apply(dividend, divisor));
+  push(frame, apply(dividend, divisor), 'int');
 }
 
 function branchIf(frame: Frame, instruction: Instruction, taken: boolean): void {
@@ -463,7 +576,8 @@ function returnFromFrame(machine: Machine, value: number | undefined): void {
     machine.returnValue = value;
     return;
   }
-  push(caller, value);
+  // Only `ireturn` carries a value, and only int-returning methods are callable.
+  push(caller, value, 'int');
 }
 
 function invokeStatic(machine: Machine, frame: Frame, poolIndex: number): void {
@@ -493,7 +607,7 @@ function invokeStatic(machine: Machine, frame: Frame, poolIndex: number): void {
   // Arguments were pushed left to right, so they come off the stack in reverse order.
   const args = new Array<number>(parameterCount);
   for (let index = parameterCount - 1; index >= 0; index -= 1) {
-    args[index] = pop(frame);
+    args[index] = pop(frame, 'int');
   }
   machine.callStack.push(createFrame(prepare(machine.prepared, method, code), args));
 }

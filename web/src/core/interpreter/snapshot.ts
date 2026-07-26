@@ -1,5 +1,6 @@
 import type { Instruction } from '../disassembler';
 import { localNamesAt, type Frame } from './frame';
+import type { Heap } from './heap';
 import type { Snapshot, StackFrame } from './types';
 
 /**
@@ -21,6 +22,7 @@ export class SnapshotWriter {
   next(
     step: number,
     callStack: readonly Frame[],
+    heap: Heap,
     currentInstruction: Instruction,
     sourceLine: number | undefined,
   ): Snapshot {
@@ -31,6 +33,8 @@ export class SnapshotWriter {
     return Object.freeze({
       step,
       callStack: Object.freeze(frames),
+      // The heap shares the same way the call stack does — see `Heap.freeze`.
+      heap: heap.freeze(),
       currentInstruction: freezeInstruction(currentInstruction),
       ...(sourceLine === undefined ? {} : { sourceLine }),
     });
@@ -54,9 +58,9 @@ interface EmittedFrame {
   readonly stackFrame: StackFrame;
 }
 
-/** Closing state after the entry frame returns: nothing left to execute. */
-export function createTerminalSnapshot(step: number): Snapshot {
-  return Object.freeze({ step, callStack: Object.freeze([]) });
+/** Closing state after the entry frame returns: nothing left to execute, the heap as it ended. */
+export function createTerminalSnapshot(step: number, heap: Heap): Snapshot {
+  return Object.freeze({ step, callStack: Object.freeze([]), heap: heap.freeze() });
 }
 
 /** JVMS §4.7.12: the current line is the entry with the largest `startPc <= pc`. */
@@ -81,6 +85,8 @@ function toStackFrame(frame: Frame): StackFrame {
     locals: Object.freeze([...frame.locals]),
     // Which variable a slot holds depends on the pc; the arrays are frozen and shared.
     localNames: localNamesAt(frame.method, frame.pc),
+    operandKinds: Object.freeze([...frame.operandKinds]),
+    localKinds: Object.freeze([...frame.localKinds]),
   });
 }
 

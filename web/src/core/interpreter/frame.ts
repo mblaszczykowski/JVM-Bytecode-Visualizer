@@ -1,6 +1,7 @@
 import type { CodeAttribute, LineNumberEntry, LocalVariableEntry, MethodInfo } from '../classfile';
 import { disassemble, type DisassembledCode, type Instruction } from '../disassembler';
 import { VmFault } from './errors';
+import type { ValueKind } from './types';
 
 export interface FetchedInstruction {
   readonly instruction: Instruction;
@@ -34,13 +35,23 @@ export interface Frame {
   /** Offset of the next instruction this frame will execute; written through `setPc`. */
   pc: number;
   readonly operandStack: number[];
+  /** Kind of each cell of `operandStack`, pushed and popped with it. */
+  readonly operandKinds: ValueKind[];
   readonly locals: (number | undefined)[];
+  /** Kind of each slot of `locals`; `undefined` exactly where the slot is uninitialised. */
+  readonly localKinds: (ValueKind | undefined)[];
   /**
    * Bumped by every mutation of this frame. A snapshot reuses the frozen copy it already
    * emitted for an unchanged frame, which is what keeps a deep call stack from being copied
    * once per step.
    */
   version: number;
+}
+
+/** One cell of the operand stack, for the instructions that move values without typing them. */
+export interface StackValue {
+  readonly value: number;
+  readonly kind: ValueKind;
 }
 
 export function prepareMethod(method: MethodInfo, code: CodeAttribute): PreparedMethod {
@@ -59,13 +70,18 @@ export function prepareMethod(method: MethodInfo, code: CodeAttribute): Prepared
   };
 }
 
-/** Static call arguments land in slots 0..n-1, first argument first (JVMS §2.6.1). */
+/**
+ * Static call arguments land in slots 0..n-1, first argument first (JVMS §2.6.1). Only int
+ * parameters are callable, so every argument slot starts out holding an int.
+ */
 export function createFrame(method: PreparedMethod, args: readonly number[]): Frame {
   const locals = new Array<number | undefined>(method.code.maxLocals).fill(undefined);
+  const localKinds = new Array<ValueKind | undefined>(method.code.maxLocals).fill(undefined);
   for (let slot = 0; slot < args.length; slot += 1) {
     locals[slot] = args[slot];
+    localKinds[slot] = 'int';
   }
-  return { method, pc: 0, operandStack: [], locals, version: 0 };
+  return { method, pc: 0, operandStack: [], operandKinds: [], locals, localKinds, version: 0 };
 }
 
 export function setPc(frame: Frame, pc: number): void {
@@ -73,47 +89,80 @@ export function setPc(frame: Frame, pc: number): void {
   frame.version += 1;
 }
 
-export function push(frame: Frame, value: number): void {
+export function push(frame: Frame, value: number, kind: ValueKind): void {
   frame.operandStack.push(value);
+  frame.operandKinds.push(kind);
   frame.version += 1;
 }
 
-export function pop(frame: Frame): number {
+/**
+ * Pops a value the instruction expects to be of `expected` kind. Reading a reference as an
+ * int (or the reverse) is a state the JVM verifier rejects before the code ever runs
+ * (JVMS §4.10), so it stops the run here rather than producing a plausible wrong number.
+ */
+export function pop(frame: Frame, expected: ValueKind): number {
+  const popped = popAny(frame);
+  if (popped.kind !== expected) {
+    throw new VmFault({
+      kind: 'invalid-state',
+      message: `expected ${KIND_NAMES[expected]} on the operand stack, found ${KIND_NAMES[popped.kind]}`,
+    });
+  }
+  return popped.value;
+}
+
+/** Pops whatever is on top — `pop` and `dup` move a value without caring what it is. */
+export function popAny(frame: Frame): StackValue {
   const value = frame.operandStack.pop();
-  if (value === undefined) {
+  const kind = frame.operandKinds.pop();
+  if (value === undefined || kind === undefined) {
     throw new VmFault({ kind: 'invalid-state', message: 'operand stack underflow' });
   }
   frame.version += 1;
-  return value;
+  return { value, kind };
 }
 
-export function peek(frame: Frame): number {
+export function peekAny(frame: Frame): StackValue {
   const value = frame.operandStack.at(-1);
-  if (value === undefined) {
+  const kind = frame.operandKinds.at(-1);
+  if (value === undefined || kind === undefined) {
     throw new VmFault({ kind: 'invalid-state', message: 'operand stack underflow' });
   }
-  return value;
+  return { value, kind };
 }
 
-export function loadLocal(frame: Frame, slot: number): number {
+export function loadLocal(frame: Frame, slot: number, expected: ValueKind): number {
   checkSlot(frame, slot);
   const value = frame.locals[slot];
-  if (value === undefined) {
-    // Slot 0 of `main` (the `args` reference) ends up here: the MVP has no heap, so the
-    // sentinel is simply an empty slot that no supported instruction can read.
+  const kind = frame.localKinds[slot];
+  if (value === undefined || kind === undefined) {
+    // Slot 0 of `main` (the `String[] args` reference) ends up here: nothing in the executable
+    // subset can produce that array, so the slot stays empty rather than holding a fake handle.
     throw new VmFault({
       kind: 'invalid-state',
       message: `read from uninitialised local slot ${String(slot)}`,
     });
   }
+  if (kind !== expected) {
+    throw new VmFault({
+      kind: 'invalid-state',
+      message: `local slot ${String(slot)} holds ${KIND_NAMES[kind]}, not ${KIND_NAMES[expected]}`,
+    });
+  }
   return value;
 }
 
-export function storeLocal(frame: Frame, slot: number, value: number): void {
+export function storeLocal(frame: Frame, slot: number, value: number, kind: ValueKind): void {
   checkSlot(frame, slot);
   frame.locals[slot] = value;
+  frame.localKinds[slot] = kind;
   frame.version += 1;
 }
+
+const KIND_NAMES: Readonly<Record<ValueKind, string>> = {
+  int: 'an int',
+  ref: 'a reference',
+};
 
 /**
  * Names visible at `pc`, one per slot.

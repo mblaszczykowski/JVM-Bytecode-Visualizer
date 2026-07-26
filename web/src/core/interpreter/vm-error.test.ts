@@ -321,6 +321,165 @@ describe('execute — invalid frame state', () => {
   });
 });
 
+describe('execute — array faults', () => {
+  /** JVMS §6.5 newarray: `atype` 10 is T_INT, the only element type this interpreter has. */
+  const T_INT = 0x0a;
+
+  it.each([
+    {
+      case: 'reading past the end',
+      // iconst_3; newarray int; iconst_5; iaload; return
+      code: [0x06, 0xbc, T_INT, 0x08, 0x2e, 0xb1],
+      expected: { index: 5, length: 3, offset: 4 },
+    },
+    {
+      case: 'reading before the start',
+      // iconst_3; newarray int; iconst_m1; iaload; return
+      code: [0x06, 0xbc, T_INT, 0x02, 0x2e, 0xb1],
+      expected: { index: -1, length: 3, offset: 4 },
+    },
+    {
+      case: 'writing past the end',
+      // iconst_3; newarray int; bipush 7; iconst_0; iastore; return
+      code: [0x06, 0xbc, T_INT, 0x10, 0x07, 0x03, 0x4f, 0xb1],
+      expected: { index: 7, length: 3, offset: 6 },
+    },
+    {
+      case: 'writing before the start',
+      // iconst_3; newarray int; iconst_m1; iconst_0; iastore; return
+      code: [0x06, 0xbc, T_INT, 0x02, 0x03, 0x4f, 0xb1],
+      expected: { index: -1, length: 3, offset: 5 },
+    },
+    {
+      case: 'touching an empty array at all',
+      // iconst_0; newarray int; iconst_0; iaload; return
+      code: [0x03, 0xbc, T_INT, 0x03, 0x2e, 0xb1],
+      expected: { index: 0, length: 0, offset: 4 },
+    },
+  ])('reports an index out of bounds when $case', ({ code, expected }) => {
+    expect(expectVmError(run(code))).toEqual({
+      kind: 'array-index-out-of-bounds',
+      ...expected,
+      methodName: 'main',
+    });
+  });
+
+  it('names the index and the length the way the JVM exception does', () => {
+    const error = expectVmError(run([0x06, 0xbc, T_INT, 0x08, 0x2e, 0xb1]));
+
+    expect(formatVmError(error)).toBe(
+      'ArrayIndexOutOfBoundsException: index 5 out of bounds for length 3 — offset 4 in main().',
+    );
+  });
+
+  it.each([
+    { case: 'iconst_m1', code: [0x02, 0xbc, T_INT, 0x4b, 0xb1], size: -1 },
+    { case: 'bipush', code: [0x10, 0xfb, 0xbc, T_INT, 0x4b, 0xb1], size: -5 },
+  ])('refuses to allocate a negative length from $case', ({ code, size }) => {
+    const error = expectVmError(run(code));
+
+    expect(error).toMatchObject({ kind: 'negative-array-size', size, methodName: 'main' });
+    expect(formatVmError(error)).toContain(`NegativeArraySizeException: ${String(size)}`);
+  });
+
+  it.each([
+    { mnemonic: 'arraylength', code: [0x01, 0xbe, 0x57, 0xb1], offset: 1 },
+    { mnemonic: 'iaload', code: [0x01, 0x03, 0x2e, 0x57, 0xb1], offset: 2 },
+    { mnemonic: 'iastore', code: [0x01, 0x03, 0x03, 0x4f, 0xb1], offset: 3 },
+  ])('stops $mnemonic on a null reference', ({ code, offset }) => {
+    const error = expectVmError(run(code));
+
+    expect(error).toEqual({ kind: 'null-reference', offset, methodName: 'main' });
+    expect(formatVmError(error)).toBe(
+      `NullPointerException: the reference is null — offset ${String(offset)} in main().`,
+    );
+  });
+
+  it.each([
+    { case: 'long', atype: 0x0b, typeName: 'long[]' },
+    { case: 'double', atype: 0x07, typeName: 'double[]' },
+    { case: 'boolean', atype: 0x04, typeName: 'boolean[]' },
+    // 0–3 are unassigned in the JVMS table, so there is no type name to print.
+    { case: 'an unassigned atype', atype: 0x03, typeName: 'atype 3' },
+  ])('refuses to allocate an array of $case', ({ atype, typeName }) => {
+    // iconst_1; newarray <atype>; astore_0; return
+    const error = expectVmError(run([0x04, 0xbc, atype, 0x4b, 0xb1]));
+
+    expect(error).toEqual({
+      kind: 'unsupported-array-type',
+      typeName,
+      offset: 1,
+      methodName: 'main',
+    });
+    expect(formatVmError(error)).toBe(
+      `Unsupported array type: ${typeName} — only int arrays can be allocated — offset 1 in main().`,
+    );
+  });
+
+  it('leaves the count on the stack when the element type is the problem', () => {
+    const result = run([0x04, 0xbc, 0x0b, 0x4b, 0xb1]);
+
+    expect(expectVmError(result).kind).toBe('unsupported-array-type');
+    expect(result.snapshots.at(-1)?.callStack[0]?.operandStack).toEqual([1]);
+  });
+});
+
+describe('execute — reading a value as the wrong kind', () => {
+  const T_INT = 0x0a;
+
+  it.each([
+    {
+      case: 'aload on a slot holding an int',
+      // iconst_1; istore_0; aload_0; pop; return
+      code: [0x04, 0x3b, 0x2a, 0x57, 0xb1],
+      message: 'local slot 0 holds an int, not a reference',
+      offset: 2,
+    },
+    {
+      case: 'iload on a slot holding a reference',
+      // iconst_1; newarray int; astore_0; iload_0; pop; return
+      code: [0x04, 0xbc, T_INT, 0x4b, 0x1a, 0x57, 0xb1],
+      message: 'local slot 0 holds a reference, not an int',
+      offset: 4,
+    },
+    {
+      case: 'aload on a slot that was never written',
+      // aload_1; pop; return
+      code: [0x2b, 0x57, 0xb1],
+      message: 'read from uninitialised local slot 1',
+      offset: 0,
+    },
+    {
+      case: 'arithmetic on a reference',
+      // iconst_1; newarray int; iconst_1; iadd; return
+      code: [0x04, 0xbc, T_INT, 0x04, 0x60, 0xb1],
+      message: 'expected an int on the operand stack, found a reference',
+      offset: 4,
+    },
+    {
+      case: 'astore of an int',
+      // iconst_1; astore_0; return
+      code: [0x04, 0x4b, 0xb1],
+      message: 'expected a reference on the operand stack, found an int',
+      offset: 1,
+    },
+    {
+      case: 'arraylength of an int',
+      // iconst_1; arraylength; pop; return
+      code: [0x04, 0xbe, 0x57, 0xb1],
+      message: 'expected a reference on the operand stack, found an int',
+      offset: 1,
+    },
+  ])('rejects $case, which a verifier would never let run', ({ code, message, offset }) => {
+    expect(expectVmError(run(code))).toEqual({
+      kind: 'invalid-state',
+      message,
+      offset,
+      methodName: 'main',
+    });
+  });
+});
+
 describe('execute — invokestatic restrictions', () => {
   function callTo(
     reference: { className?: string; name: string; descriptor: string },

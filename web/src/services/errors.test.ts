@@ -120,6 +120,65 @@ const CASES: readonly {
       'Invalid branch target: goto jumps to offset 67, which is not the start of an instruction (pc 3, method main).',
   },
   {
+    name: 'index past the end of an array',
+    error: {
+      kind: 'vm',
+      error: {
+        kind: 'array-index-out-of-bounds',
+        index: 5,
+        length: 3,
+        offset: 21,
+        methodName: 'sort',
+      },
+    },
+    severity: 'error',
+    message:
+      'ArrayIndexOutOfBoundsException: index 5 out of bounds for length 3 (pc 21, method sort). Valid indices run from 0 to 2.',
+  },
+  {
+    name: 'any index into an empty array',
+    error: {
+      kind: 'vm',
+      error: {
+        kind: 'array-index-out-of-bounds',
+        index: 0,
+        length: 0,
+        offset: 8,
+        methodName: 'sum',
+      },
+    },
+    severity: 'error',
+    message:
+      'ArrayIndexOutOfBoundsException: index 0 out of bounds for length 0 (pc 8, method sum). The array is empty, so no index is valid.',
+  },
+  {
+    name: 'array allocated with a negative length',
+    error: {
+      kind: 'vm',
+      error: { kind: 'negative-array-size', size: -1, offset: 4, methodName: 'main' },
+    },
+    severity: 'error',
+    message:
+      'NegativeArraySizeException: -1 (pc 4, method main). An array cannot be created with a negative length.',
+  },
+  {
+    name: 'array access through a null reference',
+    error: { kind: 'vm', error: { kind: 'null-reference', offset: 12, methodName: 'sum' } },
+    severity: 'error',
+    message:
+      'NullPointerException: the reference is null (pc 12, method sum). There is no array behind it to read, write or measure.',
+  },
+  {
+    name: 'array of a type this interpreter has no heap for',
+    error: {
+      kind: 'vm',
+      error: { kind: 'unsupported-array-type', typeName: 'long[]', offset: 3, methodName: 'main' },
+    },
+    severity: 'error',
+    message:
+      'Unsupported array type: long[] (pc 3, method main). This interpreter only allocates int arrays.',
+  },
+  {
     name: 'step limit',
     error: { kind: 'step-limit', limit: 20_000 },
     severity: 'warning',
@@ -177,6 +236,10 @@ describe('error messages', () => {
       'invalid-state',
       'stack-overflow',
       'bad-branch-target',
+      'array-index-out-of-bounds',
+      'negative-array-size',
+      'null-reference',
+      'unsupported-array-type',
     ];
     const covered = CASES.filter((testCase) => testCase.error.kind === 'vm').map(
       (testCase) => (testCase.error as { error: VmError }).error.kind,

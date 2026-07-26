@@ -3,10 +3,12 @@
  */
 export { disassemble } from './disassembler';
 export {
+  arrayTypeName,
   isSupportedOpcode,
   lookupOpcode,
   operandWidth,
   OPCODES,
+  T_INT,
   type OpcodeInfo,
   type OperandRole,
   type OperandSpec,

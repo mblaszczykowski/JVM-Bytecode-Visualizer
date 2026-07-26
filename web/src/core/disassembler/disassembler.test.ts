@@ -10,7 +10,7 @@ import {
   type JavapMethod,
 } from './__fixtures__/javap';
 import { disassemble } from './disassembler';
-import { lookupOpcode, OPCODES, type SupportedOpcode } from './opcodes';
+import { arrayTypeName, lookupOpcode, OPCODES, type SupportedOpcode } from './opcodes';
 import type { Instruction } from './types';
 
 /**
@@ -74,7 +74,11 @@ function renderDecoded(instruction: Instruction): string {
       return String(instruction.branchTarget ?? 0);
     }
     const value = instruction.operands[index] ?? 0;
-    return spec.role === 'constant-pool-index' ? `#${String(value)}` : String(value);
+    if (spec.role === 'constant-pool-index') {
+      return `#${String(value)}`;
+    }
+    // javap prints `newarray int`, not the atype byte behind it.
+    return spec.role === 'array-type' ? (arrayTypeName(value) ?? String(value)) : String(value);
   });
   return `${String(instruction.offset)}: ${instruction.mnemonic} ${operands.join(', ')}`.trimEnd();
 }
@@ -128,11 +132,12 @@ describe('disassemble — javap parity on Factorial.class', () => {
   it('marks the constructor instructions outside the subset as unsupported', () => {
     const result = disassemble(codeOf('<init>'));
 
+    // `aload_0` is in the subset since references exist; the call to Object.<init> is not.
     expect(
       result.instructions
         .filter((instruction) => instruction.unsupported === true)
         .map((instruction) => instruction.mnemonic),
-    ).toEqual(['aload_0', 'invokespecial']);
+    ).toEqual(['invokespecial']);
   });
 
   it('keeps the encoded delta next to the resolved branch target', () => {
@@ -205,7 +210,7 @@ describe('disassemble — javap parity on OpcodeZoo.class', () => {
       }
     }
 
-    // 1 byte (ldc, newarray) through 4 (invokeinterface, invokedynamic), and the operandless ones.
+    // 1 byte (ldc) through 4 (invokeinterface, invokedynamic), and the operandless ones.
     expect([...widths].sort()).toEqual([0, 1, 2, 3, 4]);
     expect([...mnemonics].sort()).toEqual(
       expect.arrayContaining([
@@ -221,7 +226,6 @@ describe('disassemble — javap parity on OpcodeZoo.class', () => {
         'ldc2_w',
         'multianewarray',
         'new',
-        'newarray',
       ]),
     );
   });
@@ -249,8 +253,14 @@ describe('disassemble — javap parity on OpcodeZoo.class', () => {
 
     // The switch arms are in the subset too, but they sit behind a switch: never decoded.
     expect([...supported].sort()).toEqual([
+      'aload_0',
+      'aload_1',
+      'arraylength',
+      'astore_1',
       'dup',
       'iadd',
+      'iaload',
+      'iastore',
       'iconst_0',
       'iconst_1',
       'iconst_2',
@@ -258,6 +268,7 @@ describe('disassemble — javap parity on OpcodeZoo.class', () => {
       'ifeq',
       'iload_0',
       'ireturn',
+      'newarray',
       'pop',
       'return',
     ]);

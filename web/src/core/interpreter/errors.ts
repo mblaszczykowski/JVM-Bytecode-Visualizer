@@ -13,7 +13,11 @@ export type VmFaultDetail =
   | { readonly kind: 'unsupported-call'; readonly target: string }
   | { readonly kind: 'invalid-state'; readonly message: string }
   | { readonly kind: 'stack-overflow'; readonly limit: number }
-  | { readonly kind: 'bad-branch-target'; readonly mnemonic: string; readonly target: number };
+  | { readonly kind: 'bad-branch-target'; readonly mnemonic: string; readonly target: number }
+  | { readonly kind: 'array-index-out-of-bounds'; readonly index: number; readonly length: number }
+  | { readonly kind: 'negative-array-size'; readonly size: number }
+  | { readonly kind: 'null-reference' }
+  | { readonly kind: 'unsupported-array-type'; readonly typeName: string };
 
 /** Where a fault happened, when that is not the instruction currently being executed. */
 export interface FaultLocation {
@@ -66,5 +70,15 @@ function describeFault(detail: VmFaultDetail): string {
       return `StackOverflowError: the call stack reached its limit of ${String(detail.limit)} frames`;
     case 'bad-branch-target':
       return `Invalid branch target: ${detail.mnemonic} jumps to offset ${String(detail.target)}, which is not the start of an instruction`;
+    case 'array-index-out-of-bounds':
+      // Wording taken from java.lang.ArrayIndexOutOfBoundsException, verbatim.
+      return `ArrayIndexOutOfBoundsException: index ${String(detail.index)} out of bounds for length ${String(detail.length)}`;
+    case 'negative-array-size':
+      // java.lang.NegativeArraySizeException carries the size and nothing else.
+      return `NegativeArraySizeException: ${String(detail.size)}`;
+    case 'null-reference':
+      return 'NullPointerException: the reference is null';
+    case 'unsupported-array-type':
+      return `Unsupported array type: ${detail.typeName} — only int arrays can be allocated`;
   }
 }

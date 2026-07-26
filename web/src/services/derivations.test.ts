@@ -9,6 +9,7 @@ import {
   constantPoolComments,
   describeNextInstruction,
   describeOperandRoles,
+  explainMnemonic,
   resolveConstant,
   stackDeltaOf,
 } from './derivations';
@@ -242,6 +243,152 @@ describe('operand stack roles', () => {
     expect(
       describeOperandRoles(terminalSnapshot(program), program.entry, program.classFile),
     ).toEqual([]);
+  });
+});
+
+describe('array instructions', () => {
+  /**
+   * `int[] a = new int[3]; a[1] = 7; int v = a[1]; int n = a.length;` — one pass through
+   * every heap instruction, with the values the explanations have to quote.
+   */
+  const ARRAY_PROGRAM = [
+    0x06, //          0: iconst_3
+    0xbc,
+    0x0a, //   1: newarray int
+    0x4c, //          3: astore_1
+    0x2b, //          4: aload_1
+    0x04, //          5: iconst_1
+    0x10,
+    0x07, //    6: bipush 7
+    0x4f, //          8: iastore
+    0x2b, //          9: aload_1
+    0x04, //         10: iconst_1
+    0x2e, //         11: iaload
+    0x3d, //         12: istore_2
+    0x2b, //         13: aload_1
+    0xbe, //         14: arraylength
+    0x3e, //         15: istore_3
+    0xb1, //         16: return
+  ];
+
+  function arrayProgram(code: readonly number[] = ARRAY_PROGRAM): LoadedProgram {
+    return buildProgram({
+      origin: { kind: 'upload', fileName: 'Arrays.class' },
+      classFile: syntheticClass({
+        methods: [{ name: 'main', descriptor: '([Ljava/lang/String;)V', code, maxLocals: 4 }],
+      }),
+    });
+  }
+
+  it('names the array and the length an allocation is about to produce', () => {
+    const program = arrayProgram();
+
+    expect(summaryOf(program, 'newarray').explanation).toBe(
+      'Allocates int[3], zero-filled, and pushes a reference to it.',
+    );
+    expect(summaryOf(program, 'newarray').effects).toEqual([
+      { label: 'pop 1' },
+      { label: 'push ref' },
+    ]);
+  });
+
+  it('spells a store out as the value, the index and the array it lands in', () => {
+    const program = arrayProgram();
+
+    expect(summaryOf(program, 'iastore').explanation).toBe('Stores 7 at index 1 of int[3].');
+    expect(summaryOf(program, 'iastore').effects).toEqual([{ label: 'pop 3' }]);
+  });
+
+  it('reads the element a load is about to push out of the heap of the snapshot', () => {
+    const program = arrayProgram();
+
+    expect(summaryOf(program, 'iaload').explanation).toBe(
+      'Pushes 7, the element at index 1 of int[3].',
+    );
+    expect(summaryOf(program, 'arraylength').explanation).toBe(
+      'Pops the reference to int[3] and pushes its length, 3.',
+    );
+  });
+
+  it('describes a reference slot by the array it names rather than by its handle', () => {
+    const program = arrayProgram();
+
+    expect(summaryOf(program, 'aload_1').explanation).toBe(
+      'Pushes the reference in local 1 (slot 1 = int[3]) onto the operand stack.',
+    );
+    expect(summaryOf(program, 'astore_1').explanation).toBe(
+      'Pops the reference to int[3] into local slot 1 (slot 1).',
+    );
+    expect(summaryOf(program, 'aload_1').effects).toEqual([{ label: 'push ref' }]);
+  });
+
+  it('calls a null reference null instead of printing the handle behind it', () => {
+    // aconst_null; astore_1; aload_1; arraylength; istore_2; return
+    const program = arrayProgram([0x01, 0x4c, 0x2b, 0xbe, 0x3d, 0xb1]);
+
+    expect(summaryOf(program, 'aconst_null').explanation).toBe(
+      'Pushes the null reference onto the operand stack.',
+    );
+    expect(summaryOf(program, 'aload_1').explanation).toBe(
+      'Pushes the reference in local 1 (slot 1 = null) onto the operand stack.',
+    );
+    expect(summaryOf(program, 'arraylength').explanation).toBe(
+      'Pops an array reference and pushes the length of the array.',
+    );
+  });
+
+  it('warns when an access is about to leave the array', () => {
+    // iconst_1; newarray int; astore_1; aload_1; iconst_3; iaload; istore_2; return
+    const program = arrayProgram([0x04, 0xbc, 0x0a, 0x4c, 0x2b, 0x06, 0x2e, 0x3d, 0xb1]);
+
+    expect(summaryOf(program, 'iaload').explanation).toBe(
+      'Reads index 3 of int[1] — outside the array, which stops the run with an ' +
+        'ArrayIndexOutOfBoundsException.',
+    );
+  });
+
+  it('says an element type outside the int heap ends the run', () => {
+    // iconst_1; newarray long; astore_1; return
+    const program = arrayProgram([0x04, 0xbc, 0x0b, 0x4c, 0xb1]);
+
+    expect(summaryOf(program, 'newarray').explanation).toBe(
+      'Allocates long[] — this interpreter only allocates int arrays, so running it stops ' +
+        'the program here.',
+    );
+  });
+
+  it('labels each operand cell by what the array instruction does with it', () => {
+    const program = arrayProgram();
+    const rolesAt = (mnemonic: string): readonly (string | undefined)[] => {
+      const snapshot = firstSnapshotOf(program, mnemonic);
+      return describeOperandRoles(snapshot, listingFor(program, snapshot), program.classFile);
+    };
+
+    // Bottom to top, which is the JVMS operand order: `…, arrayref, index, value`.
+    expect(rolesAt('iastore')).toEqual(['→ array', '→ index', '→ value']);
+    expect(rolesAt('iaload')).toEqual(['→ array', '→ index']);
+    expect(rolesAt('arraylength')).toEqual(['→ array']);
+    expect(rolesAt('newarray')).toEqual(['→ length']);
+  });
+
+  it('has a tooltip for every array mnemonic, run or not', () => {
+    for (const mnemonic of [
+      'aconst_null',
+      'aload',
+      'aload_0',
+      'astore',
+      'astore_2',
+      'newarray',
+      'arraylength',
+      'iaload',
+      'iastore',
+    ]) {
+      expect(explainMnemonic(mnemonic), mnemonic).toBeDefined();
+    }
+    expect(explainMnemonic('aload_0')).toBe(
+      'Pushes the reference in local variable slot 0 onto the operand stack.',
+    );
+    expect(explainMnemonic('iload_0')).toBe('Pushes local variable slot 0 onto the operand stack.');
   });
 });
 

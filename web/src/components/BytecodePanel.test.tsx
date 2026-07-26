@@ -101,10 +101,11 @@ describe('BytecodePanel', () => {
   });
 
   it('marks instructions outside the supported subset as unsupported', () => {
-    // The constructor javac generates: aload_0 and invokespecial, neither of them executable.
+    // The constructor javac generates: aload_0, invokespecial, return. Only the call to
+    // Object.<init> is outside the subset — `aload_0` came in with the array instructions.
     renderListing(constructor, 0);
 
-    expect(screen.getAllByText('unsupported')).toHaveLength(2);
+    expect(screen.getAllByText('unsupported')).toHaveLength(1);
     expect(screen.getByTestId('current-instruction')).toHaveTextContent('aload_0');
   });
 

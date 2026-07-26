@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  arrayTypeName,
   isSupportedOpcode,
   lookupOpcode,
   operandWidth,
   OPCODES,
+  T_INT,
   type OpcodeInfo,
   type OperandType,
 } from './opcodes';
@@ -15,6 +17,7 @@ import {
  */
 const MVP_OPCODES: readonly (readonly [opcode: number, mnemonic: string])[] = [
   [0x00, 'nop'],
+  [0x01, 'aconst_null'],
   [0x02, 'iconst_m1'],
   [0x03, 'iconst_0'],
   [0x04, 'iconst_1'],
@@ -25,15 +28,27 @@ const MVP_OPCODES: readonly (readonly [opcode: number, mnemonic: string])[] = [
   [0x10, 'bipush'],
   [0x11, 'sipush'],
   [0x15, 'iload'],
+  [0x19, 'aload'],
   [0x1a, 'iload_0'],
   [0x1b, 'iload_1'],
   [0x1c, 'iload_2'],
   [0x1d, 'iload_3'],
+  [0x2a, 'aload_0'],
+  [0x2b, 'aload_1'],
+  [0x2c, 'aload_2'],
+  [0x2d, 'aload_3'],
+  [0x2e, 'iaload'],
   [0x36, 'istore'],
+  [0x3a, 'astore'],
   [0x3b, 'istore_0'],
   [0x3c, 'istore_1'],
   [0x3d, 'istore_2'],
   [0x3e, 'istore_3'],
+  [0x4b, 'astore_0'],
+  [0x4c, 'astore_1'],
+  [0x4d, 'astore_2'],
+  [0x4e, 'astore_3'],
+  [0x4f, 'iastore'],
   [0x57, 'pop'],
   [0x59, 'dup'],
   [0x60, 'iadd'],
@@ -59,6 +74,8 @@ const MVP_OPCODES: readonly (readonly [opcode: number, mnemonic: string])[] = [
   [0xac, 'ireturn'],
   [0xb1, 'return'],
   [0xb8, 'invokestatic'],
+  [0xbc, 'newarray'],
+  [0xbe, 'arraylength'],
 ];
 
 const HIGHEST_ASSIGNED_OPCODE = 0xca; // breakpoint (reserved) closes the contiguous range
@@ -132,7 +149,7 @@ describe('opcode classification', () => {
       .sort((a, b) => a[0] - b[0]);
 
     expect(supported).toEqual(MVP_OPCODES);
-    expect(supported).toHaveLength(45);
+    expect(supported).toHaveLength(60);
   });
 
   it('marks tableswitch, lookupswitch and wide as variable-length', () => {
@@ -192,6 +209,17 @@ describe('operand encoding of supported opcodes', () => {
   it('reads local variable indices as unsigned bytes', () => {
     expect(encodingOf(0x15)).toEqual([['u1', 'local-index']]);
     expect(encodingOf(0x36)).toEqual([['u1', 'local-index']]);
+    expect(encodingOf(0x19)).toEqual([['u1', 'local-index']]); // aload
+    expect(encodingOf(0x3a)).toEqual([['u1', 'local-index']]); // astore
+  });
+
+  it('reads the newarray atype as an unsigned byte naming a primitive type', () => {
+    expect(encodingOf(0xbc)).toEqual([['u1', 'array-type']]);
+    expect(arrayTypeName(T_INT)).toBe('int');
+    expect(arrayTypeName(11)).toBe('long');
+    // 0–3 and anything above 11 are unassigned in the JVMS §6.5 newarray table.
+    expect(arrayTypeName(3)).toBeUndefined();
+    expect(arrayTypeName(12)).toBeUndefined();
   });
 
   it('reads iinc as an unsigned index followed by a signed increment', () => {
@@ -212,7 +240,7 @@ describe('operand encoding of supported opcodes', () => {
   });
 
   it('leaves opcodes without operands with an empty encoding', () => {
-    for (const opcode of [0x00, 0x04, 0x1a, 0x3c, 0x60, 0xac, 0xb1]) {
+    for (const opcode of [0x00, 0x01, 0x04, 0x1a, 0x2a, 0x2e, 0x3c, 0x4c, 0x4f, 0x60, 0xac, 0xb1]) {
       expect(encodingOf(opcode)).toEqual([]);
     }
   });
@@ -238,6 +266,21 @@ describe('stack effects of supported opcodes', () => {
     expect(infoFor(0x99)).toMatchObject({ stackEffect: { kind: 'fixed', pops: 1, pushes: 0 } });
     expect(infoFor(0xa3)).toMatchObject({ stackEffect: { kind: 'fixed', pops: 2, pushes: 0 } });
     expect(infoFor(0xa7)).toMatchObject({ stackEffect: { kind: 'fixed', pops: 0, pushes: 0 } });
+  });
+
+  it('describes the array instructions by the operands JVMS §6.5 lists for them', () => {
+    // newarray: …, count → …, arrayref; arraylength: …, arrayref → …, length
+    expect(infoFor(0xbc)).toMatchObject({ stackEffect: { kind: 'fixed', pops: 1, pushes: 1 } });
+    expect(infoFor(0xbe)).toMatchObject({ stackEffect: { kind: 'fixed', pops: 1, pushes: 1 } });
+    // iaload: …, arrayref, index → …, value; iastore: …, arrayref, index, value →
+    expect(infoFor(0x2e)).toMatchObject({ stackEffect: { kind: 'fixed', pops: 2, pushes: 1 } });
+    expect(infoFor(0x4f)).toMatchObject({ stackEffect: { kind: 'fixed', pops: 3, pushes: 0 } });
+    // The reference loads and stores move one value, exactly like their int counterparts.
+    expect(infoFor(0x01)).toMatchObject({ stackEffect: { kind: 'fixed', pops: 0, pushes: 1 } });
+    expect(infoFor(0x19)).toMatchObject({ stackEffect: { kind: 'fixed', pops: 0, pushes: 1 } });
+    expect(infoFor(0x2a)).toMatchObject({ stackEffect: { kind: 'fixed', pops: 0, pushes: 1 } });
+    expect(infoFor(0x3a)).toMatchObject({ stackEffect: { kind: 'fixed', pops: 1, pushes: 0 } });
+    expect(infoFor(0x4b)).toMatchObject({ stackEffect: { kind: 'fixed', pops: 1, pushes: 0 } });
   });
 
   it('leaves calls and returns as varying — the descriptor and the caller frame decide', () => {

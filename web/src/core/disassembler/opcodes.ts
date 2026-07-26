@@ -10,7 +10,13 @@
 /** Operand width and signedness as written in the JVMS instruction format. */
 export type OperandType = 'u1' | 'i1' | 'u2' | 'i2';
 
-export type OperandRole = 'local-index' | 'constant-pool-index' | 'immediate' | 'branch-offset';
+export type OperandRole =
+  | 'local-index'
+  | 'constant-pool-index'
+  | 'immediate'
+  | 'branch-offset'
+  /** The `atype` of `newarray`, which names a primitive element type rather than a number. */
+  | 'array-type';
 
 export interface OperandSpec {
   readonly type: OperandType;
@@ -305,6 +311,7 @@ const IMMEDIATE_BYTE: readonly OperandSpec[] = [{ type: 'i1', role: 'immediate' 
 const IMMEDIATE_SHORT: readonly OperandSpec[] = [{ type: 'i2', role: 'immediate' }];
 const BRANCH_OFFSET: readonly OperandSpec[] = [{ type: 'i2', role: 'branch-offset' }];
 const CONSTANT_POOL_INDEX: readonly OperandSpec[] = [{ type: 'u2', role: 'constant-pool-index' }];
+const ARRAY_TYPE: readonly OperandSpec[] = [{ type: 'u1', role: 'array-type' }];
 /** `iinc`: unsigned local slot, then a signed increment (JVMS §6.5 iinc). */
 const IINC_OPERANDS: readonly OperandSpec[] = [
   { type: 'u1', role: 'local-index' },
@@ -333,6 +340,7 @@ const BRANCH_ON_INT_PAIR: MvpSpec = { operands: BRANCH_OFFSET, stackEffect: fixe
 const MVP_SPECS = new Map<number, MvpSpec>([
   // Constants.
   [0x00, { operands: NO_OPERANDS, stackEffect: fixed(0, 0) }], // nop
+  [0x01, PUSH_CONSTANT], // aconst_null
   [0x02, PUSH_CONSTANT], // iconst_m1
   [0x03, PUSH_CONSTANT], // iconst_0
   [0x04, PUSH_CONSTANT], // iconst_1
@@ -345,16 +353,32 @@ const MVP_SPECS = new Map<number, MvpSpec>([
 
   // Loads and stores.
   [0x15, { operands: LOCAL_INDEX, stackEffect: fixed(0, 1) }], // iload
+  [0x19, { operands: LOCAL_INDEX, stackEffect: fixed(0, 1) }], // aload
   [0x1a, LOAD_LOCAL_N], // iload_0
   [0x1b, LOAD_LOCAL_N], // iload_1
   [0x1c, LOAD_LOCAL_N], // iload_2
   [0x1d, LOAD_LOCAL_N], // iload_3
+  [0x2a, LOAD_LOCAL_N], // aload_0
+  [0x2b, LOAD_LOCAL_N], // aload_1
+  [0x2c, LOAD_LOCAL_N], // aload_2
+  [0x2d, LOAD_LOCAL_N], // aload_3
   [0x36, { operands: LOCAL_INDEX, stackEffect: fixed(1, 0) }], // istore
+  [0x3a, { operands: LOCAL_INDEX, stackEffect: fixed(1, 0) }], // astore
   [0x3b, STORE_LOCAL_N], // istore_0
   [0x3c, STORE_LOCAL_N], // istore_1
   [0x3d, STORE_LOCAL_N], // istore_2
   [0x3e, STORE_LOCAL_N], // istore_3
+  [0x4b, STORE_LOCAL_N], // astore_0
+  [0x4c, STORE_LOCAL_N], // astore_1
+  [0x4d, STORE_LOCAL_N], // astore_2
+  [0x4e, STORE_LOCAL_N], // astore_3
   [0x84, { operands: IINC_OPERANDS, stackEffect: fixed(0, 0) }], // iinc
+
+  // Arrays: `…, arrayref, index → …, value` and `…, arrayref, index, value →` (JVMS §6.5).
+  [0x2e, { operands: NO_OPERANDS, stackEffect: fixed(2, 1) }], // iaload
+  [0x4f, { operands: NO_OPERANDS, stackEffect: fixed(3, 0) }], // iastore
+  [0xbc, { operands: ARRAY_TYPE, stackEffect: fixed(1, 1) }], // newarray
+  [0xbe, { operands: NO_OPERANDS, stackEffect: fixed(1, 1) }], // arraylength
 
   // Operand stack.
   [0x57, { operands: NO_OPERANDS, stackEffect: fixed(1, 0) }], // pop
@@ -424,4 +448,24 @@ export function lookupOpcode(opcode: number): OpcodeInfo | undefined {
 
 export function isSupportedOpcode(opcode: number): boolean {
   return OPCODES.get(opcode)?.kind === 'supported';
+}
+
+/** JVMS §6.5 newarray: the `atype` operand codes the primitive element type. */
+const ARRAY_TYPE_NAMES: ReadonlyMap<number, string> = new Map([
+  [4, 'boolean'],
+  [5, 'char'],
+  [6, 'float'],
+  [7, 'double'],
+  [8, 'byte'],
+  [9, 'short'],
+  [10, 'int'],
+  [11, 'long'],
+]);
+
+/** The one element type this project allocates; every other `atype` is a VM error. */
+export const T_INT = 10;
+
+/** Element type of a `newarray` atype, or `undefined` for a code JVMS does not assign. */
+export function arrayTypeName(atype: number): string | undefined {
+  return ARRAY_TYPE_NAMES.get(atype);
 }

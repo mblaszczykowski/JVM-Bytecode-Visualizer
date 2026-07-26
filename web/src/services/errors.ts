@@ -130,6 +130,20 @@ function describeVmError(error: VmError): string {
       );
     case 'bad-branch-target':
       return `Invalid branch target: ${error.mnemonic} jumps to offset ${String(error.target)}, which is not the start of an instruction ${at}.`;
+    case 'array-index-out-of-bounds':
+      return (
+        `ArrayIndexOutOfBoundsException: index ${String(error.index)} out of bounds for ` +
+        `length ${String(error.length)} ${at}. ` +
+        (error.length === 0
+          ? 'The array is empty, so no index is valid.'
+          : `Valid indices run from 0 to ${String(error.length - 1)}.`)
+      );
+    case 'negative-array-size':
+      return `NegativeArraySizeException: ${String(error.size)} ${at}. An array cannot be created with a negative length.`;
+    case 'null-reference':
+      return `NullPointerException: the reference is null ${at}. There is no array behind it to read, write or measure.`;
+    case 'unsupported-array-type':
+      return `Unsupported array type: ${error.typeName} ${at}. This interpreter only allocates int arrays.`;
   }
 }
 

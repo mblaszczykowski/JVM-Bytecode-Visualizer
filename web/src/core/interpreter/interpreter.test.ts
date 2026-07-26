@@ -109,7 +109,7 @@ describe('execute — Factorial fixture', () => {
     const snapshots = runFactorial();
     const terminal = snapshots.at(-1);
 
-    expect(terminal).toEqual({ step: snapshots.length - 1, callStack: [] });
+    expect(terminal).toEqual({ step: snapshots.length - 1, callStack: [], heap: [] });
     expect(snapshots.at(-2)?.currentInstruction?.mnemonic).toBe('return');
   });
 

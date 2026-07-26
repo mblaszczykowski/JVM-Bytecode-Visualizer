@@ -14,8 +14,8 @@ import {
   type ClassFile,
   type ConstantPool,
 } from '../core/classfile';
-import { lookupOpcode, type Instruction } from '../core/disassembler';
-import type { Snapshot, StackFrame } from '../core/interpreter';
+import { arrayTypeName, lookupOpcode, T_INT, type Instruction } from '../core/disassembler';
+import type { ArrayObject, Snapshot, StackFrame } from '../core/interpreter';
 // int semantics live in one place: the explanations quote the interpreter, not a copy of it.
 import { iadd, idiv, imul, ineg, irem, isub } from '../core/interpreter/int32';
 
@@ -48,7 +48,7 @@ export function describeNextInstruction(
 
   return {
     effects: effectsOf(instruction, pool),
-    explanation: explain(instruction, frame, listing, pool),
+    explanation: explain(instruction, frame, snapshot.heap ?? [], listing, pool),
     cpChain: constant?.chain,
   };
 }
@@ -105,12 +105,28 @@ function operandRole(mnemonic: string, pops: number, taken: number): string {
   if (mnemonic === 'invokestatic') {
     return `→ arg ${String(pops - 1 - taken)}`;
   }
+  const named = ARRAY_OPERAND_ROLES[mnemonic]?.[taken];
+  if (named !== undefined) {
+    return named;
+  }
   // `value1 op value2` with value2 on top (JVMS §6.5 iadd, if_icmp<cond>).
   if (pops === 2) {
     return taken === 0 ? '→ right' : '→ left';
   }
   return `→ ${mnemonic}`;
 }
+
+/**
+ * The array instructions take cells that mean different things, so "→ left" and "→ right"
+ * would say nothing. Listed top of the stack first, matching the `taken` index — which is the
+ * reverse of the JVMS operand order (`…, arrayref, index, value`).
+ */
+const ARRAY_OPERAND_ROLES: Readonly<Record<string, readonly string[]>> = {
+  iaload: ['→ index', '→ array'],
+  iastore: ['→ value', '→ index', '→ array'],
+  arraylength: ['→ array'],
+  newarray: ['→ length'],
+};
 
 /** javap-style trailing comments, keyed by instruction offset. */
 export function constantPoolComments(
@@ -274,14 +290,13 @@ function effectsOf(instruction: Instruction, pool: ConstantPool): readonly Effec
 
   if (info.stackEffect.kind === 'fixed') {
     const { pops, pushes } = info.stackEffect;
-    return [...pillsFor('pop', pops), ...pillsFor('push', pushes)];
+    return [...popPills(pops), ...pushPills(pushes, pushedKindOf(instruction.mnemonic))];
   }
 
   switch (instruction.mnemonic) {
     case 'invokestatic': {
       const callee = calleeOf(instruction, pool);
-      const pops = callee?.arity ?? 0;
-      return [...pillsFor('pop', pops), { label: 'push frame' }];
+      return [...popPills(callee?.arity ?? 0), { label: 'push frame' }];
     }
     case 'ireturn':
       return [{ label: 'pop 1' }, { label: 'pop frame' }, { label: 'push int' }];
@@ -292,14 +307,30 @@ function effectsOf(instruction: Instruction, pool: ConstantPool): readonly Effec
   }
 }
 
-function pillsFor(verb: 'pop' | 'push', count: number): readonly EffectPill[] {
+function popPills(count: number): readonly EffectPill[] {
+  return count === 0 ? [] : [{ label: `pop ${String(count)}` }];
+}
+
+function pushPills(count: number, pushed: string): readonly EffectPill[] {
   if (count === 0) {
     return [];
   }
-  if (verb === 'push') {
-    return [{ label: count === 1 ? 'push int' : `push ${String(count)} ints` }];
-  }
-  return [{ label: `pop ${String(count)}` }];
+  return [{ label: count === 1 ? `push ${pushed}` : `push ${String(count)} ${pushed}s` }];
+}
+
+/** The instructions that leave a reference behind; everything else in the subset leaves an int. */
+const REFERENCE_PUSHING: ReadonlySet<string> = new Set([
+  'aconst_null',
+  'newarray',
+  'aload',
+  'aload_0',
+  'aload_1',
+  'aload_2',
+  'aload_3',
+]);
+
+function pushedKindOf(mnemonic: string): string {
+  return REFERENCE_PUSHING.has(mnemonic) ? 'ref' : 'int';
 }
 
 const COMPARISON: Readonly<Record<string, string>> = {
@@ -331,6 +362,7 @@ const ARITHMETIC: Readonly<
 function explain(
   instruction: Instruction,
   frame: StackFrame,
+  heap: readonly ArrayObject[],
   listing: MethodListing | undefined,
   pool: ConstantPool,
 ): string {
@@ -342,9 +374,23 @@ function explain(
     return `${mnemonic} is outside the supported instruction subset — running it stops the program here.`;
   }
 
+  const array = explainArray(instruction, frame, heap);
+  if (array !== undefined) {
+    return array;
+  }
+
   if (mnemonic.startsWith('iload')) {
     const slot = slotOf(instruction);
-    return `Pushes local ${String(slot)} (${describeSlot(frame, slot)}) onto the operand stack.`;
+    return `Pushes local ${String(slot)} (${describeSlot(frame, slot, heap)}) onto the operand stack.`;
+  }
+
+  if (mnemonic.startsWith('aload')) {
+    const slot = slotOf(instruction);
+    return `Pushes the reference in local ${String(slot)} (${describeSlot(frame, slot, heap)}) onto the operand stack.`;
+  }
+
+  if (mnemonic === 'aconst_null') {
+    return 'Pushes the null reference onto the operand stack.';
   }
 
   if (mnemonic.startsWith('iconst') || mnemonic === 'bipush' || mnemonic === 'sipush') {
@@ -356,11 +402,16 @@ function explain(
     return `Pops ${valueText(top)} into local slot ${String(slot)} (${storedName(frame, listing, instruction, slot)}).`;
   }
 
+  if (mnemonic.startsWith('astore')) {
+    const slot = slotOf(instruction);
+    return `Pops the reference to ${referenceText(heap, top)} into local slot ${String(slot)} (${storedName(frame, listing, instruction, slot)}).`;
+  }
+
   if (mnemonic === 'iinc') {
     const slot = instruction.operands[0] ?? 0;
     const delta = instruction.operands[1] ?? 0;
     const verb = delta < 0 ? 'Subtracts' : 'Adds';
-    return `${verb} ${String(Math.abs(delta))} to local ${String(slot)} (${describeSlot(frame, slot)}) in place, without touching the operand stack.`;
+    return `${verb} ${String(Math.abs(delta))} to local ${String(slot)} (${describeSlot(frame, slot, heap)}) in place, without touching the operand stack.`;
   }
 
   if (mnemonic === 'pop') {
@@ -443,6 +494,82 @@ function explain(
 }
 
 /**
+ * The four heap instructions, explained with the array they are about to touch: its length
+ * comes from the snapshot's heap, so `iastore` reads as "Stores 3 at index 1 of int[6]"
+ * rather than as a sentence about references and handles.
+ *
+ * `undefined` for everything else, so the caller falls through to the int instructions.
+ */
+function explainArray(
+  instruction: Instruction,
+  frame: StackFrame,
+  heap: readonly ArrayObject[],
+): string | undefined {
+  const { mnemonic } = instruction;
+  const top = frame.operandStack.at(-1);
+  const below = frame.operandStack.at(-2);
+
+  switch (mnemonic) {
+    case 'newarray': {
+      const atype = instruction.operands[0] ?? 0;
+      if (atype !== T_INT) {
+        const element = arrayTypeName(atype) ?? `atype ${String(atype)}`;
+        return `Allocates ${element}[] — this interpreter only allocates int arrays, so running it stops the program here.`;
+      }
+      return top === undefined
+        ? 'Allocates a zero-filled int array as long as the value on top of the operand stack.'
+        : `Allocates int[${String(top)}], zero-filled, and pushes a reference to it.`;
+    }
+
+    case 'arraylength': {
+      const array = arrayAt(heap, top);
+      return array === undefined
+        ? 'Pops an array reference and pushes the length of the array.'
+        : `Pops the reference to int[${String(array.length)}] and pushes its length, ${String(array.length)}.`;
+    }
+
+    case 'iaload': {
+      // JVMS §6.5: `…, arrayref, index`, so the array sits one cell below the index.
+      const array = arrayAt(heap, below);
+      if (array === undefined || top === undefined) {
+        return 'Pops an array reference and an index and pushes the element stored there.';
+      }
+      const element = array.elements[top];
+      return element === undefined
+        ? `Reads index ${String(top)} of int[${String(array.length)}] — outside the array, which stops the run with an ArrayIndexOutOfBoundsException.`
+        : `Pushes ${String(element)}, the element at index ${String(top)} of int[${String(array.length)}].`;
+    }
+
+    case 'iastore': {
+      const array = arrayAt(heap, frame.operandStack.at(-3));
+      if (array === undefined || top === undefined || below === undefined) {
+        return 'Pops an array reference, an index and a value, and stores the value at that index.';
+      }
+      return below < 0 || below >= array.length
+        ? `Stores ${String(top)} at index ${String(below)} of int[${String(array.length)}] — outside the array, which stops the run with an ArrayIndexOutOfBoundsException.`
+        : `Stores ${String(top)} at index ${String(below)} of int[${String(array.length)}].`;
+    }
+
+    default:
+      return undefined;
+  }
+}
+
+/** The array a reference points at, or `undefined` for `null` and for a handle with no object. */
+function arrayAt(
+  heap: readonly ArrayObject[],
+  reference: number | undefined,
+): ArrayObject | undefined {
+  return reference === undefined ? undefined : heap[reference];
+}
+
+/** How a reference reads in a sentence: the array it names, or `null`. */
+function referenceText(heap: readonly ArrayObject[], reference: number | undefined): string {
+  const array = arrayAt(heap, reference);
+  return array === undefined ? 'null' : `int[${String(array.length)}]`;
+}
+
+/**
  * What a mnemonic does in general, with no snapshot behind it — the tooltip on every row of
  * the listing, including the rows this run never reached.
  *
@@ -455,11 +582,12 @@ export function explainMnemonic(mnemonic: string): string | undefined {
     return family;
   }
 
-  const slot = /^i(load|store)_(\d)$/.exec(mnemonic);
+  const slot = /^([ai])(load|store)_(\d)$/.exec(mnemonic);
   if (slot !== null) {
-    return slot[1] === 'load'
-      ? `Pushes local variable slot ${String(slot[2])} onto the operand stack.`
-      : `Pops the top of the operand stack into local variable slot ${String(slot[2])}.`;
+    const what = slot[1] === 'a' ? 'the reference in local variable slot' : 'local variable slot';
+    return slot[2] === 'load'
+      ? `Pushes ${what} ${String(slot[3])} onto the operand stack.`
+      : `Pops the top of the operand stack into local variable slot ${String(slot[3])}.`;
   }
 
   const constant = /^iconst_(m1|\d)$/.exec(mnemonic);
@@ -473,10 +601,20 @@ export function explainMnemonic(mnemonic: string): string | undefined {
 
 const MNEMONIC_HELP: Readonly<Record<string, string>> = {
   nop: 'Does nothing.',
+  aconst_null: 'Pushes the null reference onto the operand stack.',
   bipush: 'Pushes a one-byte signed constant, widened to an int.',
   sipush: 'Pushes a two-byte signed constant, widened to an int.',
   iload: 'Pushes the local variable slot named by the operand onto the operand stack.',
   istore: 'Pops the top of the operand stack into the local variable slot named by the operand.',
+  aload: 'Pushes the reference held by the local variable slot named by the operand.',
+  astore:
+    'Pops a reference off the operand stack into the local variable slot named by the operand.',
+  newarray:
+    'Pops a length and allocates a zero-filled array of the primitive type named by the ' +
+    'operand, pushing the reference to it.',
+  arraylength: 'Pops an array reference and pushes the length of the array.',
+  iaload: 'Pops an array reference and an index and pushes the int stored at that index.',
+  iastore: 'Pops an array reference, an index and an int, and stores the int at that index.',
   iinc: 'Adds a constant to a local variable in place, without touching the operand stack.',
   pop: 'Discards the top value of the operand stack.',
   dup: 'Duplicates the top value of the operand stack.',
@@ -584,9 +722,15 @@ function localNameAt(listing: MethodListing, pc: number, slot: number): string |
   )?.name;
 }
 
-function describeSlot(frame: StackFrame, slot: number): string {
+function describeSlot(frame: StackFrame, slot: number, heap: readonly ArrayObject[]): string {
   const value = frame.locals[slot];
-  const shown = value === undefined ? 'uninitialised' : String(value);
+  // A reference slot holds a heap handle; the array behind it is what the reader wants.
+  const shown =
+    value === undefined
+      ? 'uninitialised'
+      : frame.localKinds?.[slot] === 'ref'
+        ? referenceText(heap, value)
+        : String(value);
   return `${nameOfSlot(frame, slot)} = ${shown}`;
 }
 

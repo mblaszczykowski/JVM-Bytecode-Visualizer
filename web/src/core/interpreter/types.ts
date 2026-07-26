@@ -2,6 +2,19 @@
 
 import type { Instruction } from '../disassembler/types';
 
+/**
+ * What a 32-bit slot holds. Both kinds are plain numbers — an `int` is its own value, a `ref`
+ * is the handle of the object it points at, i.e. its index in `Snapshot.heap`.
+ */
+export type ValueKind = 'int' | 'ref';
+
+/** The only object this heap knows: a fixed-length array of ints (`newarray T_INT`). */
+export interface ArrayObject {
+  readonly kind: 'int-array';
+  readonly length: number;
+  readonly elements: readonly number[];
+}
+
 export interface StackFrame {
   readonly methodName: string;
   /** Together with methodName it identifies the method unambiguously (overloads). */
@@ -14,6 +27,14 @@ export interface StackFrame {
   readonly locals: readonly (number | undefined)[];
   /** Names from the LocalVariableTable (javac -g); undefined when the table is absent. */
   readonly localNames: readonly (string | undefined)[];
+  /**
+   * Kind of each cell of `operandStack`, aligned by index. Optional so the numeric contract
+   * above stays the whole contract for anything that only reads values; `execute()` always
+   * fills it.
+   */
+  readonly operandKinds?: readonly ValueKind[];
+  /** Kind of each slot of `locals`, aligned by index; undefined = uninitialised slot. */
+  readonly localKinds?: readonly (ValueKind | undefined)[];
 }
 
 /**
@@ -27,6 +48,12 @@ export interface Snapshot {
   readonly currentInstruction?: Instruction;
   /** From the LineNumberTable: the entry with the largest startPc <= pc. */
   readonly sourceLine?: number;
+  /**
+   * Objects by handle: a `ref` value `h` points at `heap[h]`. Append-only during a run, so
+   * consecutive snapshots share every array they did not change. Always present on a snapshot
+   * `execute()` produced; optional for the same reason as the kind arrays above.
+   */
+  readonly heap?: readonly ArrayObject[];
 }
 
 export type VmError =
@@ -66,6 +93,34 @@ export type VmError =
       /** Absolute target the branch resolved to. */
       readonly target: number;
       /** Offset of the branch instruction itself. */
+      readonly offset: number;
+      readonly methodName: string;
+    }
+  | {
+      /** An array access outside [0, length) — ArrayIndexOutOfBoundsException on a real JVM. */
+      readonly kind: 'array-index-out-of-bounds';
+      readonly index: number;
+      readonly length: number;
+      readonly offset: number;
+      readonly methodName: string;
+    }
+  | {
+      /** `newarray` with a negative count — NegativeArraySizeException on a real JVM. */
+      readonly kind: 'negative-array-size';
+      readonly size: number;
+      readonly offset: number;
+      readonly methodName: string;
+    }
+  | {
+      /** A reference that points at no object — NullPointerException on a real JVM. */
+      readonly kind: 'null-reference';
+      readonly offset: number;
+      readonly methodName: string;
+    }
+  | {
+      /** `newarray` with an element type outside the int-only heap, e.g. `long[]`. */
+      readonly kind: 'unsupported-array-type';
+      readonly typeName: string;
       readonly offset: number;
       readonly methodName: string;
     };
