@@ -1,5 +1,6 @@
 import type { RunPreview } from '../services/program';
 
+import { CapabilityNote } from './CapabilityNote';
 import { ErrorBanner, type BannerSeverity } from './ErrorBanner';
 import { FileUpload } from './FileUpload';
 
@@ -165,6 +166,10 @@ export function WelcomeScreen({
             </button>
           )}
         </div>
+
+        {/* Directly under the drop zone, because that is where someone decides whether the file
+            they brought is worth trying. Closed it is one line, so the examples stay in frame. */}
+        <CapabilityNote />
 
         {/* Next to the thing that failed, not pinned to the bottom of the window. */}
         {notice === undefined ? null : (

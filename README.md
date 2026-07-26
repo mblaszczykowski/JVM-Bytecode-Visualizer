@@ -15,8 +15,12 @@ machine execute it one instruction at a time.
 
 ## What it does
 
-- **Three ways in.** Pick one of four bundled examples, upload your own `.class` file, or write Java
-  in the browser and have it compiled (the last one needs the optional compile service).
+- **Three ways in.** Pick one of the bundled examples, upload your own `.class` file, or write Java
+  in the browser and have it compiled (the last one needs the optional compile service). An uploaded
+  class replays when its `main` stays inside integer arithmetic, control flow and static calls to
+  itself; printing, standard library calls, `switch` and non-`int` types stop the run at the
+  instruction that needs them — [Scope and limitations](#scope-and-limitations) is specific about
+  which.
 - **Deterministic replay.** The whole run is recorded before anything is drawn, so play, pause, step
   forward, step back and scrubbing are all the same operation: an index into an array. Speeds run
   from 0.5x to 8x; space, arrow keys, Home and End drive the transport from the keyboard.
@@ -30,6 +34,10 @@ machine execute it one instruction at a time.
   pool operand — the resolution chain, e.g. `#7 → Methodref → Factorial.factorial:(I)I`.
 - **A depth chart under the scrubber.** Call stack depth across the entire run, which makes
   recursion visible as a shape you can click into.
+
+If the operand stack, the frame, the constant pool or a descriptor like `(I)I` is unfamiliar,
+[`docs/jvm-primer.md`](docs/jvm-primer.md) explains each of them from scratch, using this
+application's own panels as the running example.
 
 ## How it works
 
@@ -56,7 +64,7 @@ flowchart LR
     editor["Java editor"]
     bytes[".class bytes"] --> parser["Parser<br/>DataView cursor"]
     parser --> disasm["Disassembler<br/>Instruction list"]
-    disasm --> interp["Interpreter<br/>int subset, no heap"]
+    disasm --> interp["Interpreter<br/>int subset, int arrays"]
     interp --> history["Snapshot history<br/>one per step"]
     history --> ui["React UI<br/>replay = index lookup"]
   end
@@ -104,21 +112,51 @@ This is a teaching instrument for how a stack machine works, not a JVM. The scop
 purpose so that what exists can be complete — see
 [ADR-0002](docs/adr/0002-int-only-mvp-without-heap.md) for the reasoning and the exit path.
 
-- **`int` only, no heap.** No objects, no arrays, no `long`/`float`/`double`, no `String` beyond the
-  constant pool, no exceptions, no threads, no lambdas, no bytecode verification.
-- **The executable instruction set** is constants, load/store, `iinc`, `dup`/`pop`, integer
-  arithmetic, the `if<cond>`/`if_icmp<cond>` families, `goto`, and `invokestatic`/`ireturn`/`return`.
-  `invokestatic` resolves within the current class only.
+**A `.class` file taken from an existing project will usually not replay.** 21 Java programs of the
+kind a tutorial or an interview question produces were compiled with `javac -g` and pushed through
+the same parse → disassemble → execute path the application uses; 4 of them replayed to completion.
+The other 17 stopped, and they stopped in ways that are predictable from the source. The table is
+here so the outcome can be worked out before uploading anything.
+
+| In the Java source                                                                  | In the bytecode                                 | What the application does                                                                                                                            |
+| ----------------------------------------------------------------------------------- | ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `System.out.println(…)`                                                             | `getstatic`, `invokevirtual`                    | Stops at the print. Everything before it stays playable.                                                                                             |
+| `Math.max`, `Integer.parseInt`, any call to another type                            | `invokestatic`/`invokevirtual` on another class | Stops with `unsupported-call`: calls resolve within the class being executed only.                                                                   |
+| `<<`, `>>`, `>>>`, `&`, `\|`, `^`                                                   | `ishl`, `ishr`, `iushr`, `iand`, `ior`, `ixor`  | Stops at the operator.                                                                                                                               |
+| `switch`                                                                            | `tableswitch`, `lookupswitch`                   | Variable-length instructions: decoding stops there, and the rest of that method is listed as "not decoded" instead of running.                       |
+| `long`, `float`, `double`                                                           | `ladd`, `fmul`, `dload`, two-slot locals        | Stops at the first such instruction; a method whose parameters are not all `int` cannot be called.                                                   |
+| `new`, instance methods, fields                                                     | `new`, `invokespecial`, `getfield`, `putfield`  | Stops at the allocation or the field access.                                                                                                         |
+| `try`/`catch`, `throw`                                                              | `athrow` and the `exception_table`              | Stops at the throw. The `exception_table` is skipped while `Code` is read, so nothing is caught.                                                     |
+| Lambdas, method references, `"a" + b`                                               | `invokedynamic`                                 | Stops at the call site. String concatenation compiles to `invokedynamic` on Java 9 and later.                                                        |
+| No static `main` — a utility class, an interface, an enum, a record, a nested class | no entry point to run                           | No snapshots are produced, so there is nothing to replay: the start screen returns, with a notice naming `<Class>.main` as a call it could not make. |
+
+The parts that hold regardless of which file is loaded:
+
+- **An `int`-scale machine.** No `long`/`float`/`double`, no user-defined classes or instance fields,
+  no `String` beyond the constant pool, no exceptions, no threads, no lambdas, no bytecode
+  verification.
+- **The executable subset is integer computation and control flow** — constants, load/store, `iinc`,
+  stack manipulation, integer arithmetic, the `if<cond>`/`if_icmp<cond>` families, `goto`, and
+  `invokestatic`/`ireturn`/`return`, with `invokestatic` resolving within the class being executed
+  only. The definitive list is the dispatch `switch` in `web/src/core/interpreter/interpreter.ts`;
+  everything outside it is flagged `unsupported` while decoding.
 - **The parser is deliberately wider than the interpreter.** It reads the whole class file format —
   every constant pool tag, unknown attributes skipped by length — because a modern `javac` emits
   attributes that a narrow parser would choke on. An out-of-scope opcode is marked `unsupported`
   while _decoding_; only an attempt to _execute_ it stops the run, so a file with an unsupported
   instruction in dead code still replays.
-- **Examples cannot print.** `System.out.println` needs `getstatic`, `invokevirtual` and the heap, so
-  each example leaves its result in a local variable in `main` instead.
+- **A stopped run is still a run.** Whatever was recorded before the failure stays loaded, and the
+  banner names the instruction and the offset that stopped it. The one case with nothing to show is
+  the missing entry point in the last row above.
+- **Examples cannot print.** `System.out.println` needs `getstatic`, `invokevirtual` and an object
+  model for `PrintStream` and `String` — the heap here holds `int` arrays and nothing else — so each
+  bundled example leaves its result in a local variable in `main` instead.
 - **A step limit of 20,000** (raisable from the UI) stops runaway loops. The history collected up to
   that point stays playable, and so does the history up to a division by zero or an unsupported
   instruction.
+
+The bundled examples exist because of this table, not in spite of it: they are the shape of program
+that fits, and [`docs/jvm-primer.md`](docs/jvm-primer.md) explains the machine they run on.
 
 ## Tech stack
 
@@ -145,7 +183,7 @@ npm run dev          # http://localhost:5173
 That is the whole application: examples and `.class` upload work with no backend
 ([ADR-0004](docs/adr/0004-backend-as-progressive-enhancement.md)).
 
-![The start screen, with the four bundled examples](docs/screenshots/welcome.png)
+![The start screen, with the bundled examples](docs/screenshots/welcome.png)
 
 ### The optional compile service
 
@@ -202,7 +240,9 @@ through Vercel for the frontend and Fly.io for the server, and lists the placeho
 
 Architecture decision records live in [`docs/adr/`](docs/adr/), and
 [`docs/architecture.md`](docs/architecture.md) goes deeper on the module map, the data flow and the
-error taxonomy.
+error taxonomy. [`docs/jvm-primer.md`](docs/jvm-primer.md) covers the machine itself — the operand
+stack, frames, local variable slots, the constant pool and descriptors — for a reader who has never
+opened the JVM specification.
 
 - [**ADR-0001 — Snapshot history instead of a live interpreter.**](docs/adr/0001-snapshot-history.md)
   Execute the whole program up front and return an immutable array of snapshots; the frontend
@@ -242,15 +282,26 @@ docs/adr/           architecture decision records
 
 ## Roadmap
 
-1. **Arrays and a heap** (`newarray`, `iaload`, `iastore`, `arraylength`) — which brings BubbleSort
-   back as an example and gives the visualizer something to draw beside the stack.
-2. **Objects and `invokevirtual`** — instance fields, `new`, `invokespecial`, and dynamic dispatch
+Ordered by how often an uploaded file runs into them, which is not the order they are easiest to
+build in.
+
+1. **The rest of the everyday instruction set** — shifts and bitwise operations (`ishl`, `iand`, …),
+   `tableswitch`/`lookupswitch` behind a `switch`, and enough of `getstatic`/`invokevirtual` for
+   `System.out.println` and the static `Math` methods. Those four are what an uploaded file stops on
+   most often.
+2. **A disassembler-only explorer mode** — a class with no runnable entry point still has a constant
+   pool, a method table and a full listing worth reading. Showing those instead of the start screen
+   makes "this will not replay" an answer rather than a dead end.
+3. **Objects and `invokevirtual`** — instance fields, `new`, `invokespecial`, and dynamic dispatch
    shown as it resolves.
-3. **Exceptions** — `athrow` and the `exception_table`, with the stack unwinding on screen.
-4. **Shareable links** — a program and a step index encoded in the URL, so a run can be linked to
+4. **Exceptions** — `athrow` and the `exception_table`, with the stack unwinding on screen.
+5. **Shareable links** — a program and a step index encoded in the URL, so a run can be linked to
    mid-execution.
-5. **Other JVM languages** — Kotlin and Scala compile to the same bytecode; the constraint is the
+6. **Other JVM languages** — Kotlin and Scala compile to the same bytecode; the constraint is the
    instruction set, not the source language.
+
+Arrays and a small heap (`newarray`, `iaload`/`iastore`, `arraylength`) were the first item on this
+list and are done — BubbleSort is a bundled example again.
 
 ## License
 
