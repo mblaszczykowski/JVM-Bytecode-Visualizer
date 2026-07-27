@@ -24,5 +24,6 @@ public final class ExpectedResults {
         System.out.println("fibonacci=" + Fibonacci.fib(7));
         System.out.println("sum-of-products=" + SumOfProducts.sumOfProducts(6));
         System.out.println("gcd=" + Gcd.gcd(1071, 462));
+        System.out.println("bubble-sort=" + BubbleSort.sortedMinimum());
     }
 }

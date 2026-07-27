@@ -44,6 +44,17 @@
       "entryMethod": "main",
       "resultVariable": "result",
       "expectedResult": 21
+    },
+    {
+      "id": "bubble-sort",
+      "title": "Bubble sort — arrays on the heap",
+      "tagline": "The heap in motion: {5,3,4,1,2} swapped into order.",
+      "description": "Bubble sort over {5, 3, 4, 1, 2}. The one example with an array: newarray allocates it, iastore fills it and iaload reads back the two neighbours every comparison needs. Each swap rewrites the heap, and result ends up holding a[0] = 1 — the minimum the sort moved to the front.",
+      "classFile": "BubbleSort.class",
+      "sourceFile": "BubbleSort.java",
+      "entryMethod": "main",
+      "resultVariable": "result",
+      "expectedResult": 1
     }
   ]
 }

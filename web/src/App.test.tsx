@@ -88,11 +88,11 @@ describe('welcome screen', () => {
     ).toBeVisible();
   });
 
-  it('offers the four examples and a drop zone before anything is loaded', async () => {
+  it('offers the five examples and a drop zone before anything is loaded', async () => {
     stubFetch(exampleRoutes());
     await openApp();
 
-    expect(screen.getAllByTestId('welcome-example')).toHaveLength(4);
+    expect(screen.getAllByTestId('welcome-example')).toHaveLength(5);
     expect(screen.getByText(/one bytecode instruction at a time/)).toBeVisible();
     expect(screen.queryByTestId('step-counter')).not.toBeInTheDocument();
     expect(screen.getAllByTestId('file-drop-zone').length).toBeGreaterThan(0);
@@ -284,7 +284,7 @@ describe('running an example', () => {
     fireEvent.click(screen.getByRole('radio', { name: 'Factorial' }));
 
     expect(await screen.findByTestId('error-banner')).toHaveTextContent('the server answered 503');
-    expect(screen.getAllByTestId('welcome-example')).toHaveLength(4);
+    expect(screen.getAllByTestId('welcome-example')).toHaveLength(5);
   });
 });
 
@@ -353,7 +353,7 @@ describe('uploads', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Dismiss this message' }));
 
     expect(screen.queryByTestId('error-banner')).not.toBeInTheDocument();
-    expect(screen.getAllByTestId('welcome-example')).toHaveLength(4);
+    expect(screen.getAllByTestId('welcome-example')).toHaveLength(5);
   });
 
   it('rejects a file over the size limit', async () => {

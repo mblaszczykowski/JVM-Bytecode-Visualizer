@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-import { execute, parseClassFile, type Snapshot } from '../index';
+import { execute, parseClassFile, type ArrayObject, type Snapshot } from '../index';
 import { expectCompleted, lastFrameOf, localValue } from './__fixtures__/expect-execution';
 
 /**
@@ -75,6 +75,51 @@ describe('execute — differential against the real JVM', () => {
       expect(snapshots.length).toBeLessThanOrEqual(2_000);
     },
   );
+});
+
+/**
+ * `expectedResult` only covers `a[0]`, and a[0] alone would also be 1 if the sort had stopped
+ * after moving the smallest value to the front. The array on the heap is the rest of the
+ * proof: same five values, all of them in order.
+ */
+const BUBBLE_SORT_INPUT: readonly number[] = [5, 3, 4, 1, 2];
+
+/** The heap of the last snapshot that still has a frame — the run's final object graph. */
+function lastLiveHeap(snapshots: readonly Snapshot[]): readonly ArrayObject[] {
+  const live = [...snapshots].reverse().find((snapshot) => snapshot.callStack.length > 0);
+  if (live === undefined) {
+    throw new Error('the run has no snapshot with a frame');
+  }
+  return live.heap ?? [];
+}
+
+describe('execute — the array BubbleSort leaves behind', () => {
+  const snapshots = runExample('BubbleSort.class', 'main');
+
+  it('sorts the one array it allocates into ascending order', () => {
+    const heap = lastLiveHeap(snapshots);
+
+    // `newarray` runs once, so a second array would mean the run took a route of its own.
+    expect(heap).toHaveLength(1);
+    expect(heap[0]?.kind).toBe('int-array');
+    expect(heap[0]?.length).toBe(BUBBLE_SORT_INPUT.length);
+    // Sorted ascending and no value invented or lost on the way.
+    expect(heap[0]?.elements).toEqual([...BUBBLE_SORT_INPUT].sort((left, right) => left - right));
+  });
+
+  it('starts out unsorted, so the sort is what put the array in order', () => {
+    // By the first `arraylength` the initialiser is complete and the loops have not begun.
+    const beforeSorting = snapshots.find(
+      (snapshot) => snapshot.currentInstruction?.mnemonic === 'arraylength',
+    );
+
+    expect(beforeSorting?.heap?.[0]?.elements).toEqual(BUBBLE_SORT_INPUT);
+  });
+
+  it('needs a few hundred steps for five elements — long enough to scrub, short to replay', () => {
+    expect(snapshots.length).toBeGreaterThan(100);
+    expect(snapshots.length).toBeLessThan(600);
+  });
 });
 
 /**

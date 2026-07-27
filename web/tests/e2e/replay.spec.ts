@@ -16,7 +16,7 @@ async function openFactorial(page: Page): Promise<void> {
 test('replays a recursive program from the welcome screen to its result', async ({ page }) => {
   await page.goto('/');
 
-  await expect(page.getByTestId('welcome-example')).toHaveCount(4);
+  await expect(page.getByTestId('welcome-example')).toHaveCount(5);
   await expect(page.getByTestId('step-counter')).toHaveCount(0);
 
   await page.getByRole('radio', { name: 'Factorial', exact: true }).click();

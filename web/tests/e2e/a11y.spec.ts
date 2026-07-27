@@ -30,7 +30,7 @@ async function seriousViolations(page: Page): Promise<Violation[]> {
 
 test('the welcome screen has no serious accessibility violations', async ({ page }) => {
   await page.goto('/');
-  await expect(page.getByTestId('welcome-example')).toHaveCount(4);
+  await expect(page.getByTestId('welcome-example')).toHaveCount(5);
 
   expect(await seriousViolations(page)).toEqual([]);
 });

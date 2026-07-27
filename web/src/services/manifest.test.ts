@@ -46,13 +46,14 @@ describe('example manifest', () => {
     expect(() => readManifest()).not.toThrow();
   });
 
-  it('contains the four expected examples', () => {
+  it('contains the five expected examples', () => {
     const manifest = readManifest();
     expect(manifest.examples.map((example) => example.id)).toEqual([
       'factorial',
       'fibonacci',
       'sum-of-products',
       'gcd',
+      'bubble-sort',
     ]);
   });
 
@@ -61,6 +62,8 @@ describe('example manifest', () => {
     { id: 'factorial', expectedResult: 24 },
     { id: 'fibonacci', expectedResult: 13 },
     { id: 'gcd', expectedResult: 21 },
+    // a[0] of {5, 3, 4, 1, 2} once the sort has run.
+    { id: 'bubble-sort', expectedResult: 1 },
   ])('$id has expectedResult $expectedResult', ({ id, expectedResult }) => {
     const entry = readManifest().examples.find((example) => example.id === id);
     expect(entry?.expectedResult).toBe(expectedResult);

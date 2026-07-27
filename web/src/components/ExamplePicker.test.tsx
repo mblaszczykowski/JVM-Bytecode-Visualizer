@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { exampleOptions } from './__fixtures__/factorial-run';
 import { ExamplePicker } from './ExamplePicker';
 
-/** The four options App builds from the shipped manifest, names included. */
+/** The five options App builds from the shipped manifest, names included. */
 const examples = exampleOptions();
 
 describe('ExamplePicker', () => {
@@ -27,8 +27,13 @@ describe('ExamplePicker', () => {
 
   it('keeps one tab stop and moves the focus with the arrow keys', () => {
     const onExampleSelected = vi.fn();
+    // The last option is selected, so one press to the right has to wrap round.
     render(
-      <ExamplePicker examples={examples} selectedId="gcd" onExampleSelected={onExampleSelected} />,
+      <ExamplePicker
+        examples={examples}
+        selectedId="bubble-sort"
+        onExampleSelected={onExampleSelected}
+      />,
     );
 
     const options = screen.getAllByRole('radio');
@@ -36,10 +41,11 @@ describe('ExamplePicker', () => {
       '-1',
       '-1',
       '-1',
+      '-1',
       '0',
     ]);
 
-    fireEvent.keyDown(screen.getByRole('radio', { name: 'GCD' }), { key: 'ArrowRight' });
+    fireEvent.keyDown(screen.getByRole('radio', { name: 'Bubble sort' }), { key: 'ArrowRight' });
 
     // Wraps round to the first option, and selection does not follow focus: opening an
     // example parses and runs a whole class file.

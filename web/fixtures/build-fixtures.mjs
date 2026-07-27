@@ -49,6 +49,7 @@ const MANIFEST_VERSION = 1;
 const SUPPORTED_INSTRUCTION_SET = Object.freeze({
   constants: [
     'nop',
+    'aconst_null',
     'iconst_m1',
     'iconst_0',
     'iconst_1',
@@ -65,13 +66,25 @@ const SUPPORTED_INSTRUCTION_SET = Object.freeze({
     'iload_1',
     'iload_2',
     'iload_3',
+    'aload',
+    'aload_0',
+    'aload_1',
+    'aload_2',
+    'aload_3',
     'istore',
     'istore_0',
     'istore_1',
     'istore_2',
     'istore_3',
+    'astore',
+    'astore_0',
+    'astore_1',
+    'astore_2',
+    'astore_3',
   ],
   increment: ['iinc'],
+  /** int arrays only: `newarray` with any other element type is rejected at run time. */
+  arrays: ['newarray', 'iaload', 'iastore', 'arraylength'],
   stack: ['dup', 'pop'],
   arithmetic: ['iadd', 'isub', 'imul', 'idiv', 'irem', 'ineg'],
   'comparison branches': [
@@ -155,6 +168,17 @@ const EXAMPLES = Object.freeze([
       "Euclid's algorithm for (1071, 462) = 21. A loop driven by a condition rather than a " +
       'counter: instead of iinc there is ifne on the remainder (irem), plus values being ' +
       'copied between local variable slots.',
+  },
+  {
+    id: 'bubble-sort',
+    className: 'BubbleSort',
+    title: 'Bubble sort — arrays on the heap',
+    tagline: 'The heap in motion: {5,3,4,1,2} swapped into order.',
+    description:
+      'Bubble sort over {5, 3, 4, 1, 2}. The one example with an array: newarray allocates ' +
+      'it, iastore fills it and iaload reads back the two neighbours every comparison needs. ' +
+      'Each swap rewrites the heap, and result ends up holding a[0] = 1 — the minimum the ' +
+      'sort moved to the front.',
   },
 ]);
 
