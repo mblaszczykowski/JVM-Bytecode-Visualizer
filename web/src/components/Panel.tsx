@@ -22,9 +22,10 @@ interface PanelProps {
   readonly scrolls?: boolean;
   /**
    * Whether the scrolling body fills the panel or is capped. `capped` is the State column,
-   * where three sections share a fixed height and none may push the others off screen.
+   * where the sections share a fixed height and none may push the others off screen; `short`
+   * is the same idea for the section that joins them last and has the least to say.
    */
-  readonly bodyFill?: 'grow' | 'capped';
+  readonly bodyFill?: 'grow' | 'capped' | 'short';
   /** Extra classes on the scroll container, e.g. the Source panel's right-edge fade. */
   readonly bodyClassName?: string;
   readonly className?: string;
@@ -40,6 +41,16 @@ const TITLE: Record<PanelVariant, string> = {
   code: 'text-white/50',
   state: 'text-white/55',
 };
+
+/**
+ * A capped body keeps its content height until the column runs out of room; from there it
+ * gives way and scrolls, rather than pushing the section below it off the screen.
+ */
+const BODY_FILL = {
+  grow: 'min-h-0 flex-1',
+  capped: 'max-h-[240px] min-h-0',
+  short: 'max-h-[150px] min-h-0',
+} as const;
 
 /**
  * Shared panel frame: header, independently scrolling body, optional footer.
@@ -58,9 +69,7 @@ export function Panel({
   children,
 }: PanelProps) {
   const body = scrolls
-    ? `focus-ring scroll-visible overflow-auto ${
-        bodyFill === 'grow' ? 'min-h-0 flex-1' : 'max-h-[240px] shrink-0'
-      }`
+    ? `focus-ring scroll-visible overflow-auto ${BODY_FILL[bodyFill]}`
     : 'shrink-0';
 
   return (

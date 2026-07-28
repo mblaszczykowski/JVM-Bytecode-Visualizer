@@ -1,15 +1,18 @@
 import { motion, useReducedMotion } from 'framer-motion';
 import { useState } from 'react';
 
-import type { StackFrame } from '../core/interpreter/types';
+import type { ArrayObject, StackFrame } from '../core/interpreter/types';
 
 import { Panel } from './Panel';
+import { ReferenceChip } from './ui/ReferenceChip';
 
 interface LocalsPanelProps {
   /** Top frame of the current snapshot; `undefined` when the call stack is empty. */
   readonly frame: StackFrame | undefined;
   /** Depth of that frame — a different depth is a different set of variables. */
   readonly frameIndex?: number;
+  /** Objects of the current snapshot, so a `ref` slot can name what it points at. */
+  readonly heap?: readonly ArrayObject[] | undefined;
   /** Replaces the slot count in the header when the panel is showing a frame that is gone. */
   readonly caption?: string | undefined;
 }
@@ -21,6 +24,9 @@ type Locals = readonly (number | undefined)[];
 
 /** Stable identity: a fresh `[]` per render would restart the change tracking every frame. */
 const NO_LOCALS: Locals = [];
+
+/** Stable identity for the int-only runs, which never hand the panel a heap of their own. */
+const NO_HEAP: readonly ArrayObject[] = [];
 
 interface Tracked {
   readonly frameIndex: number;
@@ -59,7 +65,7 @@ function usePulses(frameIndex: number, locals: Locals): readonly number[] {
   return tracked.pulses;
 }
 
-export function LocalsPanel({ frame, frameIndex = 0, caption }: LocalsPanelProps) {
+export function LocalsPanel({ frame, frameIndex = 0, caption, heap = NO_HEAP }: LocalsPanelProps) {
   const reduced = useReducedMotion() ?? false;
   const pulses = usePulses(frameIndex, frame?.locals ?? NO_LOCALS);
 
@@ -89,6 +95,8 @@ export function LocalsPanel({ frame, frameIndex = 0, caption }: LocalsPanelProps
             const name = localNames[slot] ?? `slot ${String(slot)}`;
             const isInitialised = value !== undefined;
             const pulse = pulses[slot] ?? 0;
+            // A reference slot holds a heap handle, which on its own says nothing.
+            const isReference = frame.localKinds?.[slot] === 'ref';
 
             return (
               <li
@@ -116,18 +124,24 @@ export function LocalsPanel({ frame, frameIndex = 0, caption }: LocalsPanelProps
                 )}
                 <span className="w-3 shrink-0 font-mono text-[10px] text-white/32">{slot}</span>
                 <span className={isInitialised ? 'text-white/75' : 'text-white/30'}>{name}</span>
-                {/* The supported instruction subset only models int locals. */}
+                {/* The subset models two kinds of slot: an int, and a reference to an int array. */}
                 {isInitialised ? (
-                  <span className="font-mono text-[11px] text-white/55">: I</span>
+                  <span className="font-mono text-[11px] text-white/55">
+                    {isReference ? ': int[]' : ': I'}
+                  </span>
                 ) : null}
                 <span className="grow" />
-                <span
-                  className={`font-mono text-[14px] ${
-                    isInitialised ? 'text-white/90' : 'text-white/30'
-                  }`}
-                >
-                  {isInitialised ? value : UNINITIALISED}
-                </span>
+                {isInitialised && isReference ? (
+                  <ReferenceChip heap={heap} handle={value} />
+                ) : (
+                  <span
+                    className={`font-mono text-[14px] ${
+                      isInitialised ? 'text-white/90' : 'text-white/30'
+                    }`}
+                  >
+                    {isInitialised ? value : UNINITIALISED}
+                  </span>
+                )}
               </li>
             );
           })}

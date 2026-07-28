@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { RunSummary } from '../services/program';
 
+import { heapAt, runSummary, terminalStep } from './__fixtures__/bubble-sort-run';
 import { CompletionCard } from './CompletionCard';
 
 const SUMMARY: RunSummary = {
@@ -36,6 +37,29 @@ describe('CompletionCard', () => {
 
     expect(screen.queryByText(/Matches the value a real JVM/)).not.toBeInTheDocument();
     expect(screen.getByText('24')).toBeInTheDocument();
+  });
+
+  it('leaves nothing behind on the heap out of the payoff', () => {
+    render(<CompletionCard summary={runSummary()} heap={heapAt(terminalStep())} />);
+
+    const card = within(screen.getByTestId('completion-card'));
+    // `result = 1` is only the minimum the sort found; the sorted array is the actual answer.
+    expect(card.getByTestId('result-value')).toHaveTextContent('1');
+    expect(card.getByText('int[5]@0')).toBeInTheDocument();
+    expect(card.getAllByTestId('heap-cell').map((cell) => cell.textContent)).toEqual([
+      '1',
+      '2',
+      '3',
+      '4',
+      '5',
+    ]);
+  });
+
+  it('says nothing about the heap for a run that never allocated', () => {
+    render(<CompletionCard summary={SUMMARY} />);
+
+    expect(screen.queryByTestId('heap-array')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Heap as the run left it/)).not.toBeInTheDocument();
   });
 
   it('shows a dash rather than nothing for a program that leaves no result behind', () => {

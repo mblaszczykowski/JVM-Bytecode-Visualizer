@@ -3,12 +3,32 @@ import { describe, expect, it } from 'vitest';
 
 import type { StackFrame } from '../core/interpreter/types';
 
+import {
+  firstStepOf as bubbleSortStepOf,
+  frameAt as bubbleSortFrameAt,
+  heapAt,
+  operandRolesAt as bubbleSortRolesAt,
+} from './__fixtures__/bubble-sort-run';
 import { firstStepOf, frameAt, operandRolesAt } from './__fixtures__/factorial-run';
 import { OperandStackPanel } from './OperandStackPanel';
 
 /** factorial(4) just before its `isub`: the stack holds [4, 4, 1] from base to top. */
 const isubStep = firstStepOf('isub');
 const frameWithValues = frameAt(isubStep);
+
+/** The first `iaload` of the sort: an array reference with the index to read on top of it. */
+const arrayReadStep = bubbleSortStepOf('iaload');
+
+/** A reference to nothing — `aconst_null` leaves exactly this on the stack. */
+const nullReferenceFrame: StackFrame = {
+  methodName: 'sortedMinimum',
+  methodDescriptor: '()I',
+  pc: 0,
+  operandStack: [-1],
+  operandKinds: ['ref'],
+  locals: [],
+  localNames: [],
+};
 
 const emptyStackFrame: StackFrame = {
   methodName: 'factorial',
@@ -68,5 +88,29 @@ describe('OperandStackPanel', () => {
     render(<OperandStackPanel frame={undefined} />);
 
     expect(screen.getByText('No active frame.')).toBeInTheDocument();
+  });
+
+  it('names the array a reference cell points at instead of showing its handle', () => {
+    render(
+      <OperandStackPanel
+        frame={bubbleSortFrameAt(arrayReadStep)}
+        heap={heapAt(arrayReadStep)}
+        annotations={bubbleSortRolesAt(arrayReadStep)}
+      />,
+    );
+
+    // `…, arrayref, index` — the index is on top, the reference right under it.
+    const top = within(cellAt(0));
+    const below = within(cellAt(1));
+    expect(top.getByText('→ index')).toBeInTheDocument();
+    expect(top.queryByTestId('ref-chip')).not.toBeInTheDocument();
+    expect(below.getByTestId('ref-chip')).toHaveTextContent('int[5]@0');
+    expect(below.getByText('→ array')).toBeInTheDocument();
+  });
+
+  it('calls a reference that points at no object null', () => {
+    render(<OperandStackPanel frame={nullReferenceFrame} />);
+
+    expect(within(cellAt(0)).getByTestId('ref-chip')).toHaveTextContent('null');
   });
 });

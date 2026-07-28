@@ -3,8 +3,16 @@ import { describe, expect, it } from 'vitest';
 
 import type { StackFrame } from '../core/interpreter/types';
 
+import {
+  firstStepOf as bubbleSortStepOf,
+  frameAt as bubbleSortFrameAt,
+  heapAt,
+} from './__fixtures__/bubble-sort-run';
 import { frameAt, snapshots } from './__fixtures__/factorial-run';
 import { LocalsPanel } from './LocalsPanel';
+
+/** Inside the sort, where slot 0 holds the array and the loop counters are plain ints. */
+const sortingStep = bubbleSortStepOf('iaload');
 
 /** Step 0 of the run: frame `main`, slot 0 is the `args` sentinel, slot 1 not assigned yet. */
 const mainFrame = frameAt(0);
@@ -56,6 +64,20 @@ describe('LocalsPanel', () => {
     expect(within(slotAt(0)).getByText('slot 0')).toBeInTheDocument();
     expect(within(slotAt(0)).getByText('7')).toBeInTheDocument();
     expect(within(slotAt(1)).getByText('slot 1')).toBeInTheDocument();
+  });
+
+  it('shows a reference slot as the array it points at, typed int[]', () => {
+    render(<LocalsPanel frame={bubbleSortFrameAt(sortingStep)} heap={heapAt(sortingStep)} />);
+
+    const array = within(slotAt(0));
+    expect(array.getByText('a')).toBeInTheDocument();
+    expect(array.getByText(': int[]')).toBeInTheDocument();
+    expect(array.getByTestId('ref-chip')).toHaveTextContent('int[5]@0');
+
+    // The int slots next to it are untouched by any of that.
+    const counter = within(slotAt(1));
+    expect(counter.getByText(': I')).toBeInTheDocument();
+    expect(counter.queryByTestId('ref-chip')).not.toBeInTheDocument();
   });
 
   it('shows the missing frame of the terminal snapshot', () => {

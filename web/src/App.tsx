@@ -499,6 +499,8 @@ export function App({ compileApiUrl = compileApiBaseUrl() }: AppProps = {}) {
           <StateColumn
             frames={snapshot?.callStack ?? NO_FRAMES}
             operandAnnotations={operandRoles}
+            heap={snapshot?.heap}
+            mnemonic={snapshot?.currentInstruction?.mnemonic}
             lastLiveFrames={lastLive?.callStack}
             summary={summary}
             className={`md:col-span-2 lg:col-span-1 ${visibilityOf('state', visiblePanel)}`}

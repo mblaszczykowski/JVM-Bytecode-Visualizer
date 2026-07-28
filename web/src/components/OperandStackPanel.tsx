@@ -1,12 +1,15 @@
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 
-import type { StackFrame } from '../core/interpreter/types';
+import type { ArrayObject, StackFrame } from '../core/interpreter/types';
 
 import { Panel } from './Panel';
+import { ReferenceChip } from './ui/ReferenceChip';
 
 interface OperandStackPanelProps {
   /** Top frame of the current snapshot; `undefined` when the call stack is empty. */
   readonly frame: StackFrame | undefined;
+  /** Objects of the current snapshot, so a `ref` cell can name what it points at. */
+  readonly heap?: readonly ArrayObject[] | undefined;
   /**
    * Depth of the frame the cells belong to. It is part of the cell keys, so a value left on
    * a caller's stack never animates into a same-valued cell of the callee.
@@ -25,7 +28,15 @@ const BASE_LINE =
 
 const LABEL_COLUMN = 'w-[30px] shrink-0 text-[9px] tracking-[0.1em]';
 
-export function OperandStackPanel({ frame, frameIndex = 0, annotations }: OperandStackPanelProps) {
+/** Stable identity for the int-only runs, which never hand the panel a heap of their own. */
+const NO_HEAP: readonly ArrayObject[] = [];
+
+export function OperandStackPanel({
+  frame,
+  frameIndex = 0,
+  annotations,
+  heap = NO_HEAP,
+}: OperandStackPanelProps) {
   const reduced = useReducedMotion() ?? false;
   const duration = reduced ? 0 : 0.16;
 
@@ -57,6 +68,8 @@ export function OperandStackPanel({ frame, frameIndex = 0, annotations }: Operan
             .map(({ value, index }) => {
               const isTop = index === topIndex;
               const annotation = annotations?.[index];
+              // A reference is a heap handle; the array behind it is what the cell is about.
+              const isReference = frame.operandKinds?.[index] === 'ref';
 
               return (
                 <motion.li
@@ -78,7 +91,11 @@ export function OperandStackPanel({ frame, frameIndex = 0, annotations }: Operan
                         : 'bg-white/5 text-white/75'
                     }`}
                   >
-                    <span className="font-mono text-[15px]">{value}</span>
+                    {isReference ? (
+                      <ReferenceChip heap={heap} handle={value} onAccent={isTop} />
+                    ) : (
+                      <span className="font-mono text-[15px]">{value}</span>
+                    )}
                     <span className="grow" />
                     {annotation === undefined ? null : (
                       <span

@@ -9,6 +9,7 @@ dist/
 coverage/
 
 # Playwright
+test-results/
 web/test-results/
 web/playwright-report/
 web/blob-report/

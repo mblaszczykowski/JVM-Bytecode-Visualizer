@@ -68,7 +68,7 @@ export function CallStackPanel({ frames }: CallStackPanelProps) {
       title="Call stack"
       meta={`depth ${String(frames.length)}`}
       variant="state"
-      className="min-h-[92px] flex-1"
+      className="min-h-[92px] flex-1 md:min-w-0"
     >
       {/*
         The list disappears with the last frame rather than fading it out: an empty call stack
