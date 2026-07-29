@@ -303,6 +303,8 @@ build in.
 Arrays and a small heap (`newarray`, `iaload`/`iastore`, `arraylength`) were the first item on this
 list and are done — BubbleSort is a bundled example again.
 
+![Bubble sort mid-run: the heap panel shows the array being reordered, with the element the current `iastore` writes highlighted](docs/screenshots/bubble-sort.png)
+
 ## License
 
 [MIT](LICENSE) — Copyright (c) 2026 Michał Błaszczykowski.
