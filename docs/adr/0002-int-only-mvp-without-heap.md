@@ -1,6 +1,8 @@
 # ADR-0002 — MVP on `int` only, without a heap
 
-- **Status:** Accepted
+- **Status:** Accepted; the "no heap" half amended by
+  [ADR-0005](0005-heap-of-int-arrays.md) (2026-07-30), which takes the exit path named below. The
+  `int`-only value model, the closed instruction set and the reasoning for both stand as written.
 - **Date:** 2026-07-16
 
 ## Context

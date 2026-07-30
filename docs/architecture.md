@@ -14,7 +14,7 @@ flowchart TD
   subgraph core["web/src/core — pure TypeScript domain"]
     classfile["classfile<br/>ByteReader, parser, descriptors"]
     disassembler["disassembler<br/>opcode table, decoding"]
-    interpreter["interpreter<br/>execute, frames, int32"]
+    interpreter["interpreter<br/>execute, frames, heap, int32"]
     classfile --> disassembler
     disassembler --> interpreter
     classfile --> interpreter
@@ -22,6 +22,7 @@ flowchart TD
   subgraph app["web/src/services — application layer"]
     program["program.ts<br/>parse, execute, derive listings"]
     state["app-state.ts<br/>idle / loading / ready / error"]
+    capabilities["capabilities.ts<br/>executable set, stated up front"]
     compileClient["compile-client.ts<br/>optional service"]
   end
   subgraph ui["web/src/components + hooks — React"]
@@ -69,11 +70,18 @@ index arithmetic; the panels read `snapshots[index]`.
 
 **What it costs**
 
-- Memory. Every snapshot deep-copies the live frame stack, so cost grows with steps × depth. With
-  `int` slots and no heap a frame is small, and the 20,000-step default keeps the worst case
-  bounded; the bundled examples produce histories in the tens to low thousands of snapshots. This
-  is a consciously accepted cost — see [ADR-0001](adr/0001-snapshot-history.md), which defers
-  structural sharing to a version that also brings a benchmark.
+- Memory. Machine state has to be copied out of the mutable interpreter, and the naive form of that
+  — a deep copy of the whole call stack and the whole heap per step — costs steps × (depth +
+  arrays). What makes it affordable is that a snapshot is immutable, so the parts that did not
+  change do not need a second copy. `SnapshotWriter` keeps the frozen frame it last emitted at each
+  depth together with the version of the `Frame` it came from, and between two consecutive
+  instructions only the top of the stack moves; the heap does the same per array, keyed on a
+  per-array version behind a heap-wide revision, and hands back the identical view when a step
+  touched no array at all. Every frame and every array is therefore copied once per change rather
+  than once per step, a slot holds one 32-bit number, and the 20,000-step default bounds the worst
+  case; the bundled examples produce histories in the tens to low thousands of snapshots. The
+  remaining cost is consciously accepted — see [ADR-0001](adr/0001-snapshot-history.md); persistent
+  data structures, and the benchmark that would justify them, stay deferred.
 - Latency is front-loaded: nothing renders until the run finishes. At MVP scale that is
   milliseconds, but a program that would run for minutes cannot be visualized at all — it hits the
   step limit instead.
@@ -146,24 +154,73 @@ with parameters other than `int`. `ireturn` pops the frame and pushes the value 
 operand stack; when there is no caller left, the value becomes the run's return value. `return` does
 the same without a value.
 
+## The heap
+
+Locals and the operand stack hold everything an `int`-only program has. An array does not fit that
+shape: it outlives the instruction that built it, and the slot that refers to it names it rather
+than holds it. `web/src/core/interpreter/heap.ts` is where those objects live (JVMS §2.5.3) — one
+heap per run, shared by every frame, never unwound when a frame returns.
+
+It holds fixed-length arrays of `int` and no other object: `newarray` allocates for
+`atype = T_INT` and rejects any other element type before it pops the count, and `iaload`,
+`iastore` and `arraylength` work on what it allocated. Where that boundary sits and why it moved
+there is [ADR-0005](adr/0005-heap-of-int-arrays.md); the definitive list of what the machine
+executes is the dispatch `switch` in `web/src/core/interpreter/interpreter.ts`.
+
+Three properties shape everything above it:
+
+- **A reference is a handle.** The value a `ref` slot holds is the array's index in the heap, so
+  `snapshot.heap[h]` is the object and no pointer arithmetic is expressible. `null` is the handle
+  `-1`, at which no array ever lives (JVMS §2.4); any handle that names no cell — including one
+  that was never allocated — stops the run with the `NullPointerException` a real JVM would raise.
+  The UI can therefore render a reference as what it points at, `int[5]@0`, rather than as a bare
+  number that means nothing on its own.
+- **It is append-only.** Nothing is freed and handles are never reused, so there is no collector
+  and no question about what a handle in an old snapshot refers to. That is what makes the frozen
+  view cheap: `freeze()` re-copies only the arrays whose per-array version moved and hands back the
+  identical view for a step that touched none, which is the sharing the memory argument above
+  depends on.
+- **Every value carries its kind.** A `ValueKind` of `int` or `ref` travels with each operand stack
+  cell and each local slot, pushed and popped with the value. Both are plain numbers, so nothing
+  but that tag distinguishes the integer 3 from the reference to the array at handle 3, and the
+  interpreter refuses to read one as the other: `iload` on a slot holding a reference, or
+  `arraylength` on an `int`, stops the run instead of computing something plausible. In a real JVM
+  this never comes up at run time, because the verifier proves it statically before the method
+  executes (JVMS §4.10). This interpreter has no verifier, so it does the equivalent check where it
+  can — at the instruction that would have been wrong.
+
+Snapshots grew for this additively: `heap`, `operandKinds` and `localKinds` are optional fields
+that `execute()` always fills, so a consumer that only reads numbers is unaffected and an
+`int`-only run carries the same frozen empty heap on every step.
+
 ## Error taxonomy
 
 Three distinct failure kinds, deliberately not collapsed into one:
 
-| Kind             | Where              | Shape                                                                                                                  | What it means                                                                                                                     |
-| ---------------- | ------------------ | ---------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `ClassFileError` | `core/classfile`   | `bad-magic`, `truncated`, `unknown-constant-tag`, `bad-index`, `malformed-utf8`, `malformed-structure`, bad descriptor | These bytes are not a class file this parser can read. Thrown, always with a byte offset and context.                             |
-| `VmError`        | `core/interpreter` | `unsupported-opcode`, `division-by-zero`, `unsupported-call`, `invalid-state`, `stack-overflow`, `bad-branch-target`   | The file parsed, but the run cannot continue. Returned, never thrown, together with the history so far.                           |
-| `step-limit`     | `core/interpreter` | `{ kind: 'step-limit', limit }`                                                                                        | Not an error at all — the run was cut short. The history is complete and playable up to the limit, and the UI offers to raise it. |
+| Kind             | Where              | Shape                                                                                                                                                                                                                | What it means                                                                                                                     |
+| ---------------- | ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `ClassFileError` | `core/classfile`   | `bad-magic`, `truncated`, `unknown-constant-tag`, `bad-index`, `malformed-utf8`, `malformed-structure`, bad descriptor                                                                                               | These bytes are not a class file this parser can read. Thrown, always with a byte offset and context.                             |
+| `VmError`        | `core/interpreter` | `unsupported-opcode`, `division-by-zero`, `unsupported-call`, `invalid-state`, `stack-overflow`, `bad-branch-target`, `array-index-out-of-bounds`, `negative-array-size`, `null-reference`, `unsupported-array-type` | The file parsed, but the run cannot continue. Returned, never thrown, together with the history so far.                           |
+| `step-limit`     | `core/interpreter` | `{ kind: 'step-limit', limit }`                                                                                                                                                                                      | Not an error at all — the run was cut short. The history is complete and playable up to the limit, and the UI offers to raise it. |
 
-Two of the `VmError` kinds exist because the interpreter has no bytecode verifier and refuses to run
+Three of the `VmError` kinds exist because the interpreter has no bytecode verifier and refuses to run
 off its own rails. `stack-overflow` stops the run at `DEFAULT_MAX_CALL_DEPTH` (1,500 frames) and
 borrows the wording of a real `StackOverflowError`, so recursion without a reachable base case is
 named for what it is rather than reported as a step limit — and it stops long before the history
 exhausts the browser tab. `bad-branch-target` rejects a jump that does not land on the first byte of
 an instruction of the same method (JVMS §4.9.1); it is checked once when a method is prepared, so a
 target inside another instruction's operands is named at the branch instead of surfacing later as
-whatever byte the pc happened to hit.
+whatever byte the pc happened to hit. `invalid-state` is the same instinct without a name of its
+own: an empty operand stack at `iadd`, a read from an uninitialised slot, or a reference used where
+an `int` belongs — the kind check described under the heap, which is the verifier's work done at the
+instruction rather than ahead of the method (JVMS §4.10).
+
+The kinds that correspond to a runtime exception are worded as that exception:
+`ArithmeticException: / by zero` for `division-by-zero`, and
+`ArrayIndexOutOfBoundsException`, `NegativeArraySizeException` and `NullPointerException` for the
+three array kinds. The machine has no `athrow` and no `exception_table`, so these end the run
+instead of being catchable — but a reader who meets one here should recognise it the next time a
+real stack trace shows it.
 
 `web/src/services/errors.ts` widens those into one `AppError` union that also covers failures which
 only exist at the application boundary — an example that would not download, a file over the 512 KiB
@@ -175,6 +232,17 @@ The rule this taxonomy exists to serve: a failure that still has history keeps t
 the grid and the transport stay alive over whatever was recorded before the failure.
 
 ![The error banner over a run that stopped part-way](screenshots/error-banner.png)
+
+The other half of not surprising anyone is saying what the machine can run _before_ a file is
+loaded, and that statement is derived rather than written down. `web/src/services/capabilities.ts`
+intersects the disassembler's opcode table with the interpreter's `EXECUTABLE_OPCODES`: the
+instruction families on the welcome screen are the executable opcodes grouped by the blocks the
+JVMS §6.5 tables lay them out in, and the missing Java features are the entries whose required
+instructions are not all executable yet. An opcode that gains an implementation therefore joins its
+family and drops off the gap list with no file to edit, and the welcome screen cannot claim
+something the dispatch `switch` does not do. Only the naming is editorial — plus one note that no
+opcode can express, that `invokestatic` resolves against the uploaded class alone, which is the one
+sentence there someone has to keep true by hand.
 
 ## The compile service
 

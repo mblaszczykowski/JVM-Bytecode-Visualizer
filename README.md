@@ -110,7 +110,9 @@ lines, branches and functions, configured in `web/vite.config.ts`.
 
 This is a teaching instrument for how a stack machine works, not a JVM. The scope is closed on
 purpose so that what exists can be complete — see
-[ADR-0002](docs/adr/0002-int-only-mvp-without-heap.md) for the reasoning and the exit path.
+[ADR-0002](docs/adr/0002-int-only-mvp-without-heap.md) for the reasoning and the exit path, and
+[ADR-0005](docs/adr/0005-heap-of-int-arrays.md) for where the boundary moved to when that path was
+taken.
 
 **A `.class` file taken from an existing project will usually not replay.** 21 Java programs of the
 kind a tutorial or an interview question produces were compiled with `javac -g` and pushed through
@@ -250,13 +252,16 @@ opened the JVM specification.
   function that can be tested like one.
 - [**ADR-0002 — MVP on `int` only, without a heap.**](docs/adr/0002-int-only-mvp-without-heap.md)
   A closed instruction set that can be implemented and tested completely, rather than a broad one
-  that is right in patches.
+  that is right in patches. Amended by ADR-0005 for the heap.
 - [**ADR-0003 — The backend compiles, it never executes user code.**](docs/adr/0003-backend-compiles-never-executes.md)
   Compilation happens in memory with `-proc:none`, an empty class path and a size cap, inside a
   child JVM that is killed at the deadline and rationed by a bounded pool and a per-IP rate limit;
   execution happens in the user's own browser.
 - [**ADR-0004 — The backend is progressive enhancement, not a dependency.**](docs/adr/0004-backend-as-progressive-enhancement.md)
   The demo, the local setup and the frontend CI all work with no server running.
+- [**ADR-0005 — A heap that holds `int` arrays and nothing else.**](docs/adr/0005-heap-of-int-arrays.md)
+  Amends ADR-0002 along the exit path it named: arrays on an append-only heap, references as
+  handles, and a kind tag per value so the machine refuses to read one as the other.
 
 The boundary from ADR-0001 is enforced mechanically. `web/eslint.config.js` bans imports of React,
 the DOM and the application layer from `web/src/core/**`, and bans `window`, `document` and
