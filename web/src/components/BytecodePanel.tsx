@@ -3,13 +3,18 @@ import { Fragment, useState } from 'react';
 import type { Instruction } from '../core/disassembler/types';
 
 import { BranchGutter } from './BranchGutter';
-import { formatOperands, operandTokens } from './bytecode-format';
+import {
+  constantIndexOf,
+  formatOperands,
+  operandTokens,
+  type OperandToken,
+} from './bytecode-format';
 import { CurrentRowHighlight } from './CurrentRowHighlight';
 import { NextInstructionCard, type NextInstructionCardProps } from './NextInstructionCard';
 import { Panel } from './Panel';
 import { CODE_ROW } from './rhythm';
 import { Pill } from './ui/Pill';
-import { useRowNavigation } from './useRowNavigation';
+import { useRowNavigation, type RowNavigation } from './useRowNavigation';
 import { useScrollFollow } from './useScrollFollow';
 
 interface BytecodePanelProps {
@@ -38,11 +43,72 @@ interface BytecodePanelProps {
   /** First step of the run that stood at each offset; a row without one cannot be sought to. */
   readonly stepForOffset?: ReadonlyMap<number, number> | undefined;
   readonly onSeek?: ((step: number) => void) | undefined;
+  /**
+   * Constant pool index the reader is following. Every `#n` naming it is marked, and with no
+   * pc to follow the listing scrolls to the first of them.
+   */
+  readonly selectedConstant?: number | undefined;
+  /** Follow a `#n` operand into the constant pool table; omitted, the operands stay text. */
+  readonly onSelectConstant?: ((index: number) => void) | undefined;
   /** Slide the highlight between instructions; switched off above 4× playback. */
   readonly animateHighlight?: boolean;
   /** Silences the live region during playback — one announcement per tick is unusable. */
   readonly isPlaying?: boolean;
   readonly className?: string;
+}
+
+interface ConstantLinkProps {
+  readonly token: OperandToken;
+  readonly index: number;
+  /** Position of this link among the listing's links — the roving tabindex counts these. */
+  readonly position: number;
+  readonly navigation: RowNavigation;
+  readonly isFollowed: boolean;
+  readonly isCurrentRow: boolean;
+  readonly onSelect: (index: number) => void;
+}
+
+/**
+ * A `#n` operand as what it is: a lookup into a table the reader can open. It sits above the
+ * row's seek overlay (`z-10`) so the click lands here, and its horizontal padding is cancelled
+ * by an equal negative margin — the row is 26px of fixed rhythm and a link may not widen it.
+ *
+ * The followed entry wears the pool-reference grammar of design §2.4 rather than the pc
+ * highlight: two accents claiming "current" in one row would read as one thing.
+ */
+function ConstantLink({
+  token,
+  index,
+  position,
+  navigation,
+  isFollowed,
+  isCurrentRow,
+  onSelect,
+}: ConstantLinkProps) {
+  const tone = isFollowed
+    ? 'bg-accent/[0.28] text-accent-soft'
+    : isCurrentRow
+      ? 'hover:bg-white/15'
+      : 'text-accent-dim hover:bg-white/10';
+
+  return (
+    <button
+      type="button"
+      data-constant-row={position}
+      data-constant-index={index}
+      tabIndex={position === navigation.anchorIndex ? 0 : -1}
+      aria-label={`Show constant pool entry #${String(index)}`}
+      onClick={() => {
+        onSelect(index);
+      }}
+      onKeyDown={(event) => {
+        navigation.onKeyDown(event, position);
+      }}
+      className={`focus-ring relative z-10 -mx-[4px] rounded-[4px] px-[4px] transition-colors ${tone}`}
+    >
+      {token.text}
+    </button>
+  );
 }
 
 export function BytecodePanel({
@@ -59,6 +125,8 @@ export function BytecodePanel({
   help,
   stepForOffset,
   onSeek,
+  selectedConstant,
+  onSelectConstant,
   animateHighlight = false,
   isPlaying = false,
   className = '',
@@ -69,7 +137,24 @@ export function BytecodePanel({
     (instruction) => instruction.offset === currentOffset,
   );
   const current = currentIndex < 0 ? undefined : instructions[currentIndex];
-  const contentRef = useScrollFollow(currentIndex < 0 ? undefined : currentIndex);
+
+  // Instruction indices that name a pool entry, so the `#n` links form a list of their own:
+  // one tab stop for the whole listing rather than one per instruction.
+  const constantRows = instructions
+    .map((instruction, index) => ({ index, constant: constantIndexOf(instruction) }))
+    .filter((row): row is { index: number; constant: number } => row.constant !== undefined);
+  const followedRow = constantRows.findIndex((row) => row.constant === selectedConstant);
+  const constantNav = useRowNavigation(
+    constantRows.length,
+    followedRow < 0 ? undefined : followedRow,
+    'data-constant-row',
+  );
+
+  // A pc always wins the scroll: it moves on its own and the reader is watching it. The
+  // followed constant only drives it where there is no run to follow.
+  const followedIndex = constantRows[followedRow]?.index;
+  const constantPositionOf = new Map(constantRows.map((row, position) => [row.index, position]));
+  const contentRef = useScrollFollow(currentIndex < 0 ? followedIndex : currentIndex);
   const rows = useRowNavigation(instructions.length, currentIndex < 0 ? undefined : currentIndex);
 
   const meta = `${methodName}${methodDescriptor} · max ${String(maxStack)}/${String(maxLocals)}`;
@@ -150,14 +235,28 @@ export function BytecodePanel({
                         {/*
                           Blue means "current state", so only operands that point elsewhere in
                           the class file are coloured — a slot or an immediate is just a number.
+                          A pool index points at a row of a table that is on screen, so it is
+                          the one operand that is also a link.
                         */}
-                        <span
-                          className={
-                            isCurrent || !token.isReference ? undefined : 'text-accent-dim'
-                          }
-                        >
-                          {token.text}
-                        </span>
+                        {token.constantIndex === undefined || onSelectConstant === undefined ? (
+                          <span
+                            className={
+                              isCurrent || !token.isReference ? undefined : 'text-accent-dim'
+                            }
+                          >
+                            {token.text}
+                          </span>
+                        ) : (
+                          <ConstantLink
+                            token={token}
+                            index={token.constantIndex}
+                            position={constantPositionOf.get(index) ?? 0}
+                            navigation={constantNav}
+                            isFollowed={token.constantIndex === selectedConstant}
+                            isCurrentRow={isCurrent}
+                            onSelect={onSelectConstant}
+                          />
+                        )}
                       </Fragment>
                     ))}
                   </span>

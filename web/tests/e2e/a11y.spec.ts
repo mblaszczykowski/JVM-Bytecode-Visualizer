@@ -1,8 +1,10 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 
+import { fixturePath } from './fixtures';
+
 /**
- * Axe on the two screens a reader actually lands on. Only `serious` and `critical` are
+ * Axe on the three screens a reader actually lands on. Only `serious` and `critical` are
  * enforced: the lighter impacts are dominated by contrast readings on translucent glass,
  * where axe has to guess at the composited background.
  */
@@ -43,15 +45,25 @@ test('the loaded program has no serious accessibility violations', async ({ page
   expect(await seriousViolations(page)).toEqual([]);
 });
 
+test('the explorer has no serious accessibility violations', async ({ page }) => {
+  await page.goto('/');
+  // A class with no method the interpreter can enter: no run, and every panel still on screen.
+  await page.locator('input[type="file"]').first().setInputFiles(fixturePath('Library.class'));
+  await expect(page.getByTestId('class-panel')).toBeVisible();
+
+  expect(await seriousViolations(page)).toEqual([]);
+});
+
 test('tabbing runs toolbar, then panels, then transport', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('radio', { name: 'Factorial', exact: true }).click();
   await expect(page.getByTestId('step-counter')).toBeVisible();
 
   const stops: string[] = [];
-  // Every panel body is a tab stop, and each code list adds one more through its roving
-  // tabindex, so the walk needs room to reach the transport at the end.
-  for (let press = 0; press < 30; press++) {
+  // Every panel body is a tab stop, each code list adds one more through its roving tabindex,
+  // and the left column adds its Source/Class switch, so the walk needs room to reach the
+  // transport at the end.
+  for (let press = 0; press < 34; press++) {
     await page.keyboard.press('Tab');
     stops.push(
       await page.evaluate(() => {

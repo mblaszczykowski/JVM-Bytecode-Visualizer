@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'r
 
 import { AppShell } from './components/AppShell';
 import { BytecodePanel } from './components/BytecodePanel';
+import { ClassPanel } from './components/ClassPanel';
 import { CompileEditor, SEED_SOURCE } from './components/CompileEditor';
 import { ErrorBanner } from './components/ErrorBanner';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -11,6 +12,7 @@ import { SourcePanel } from './components/SourcePanel';
 import { StateColumn } from './components/StateColumn';
 import { Toolbar, type CompilerStatus, type PanelName } from './components/Toolbar';
 import { TransportControls } from './components/TransportControls';
+import { Segment, SegmentedControl } from './components/ui/SegmentedControl';
 import { WelcomeScreen, type WelcomeExample } from './components/WelcomeScreen';
 import type { Snapshot, StackFrame } from './core/interpreter';
 import { useExamplePreviews } from './hooks/useExamplePreviews';
@@ -29,6 +31,7 @@ import {
   programOf,
   raisedStepLimit,
   rerunState,
+  runFromState,
   type AppState,
 } from './services/app-state';
 import {
@@ -46,16 +49,21 @@ import {
 import { describeAppError, describeCompileFailure, toAppError } from './services/errors';
 import { fetchExampleManifest, shortTitleOf } from './services/examples';
 import {
+  consoleLinesOf,
   deadOffsetsOf,
   depthsOf,
   firstStepByLine,
   firstStepByOffset,
+  isCurrentListing,
   lastLiveSnapshot,
   lineMappingNote,
-  listingFor,
+  listingToShow,
+  methodKeyOf,
   offsetsForLine,
+  runPrintedOutput,
   runSummaryOf,
   topFrameOf,
+  type MethodListing,
 } from './services/program';
 
 const APP_NAME = 'JVM Bytecode Visualizer';
@@ -71,10 +79,47 @@ const NO_FRAMES: readonly StackFrame[] = [];
 /** Above 4× the highlight changes rows faster than the projection can read as movement. */
 const SMOOTH_HIGHLIGHT_UP_TO = 4;
 
-/** Below 768px the grid holds one panel; everywhere else all three are on screen. */
+/**
+ * Stands in for the run state when there is no run. The banner carries the reason; this only
+ * has to explain why three panels that normally describe a frame have nothing in them.
+ */
+const NO_RUN_NOTE =
+  'Nothing was executed, so there is no frame, no operand stack and no locals to describe. ' +
+  'The class file is on the left and its listings are in the middle.';
+
+/** Below 768px the grid holds one panel; everywhere else all three columns are on screen. */
 function visibilityOf(panel: PanelName, selected: PanelName): string {
   return panel === selected ? '' : 'hidden md:flex';
 }
+
+/**
+ * The left column carries two panels over one grid cell — the `.java` that was compiled and
+ * the class file it was compiled into. Below 768px the toolbar switch owns the cell outright;
+ * above it, the column's own tab decides which of the two is on screen.
+ */
+function structureVisibilityOf(
+  panel: StructureView,
+  selected: PanelName,
+  shown: StructureView,
+): string {
+  return `${panel === selected ? '' : 'hidden'} ${panel === shown ? 'md:flex' : 'md:hidden'}`;
+}
+
+/** The two faces of the left column: the `.java` it came from, and the `.class` itself. */
+type StructureView = 'source' | 'class';
+
+/**
+ * The accessible name says more than the tab does, and deliberately differs from the toolbar's
+ * `Source` / `Class` — those switch the whole grid on a phone, these switch one column.
+ */
+const STRUCTURE_VIEWS: readonly {
+  readonly id: StructureView;
+  readonly label: string;
+  readonly name: string;
+}[] = [
+  { id: 'source', label: 'Source', name: 'Source — the Java this class was compiled from' },
+  { id: 'class', label: 'Class', name: 'Class — the structure of the class file itself' },
+];
 
 /**
  * One macrotask, so React can commit and paint the loading skeleton before the parse and the
@@ -110,6 +155,12 @@ export function App({ compileApiUrl = compileApiBaseUrl() }: AppProps = {}) {
   /** Kept outside the model so closing and reopening the editor does not throw the draft away. */
   const [draft, setDraft] = useState(SEED_SOURCE);
   const [visiblePanel, setVisiblePanel] = useState<PanelName>('bytecode');
+  /** Which face of the left column the reader asked for; until then it answers for itself. */
+  const [structureChoice, setStructureChoice] = useState<StructureView | undefined>(undefined);
+  /** Method whose listing is being read, when it is not the one the run is standing in. */
+  const [viewedMethodKey, setViewedMethodKey] = useState<string | undefined>(undefined);
+  /** Constant pool entry the reader is following, from either side of the cross-link. */
+  const [selectedConstant, setSelectedConstant] = useState<number | undefined>(undefined);
   /** Message of the banner the reader closed, so the same one does not come straight back. */
   const [dismissed, setDismissed] = useState<string | undefined>(undefined);
 
@@ -166,6 +217,10 @@ export function App({ compileApiUrl = compileApiBaseUrl() }: AppProps = {}) {
     async (label: string, load: () => Promise<AppState> | AppState): Promise<void> => {
       const token = issueToken();
       dispatch({ kind: 'load-started', token, label });
+      // Everywhere the reader had navigated to belongs to the program they are leaving.
+      setViewedMethodKey(undefined);
+      setSelectedConstant(undefined);
+      setStructureChoice(undefined);
       // follow-up: move execute() to a worker for cancellation
       await yieldToPaint();
       dispatch({ kind: 'load-settled', token, state: await settle(load) });
@@ -280,11 +335,29 @@ export function App({ compileApiUrl = compileApiBaseUrl() }: AppProps = {}) {
     [examples, previews],
   );
 
-  const listing = program === undefined ? undefined : listingFor(program, snapshot);
   const topFrame = topFrameOf(snapshot);
+  /**
+   * The listing on screen: the method the reader opened in the picker, or — until they open
+   * one — whichever method the run is standing in. A class with no run still has a listing,
+   * so this is where browsing takes over from replaying.
+   */
+  const listing =
+    program === undefined ? undefined : listingToShow(program, snapshot, viewedMethodKey);
+  /**
+   * Whether the step and the listing are talking about the same method (see the service).
+   * Memoised not for the cost — it is two string comparisons — but because handing `listing`
+   * to a function outside a memo block would tell the React Compiler the value may change
+   * underneath every derivation below that depends on it.
+   */
+  const isLive = useMemo(() => isCurrentListing(listing, topFrame), [listing, topFrame]);
 
+  // Dimming every row of a method the run never entered would report the whole listing as
+  // dead code, when the truth is that this run never had an opinion about it.
   const deadOffsets = useMemo(
-    () => (listing === undefined ? undefined : deadOffsetsOf(listing)),
+    () =>
+      listing === undefined || listing.executedOffsets.size === 0
+        ? undefined
+        : deadOffsetsOf(listing),
     [listing],
   );
   const comments = useMemo(
@@ -299,28 +372,30 @@ export function App({ compileApiUrl = compileApiBaseUrl() }: AppProps = {}) {
   const sourceLine = snapshot?.sourceLine;
   const pcRange = useMemo(
     () =>
-      listing === undefined || sourceLine === undefined
+      listing === undefined || sourceLine === undefined || !isLive
         ? undefined
         : offsetsForLine(listing, sourceLine),
-    [listing, sourceLine],
+    [listing, sourceLine, isLive],
   );
   const mappingNote =
-    listing === undefined || topFrame === undefined
+    listing === undefined || topFrame === undefined || !isLive
       ? undefined
       : lineMappingNote(listing, topFrame.pc);
+  // The "Next" card and the operand roles read the current instruction against the listing;
+  // pointed at another method they would describe an instruction that is not about to run.
   const next = useMemo(
     () =>
-      snapshot === undefined || program === undefined
+      snapshot === undefined || program === undefined || !isLive
         ? undefined
         : describeNextInstruction(snapshot, listing, program.classFile),
-    [snapshot, listing, program],
+    [snapshot, listing, program, isLive],
   );
   const operandRoles = useMemo(
     () =>
       snapshot === undefined || program === undefined
         ? undefined
-        : describeOperandRoles(snapshot, listing, program.classFile),
-    [snapshot, listing, program],
+        : describeOperandRoles(snapshot, isLive ? listing : undefined, program.classFile),
+    [snapshot, listing, program, isLive],
   );
 
   // Click-to-seek: both code panels know their rows by offset and by line, so the run only
@@ -341,6 +416,48 @@ export function App({ compileApiUrl = compileApiBaseUrl() }: AppProps = {}) {
   const summary = program === undefined ? undefined : runSummaryOf(program);
   const lastLive = useMemo(() => lastLiveSnapshot(snapshots), [snapshots]);
 
+  // The Console section joins the column for a run that printed, and stays for the rest of
+  // it — the same rule the heap follows. A build whose interpreter has no console yet simply
+  // never satisfies it.
+  const printed = useMemo(() => runPrintedOutput(snapshots), [snapshots]);
+  const consoleLines = printed ? consoleLinesOf(snapshot) : undefined;
+
+  const selectPanel = useCallback((panel: PanelName) => {
+    setVisiblePanel(panel);
+    if (panel === 'source' || panel === 'class') {
+      setStructureChoice(panel);
+    }
+  }, []);
+
+  const selectMethod = useCallback((method: MethodListing) => {
+    setViewedMethodKey(methodKeyOf(method));
+    setVisiblePanel('bytecode');
+  }, []);
+
+  const runMethod = useCallback(
+    (method: MethodListing) => {
+      if (program === undefined) {
+        return;
+      }
+      void startLoad(`Running ${method.name}`, () => runFromState(program, method.name));
+    },
+    [program, startLoad],
+  );
+
+  /**
+   * Following a `#n` out of the listing opens the pool at that entry — on a phone that means
+   * bringing the Class panel to the front, since only one panel holds the cell there. The
+   * other direction needs no such move: a pool row marks its instructions where they already
+   * are, and on a phone the toolbar switch is one tap away.
+   */
+  const followConstantFromListing = useCallback(
+    (index: number) => {
+      setSelectedConstant(index);
+      selectPanel('class');
+    },
+    [selectPanel],
+  );
+
   const failure = state.status === 'error' ? describeAppError(state.error) : undefined;
   const examplesError = examplesErrorOf(model.examples);
   const examplesFailure = examplesError === undefined ? undefined : describeAppError(examplesError);
@@ -351,8 +468,17 @@ export function App({ compileApiUrl = compileApiBaseUrl() }: AppProps = {}) {
       ? raisedStepLimit(program.maxSteps)
       : undefined;
 
-  const canReplay = program !== undefined && snapshots.length > 0 && listing !== undefined;
+  /**
+   * A parsed class file is worth showing whether or not it ran: the grid opens on the program,
+   * and the transport joins it only when there is a recording to move through.
+   */
+  const canExplore = program !== undefined && listing !== undefined;
+  const canReplay = canExplore && snapshots.length > 0;
   const smoothHighlight = player.speed <= SMOOTH_HIGHLIGHT_UP_TO;
+  // Until the reader picks a side, the column shows the source — unless there is none, and an
+  // uploaded `.class` arriving without its `.java` is exactly when the structure is the story.
+  const structureView: StructureView =
+    structureChoice ?? (program?.origin.kind === 'upload' ? 'class' : 'source');
 
   const compilerIsUsable = compiler === 'online' || compiler === 'degraded';
   const compilerStatus: CompilerStatus =
@@ -368,6 +494,28 @@ export function App({ compileApiUrl = compileApiBaseUrl() }: AppProps = {}) {
   const dismissNotice = useCallback(() => {
     setDismissed(raised?.message);
   }, [raised]);
+
+  /**
+   * The left column's own header is the switch between its two panels — the tab strip has no
+   * surface of its own, so nothing new floats on the glass and the column keeps one frame.
+   */
+  const structureTabs = (
+    <SegmentedControl label="Left panel" className="-my-[3px] p-[2px]">
+      {STRUCTURE_VIEWS.map(({ id, label, name }) => (
+        <Segment
+          key={id}
+          label={name}
+          selected={structureView === id}
+          onClick={() => {
+            selectPanel(id);
+          }}
+          className="px-[9px] py-[2px] text-[11.5px]"
+        >
+          {label}
+        </Segment>
+      ))}
+    </SegmentedControl>
+  );
 
   const raiseLimit = useMemo(
     () =>
@@ -389,7 +537,7 @@ export function App({ compileApiUrl = compileApiBaseUrl() }: AppProps = {}) {
    * of the shell. Once there is a run on screen the grid owns that space, so a run failure
    * goes back to the footer, right above the transport it still applies to.
    */
-  const showsWelcome = editor.kind === 'closed' && state.status !== 'loading' && !canReplay;
+  const showsWelcome = editor.kind === 'closed' && state.status !== 'loading' && !canExplore;
   const welcomeNotice =
     showsWelcome && notice !== undefined
       ? { severity: notice.severity, message: notice.message, onDismiss: dismissNotice }
@@ -409,9 +557,7 @@ export function App({ compileApiUrl = compileApiBaseUrl() }: AppProps = {}) {
           onFileSelected={selectFile}
           compilerStatus={compilerStatus}
           onWriteJava={writeJava}
-          panelSwitch={
-            canReplay ? { selected: visiblePanel, onSelect: setVisiblePanel } : undefined
-          }
+          panelSwitch={canExplore ? { selected: visiblePanel, onSelect: selectPanel } : undefined}
         />
       }
       isDropTarget={isDropTarget}
@@ -455,7 +601,7 @@ export function App({ compileApiUrl = compileApiBaseUrl() }: AppProps = {}) {
         />
       ) : state.status === 'loading' ? (
         <LoadingPanels label={state.label} />
-      ) : canReplay ? (
+      ) : canExplore ? (
         <ErrorBoundary
           key={`${program.sourceFileName}:${String(snapshots.length)}:${String(program.maxSteps)}`}
           fallback={(error) => (
@@ -476,7 +622,20 @@ export function App({ compileApiUrl = compileApiBaseUrl() }: AppProps = {}) {
             stepForLine={stepForLine}
             onSeek={seekTo}
             animateHighlight={smoothHighlight}
-            className={visibilityOf('source', visiblePanel)}
+            titleControl={structureTabs}
+            className={structureVisibilityOf('source', visiblePanel, structureView)}
+          />
+          <ClassPanel
+            classFile={program.classFile}
+            methods={program.methods}
+            selectedMethod={listing}
+            onSelectMethod={selectMethod}
+            onRunMethod={runMethod}
+            entryMethod={program.entry}
+            selectedConstant={selectedConstant}
+            onSelectConstant={setSelectedConstant}
+            titleControl={structureTabs}
+            className={structureVisibilityOf('class', visiblePanel, structureView)}
           />
           <BytecodePanel
             methodName={listing.name}
@@ -484,7 +643,7 @@ export function App({ compileApiUrl = compileApiBaseUrl() }: AppProps = {}) {
             maxStack={listing.maxStack}
             maxLocals={listing.maxLocals}
             instructions={listing.instructions}
-            currentOffset={topFrame?.pc}
+            currentOffset={isLive ? topFrame?.pc : undefined}
             comments={comments}
             deadOffsets={deadOffsets}
             truncatedAtOffset={listing.truncatedAtOffset}
@@ -492,6 +651,8 @@ export function App({ compileApiUrl = compileApiBaseUrl() }: AppProps = {}) {
             help={mnemonicHelp}
             stepForOffset={stepForOffset}
             onSeek={seekTo}
+            selectedConstant={selectedConstant}
+            onSelectConstant={followConstantFromListing}
             animateHighlight={smoothHighlight}
             isPlaying={player.isPlaying}
             className={visibilityOf('bytecode', visiblePanel)}
@@ -503,6 +664,8 @@ export function App({ compileApiUrl = compileApiBaseUrl() }: AppProps = {}) {
             mnemonic={snapshot?.currentInstruction?.mnemonic}
             lastLiveFrames={lastLive?.callStack}
             summary={summary}
+            consoleLines={consoleLines}
+            noRunNote={snapshots.length === 0 ? NO_RUN_NOTE : undefined}
             className={`md:col-span-2 lg:col-span-1 ${visibilityOf('state', visiblePanel)}`}
           />
         </ErrorBoundary>

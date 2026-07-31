@@ -1,10 +1,11 @@
 /**
  * The application state machine and the two load paths that feed it.
  *
- * One discriminated union, no boolean flags: a view is a function of `status`, and the
- * failures that still have something to show (`vm-error`, `step-limit`) keep the program in
- * `error` so the grid and the transport stay alive over the history collected so far
- * (ADR-0001).
+ * One discriminated union, no boolean flags: a view is a function of `status`, and every
+ * outcome that still has something to show keeps the program next to it, so the grid stays
+ * alive. `vm-error` and `step-limit` keep a playable history (ADR-0001); `no-entry-point`
+ * keeps a class file with nothing to play, which is the explorer and not a dead end. The
+ * outcome is a property of the program, never a gate on whether there is one.
  *
  * `AppModel` holds that lifecycle together with the three things that live alongside it —
  * the editor, the compile service and the examples — under one reducer, because they are not
@@ -28,7 +29,7 @@ export type AppState =
   | {
       readonly status: 'error';
       readonly error: AppError;
-      /** Present when the run produced history before failing. */
+      /** Present whenever the class file parsed — with or without a run behind it. */
       readonly program: LoadedProgram | undefined;
     };
 
@@ -71,7 +72,10 @@ export function raisedStepLimit(current: number): number | undefined {
   return Math.min(current * STEP_LIMIT_FACTOR, MAX_STEP_LIMIT);
 }
 
-/** A finished run is `ready` unless it stopped early — then the history is kept in `error`. */
+/**
+ * A finished run is `ready`; anything else carries a message about the run — and the program
+ * with it, because the class file is worth reading in all three cases.
+ */
 export function stateFor(program: LoadedProgram): AppState {
   switch (program.outcome.kind) {
     case 'completed':
@@ -82,6 +86,12 @@ export function stateFor(program: LoadedProgram): AppState {
       return {
         status: 'error',
         error: { kind: 'step-limit', limit: program.outcome.limit },
+        program,
+      };
+    case 'no-entry-point':
+      return {
+        status: 'error',
+        error: { kind: 'no-entry-point', className: program.classFile.thisClassName },
         program,
       };
   }
@@ -171,6 +181,19 @@ export function loadCompiledState(
 
 /** Same class file and source, a different step limit — the "Raise the limit" action. */
 export function rerunState(program: LoadedProgram, maxSteps: number): AppState {
+  return rebuiltState(program, maxSteps, program.entry?.name);
+}
+
+/** Same class file, a different method to start from — the method picker's run action. */
+export function runFromState(program: LoadedProgram, entryMethod: string): AppState {
+  return rebuiltState(program, program.maxSteps, entryMethod);
+}
+
+function rebuiltState(
+  program: LoadedProgram,
+  maxSteps: number,
+  entryMethod: string | undefined,
+): AppState {
   try {
     return stateFor(
       buildProgram({
@@ -178,6 +201,7 @@ export function rerunState(program: LoadedProgram, maxSteps: number): AppState {
         classFile: program.classFile,
         source: sourceOf(program),
         maxSteps,
+        entryMethod,
       }),
     );
   } catch (error) {

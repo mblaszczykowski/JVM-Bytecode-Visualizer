@@ -1,3 +1,5 @@
+import type { ReactNode } from 'react';
+
 import { CurrentRowHighlight } from './CurrentRowHighlight';
 import { Panel } from './Panel';
 import { CODE_ROW } from './rhythm';
@@ -24,6 +26,8 @@ interface SourcePanelProps {
   readonly onSeek?: ((step: number) => void) | undefined;
   /** Slide the highlight between lines; switched off above 4× playback. */
   readonly animateHighlight?: boolean;
+  /** Rendered in the panel header in place of the title — the Source/Class switch. */
+  readonly titleControl?: ReactNode;
   readonly className?: string;
 }
 
@@ -36,6 +40,7 @@ export function SourcePanel({
   stepForLine,
   onSeek,
   animateHighlight = false,
+  titleControl,
   className = '',
 }: SourcePanelProps) {
   const currentIndex = currentLine === undefined ? undefined : currentLine - 1;
@@ -61,6 +66,7 @@ export function SourcePanel({
     <Panel
       title="Source"
       meta={fileName}
+      titleControl={titleControl}
       contentRef={contentRef}
       footer={footer}
       // A long line is cut by the panel edge; the fade says so instead of letting it end

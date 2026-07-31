@@ -109,9 +109,16 @@ test.describe('phone', () => {
     await expect(bytecode).toBeHidden();
     await expect(page.getByTestId('current-source-line')).toBeVisible();
 
+    // The class file is the other face of the left column, and a segment of its own here.
+    await page.getByRole('button', { name: 'Class', exact: true }).click();
+    await expect(page.getByTestId('class-panel')).toBeVisible();
+    await expect(source).toBeHidden();
+    await expect(bytecode).toBeHidden();
+
     await page.getByRole('button', { name: 'State', exact: true }).click();
     await expect(state).toBeVisible();
     await expect(source).toBeHidden();
+    await expect(page.getByTestId('class-panel')).toBeHidden();
 
     // Transport pinned to the bottom edge, with targets a thumb can hit.
     for (const name of ['Step back', 'Play', 'Step forward']) {

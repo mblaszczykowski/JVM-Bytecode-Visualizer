@@ -74,7 +74,9 @@ describe('CapabilityNote', () => {
     const rows = screen.getAllByTestId('capability-gap');
 
     expect(rows).toHaveLength(gaps.length);
-    expect(screen.getByText(/Printing to the console/)).toHaveTextContent('invokevirtual');
+    expect(screen.getByText(/Objects, constructors and instance methods/)).toHaveTextContent(
+      'invokespecial',
+    );
   });
 
   it('mentions the one limit no opcode expresses — calls never leave the uploaded class', () => {

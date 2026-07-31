@@ -3,7 +3,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { parseClassFile, type ClassFile, type MethodInfo } from '../core/classfile';
 import { syntheticClass } from '../core/interpreter/__fixtures__/synthetic-class';
 
-import { readExampleBytes, readExampleManifest } from './__fixtures__/example-files';
+import {
+  readExampleBytes,
+  readExampleManifest,
+  readFixtureBytes,
+} from './__fixtures__/example-files';
 import { exampleRoutes, statusResponse, stubFetch } from './__fixtures__/fake-fetch';
 import { uploadFile } from './__fixtures__/upload-file';
 import {
@@ -16,8 +20,10 @@ import {
   programOf,
   raisedStepLimit,
   rerunState,
+  runFromState,
   stateFor,
 } from './app-state';
+import { describeAppError } from './errors';
 import { exampleUrl } from './examples';
 import type { ExampleEntry, ExampleManifest } from './manifest';
 import { buildProgram } from './program';
@@ -172,6 +178,61 @@ describe('runs that stop early', () => {
 
     expect(state).toMatchObject({ status: 'error', error: { kind: 'step-limit', limit: 25 } });
     expect(programOf(state)?.snapshots).toHaveLength(25);
+  });
+});
+
+describe('a class file with nothing to run', () => {
+  it('reaches a state that still carries the program', async () => {
+    const bytes = new Uint8Array(readFixtureBytes('Library.class'));
+
+    const state = await loadUploadState(uploadFile('Library.class', bytes));
+
+    // The outcome is a property of the program, not a gate on whether there is one.
+    expect(state).toMatchObject({
+      status: 'error',
+      error: { kind: 'no-entry-point', className: 'Library' },
+    });
+    expect(programOf(state)?.methods).toHaveLength(3);
+    expect(programOf(state)?.snapshots).toHaveLength(0);
+  });
+
+  it('says so as a notice rather than as a failure', () => {
+    const program = buildProgram({
+      origin: { kind: 'upload', fileName: 'Library.class' },
+      classFile: parseClassFile(readFixtureBytes('Library.class')),
+    });
+
+    const state = stateFor(program);
+    expect(state.status).toBe('error');
+    expect(state.status === 'error' ? describeAppError(state.error).severity : undefined).toBe(
+      'info',
+    );
+  });
+});
+
+describe('running another method', () => {
+  it('re-runs the same class file from the method the picker names', () => {
+    const program = buildProgram({
+      origin: { kind: 'upload', fileName: 'Counter.class' },
+      classFile: parseClassFile(readFixtureBytes('Counter.class')),
+    });
+    expect(program.entry?.name).toBe('count');
+
+    const state = runFromState(program, 'count');
+
+    expect(state.status).toBe('ready');
+    expect(programOf(state)?.entry?.name).toBe('count');
+    expect(programOf(state)?.snapshots).toHaveLength(program.snapshots.length);
+  });
+
+  it('keeps the entry method when only the step limit changes', () => {
+    const program = buildProgram({
+      origin: { kind: 'upload', fileName: 'Counter.class' },
+      classFile: parseClassFile(readFixtureBytes('Counter.class')),
+      maxSteps: 10,
+    });
+
+    expect(programOf(rerunState(program, 200))?.entry?.name).toBe('count');
   });
 });
 

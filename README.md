@@ -16,17 +16,21 @@ machine execute it one instruction at a time.
 ## What it does
 
 - **Three ways in.** Pick one of the bundled examples, upload your own `.class` file, or write Java
-  in the browser and have it compiled (the last one needs the optional compile service). An uploaded
-  class replays when its `main` stays inside integer arithmetic, control flow and static calls to
-  itself; printing, standard library calls, `switch` and non-`int` types stop the run at the
-  instruction that needs them — [Scope and limitations](#scope-and-limitations) is specific about
-  which.
+  in the browser and have it compiled (the last one needs the optional compile service). Any valid
+  class file opens; whether it also _replays_ depends on the instructions it uses, and
+  [Scope and limitations](#scope-and-limitations) is specific about which.
+- **An explorer for the file itself.** The constant pool as a browsable table cross-linked with the
+  listing, so clicking `#7` in a comment lands on the entry it names and back again; every method
+  including the ones no run enters; the class header, interfaces, fields and class file version. A
+  class with no runnable `main` — a utility class, an interface, an enum, a record — opens here
+  rather than being turned away.
 - **Deterministic replay.** The whole run is recorded before anything is drawn, so play, pause, step
   forward, step back and scrubbing are all the same operation: an index into an array. Speeds run
   from 0.5x to 8x; space, arrow keys, Home and End drive the transport from the keyboard.
 - **The machine state, panel by panel.** Source with the current line highlighted, the disassembly
-  with the program counter, the call stack, the operand stack and the local variable slots — named
-  from the `LocalVariableTable` when the class was compiled with `-g`.
+  with the program counter, the call stack, the operand stack, the local variable slots — named from
+  the `LocalVariableTable` when the class was compiled with `-g` — the heap when the program
+  allocates an array, and the console when it prints.
 - **Branch arcs.** Jump targets are drawn as arcs in the bytecode gutter, so a loop looks like a
   loop before you read a single offset.
 - **A "next instruction" card.** For the instruction about to execute: its effect on the operand
@@ -85,23 +89,29 @@ The interpreter is the part that has to be right, so it is pinned from four dire
 
 - **Differential tests against a real JVM.** Each bundled example is compiled and then _run_ by
   `java` when the fixtures are built; the printed result is stored in `manifest.json` as
-  `expectedResult`. The differential test executes the same class files in this interpreter and
-  compares. If the interpreter drifts from the reference implementation, the test fails with the
-  number that proves it.
+  `expectedResult`. Beyond that, the awkward corners of the instruction set have programs of their
+  own under `web/src/core/interpreter/__fixtures__/programs/`, whose stdout was captured from a real
+  `java` and is committed line for line: shifts at distances 0–35 across both `int` boundaries,
+  `tableswitch` and `lookupswitch` including fall-through, every pair from a nine-value set through
+  `Math.max`/`min`/`abs`/`floorDiv`/`floorMod`, and every `print`/`println` overload. No expectation
+  in those files was written by hand. If the interpreter drifts from the reference implementation,
+  the test fails with the number that proves it.
 - **Property-based tests (fast-check).** 32-bit `int` arithmetic is checked against a `BigInt`
-  reference truncated to the low 32 bits — `iadd`, `isub`, `imul`, `idiv`, `irem`, `ineg`, including
-  `INT_MIN / -1` and `INT_MIN % -1`. A plain `a * b` in JavaScript does not wrap at 32 bits, and
-  these properties are what catches it. The parser gets the same treatment from the other side:
-  fed random buffers, random tails and arbitrary truncations of a valid class file, it must fail
-  with a typed `ClassFileError` and never with a raw `RangeError`.
+  reference truncated to the low 32 bits — `iadd`, `isub`, `imul`, `idiv`, `irem`, `ineg`, the
+  shifts and their five-bit distance masking, the bitwise operations and the `i2b`/`i2c`/`i2s`
+  narrowings, including `INT_MIN / -1` and `INT_MIN % -1`. A plain `a * b` in JavaScript does not
+  wrap at 32 bits, and these properties are what catches it. The parser gets the same treatment from
+  the other side: fed random buffers, random tails and arbitrary truncations of a valid class file,
+  it must fail with a typed `ClassFileError` and never with a raw `RangeError`.
 - **javap parity.** The parser assertions are transcribed from `javap -v -p Factorial.class` and the
-  disassembler assertions from `javap -c` — mnemonics, offsets, operands and resolved branch
-  targets. The full javap dump is committed next to the fixture
+  disassembler assertions from `javap -c` — mnemonics, offsets, operands, resolved branch targets
+  and the jump tables of both switch instructions, which are compared against javap's own arms
+  rather than a transcription of them. The full javap dump is committed next to the fixture
   (`web/src/core/classfile/__fixtures__/Factorial.javap.txt`) so a reviewer can check the expected
   values without a JDK.
-- **The rest of the pyramid.** Around 450 unit and component tests, plus a Playwright suite
-  that replays a recursive program end to end, scrubs into the recursion, rejects a non-class file
-  and keeps the app usable afterwards.
+- **The rest of the pyramid.** Around 800 unit and component tests, plus a Playwright suite that
+  replays a recursive program end to end, scrubs into the recursion, opens a class with no entry
+  point in the explorer, rejects a non-class file and keeps the app usable afterwards.
 
 Coverage thresholds are enforced by CI rather than by review: `web/src/core/**` must stay at 90%
 lines, branches and functions, configured in `web/vite.config.ts`.
@@ -114,45 +124,50 @@ purpose so that what exists can be complete — see
 [ADR-0005](docs/adr/0005-heap-of-int-arrays.md) for where the boundary moved to when that path was
 taken.
 
-**A `.class` file taken from an existing project will usually not replay.** 21 Java programs of the
-kind a tutorial or an interview question produces were compiled with `javac -g` and pushed through
-the same parse → disassemble → execute path the application uses; 4 of them replayed to completion.
-The other 17 stopped, and they stopped in ways that are predictable from the source. The table is
-here so the outcome can be worked out before uploading anything.
+**Every valid `.class` file opens; roughly half of them replay.** 21 Java programs of the kind a
+tutorial or an interview question produces were compiled with `javac -g` and pushed through the same
+parse → disassemble → execute path the application uses. 11 replayed to completion. The other 10
+stopped, and they stopped in ways that are predictable from the source, so the table below is here
+to work the outcome out before uploading anything.
 
-| In the Java source                                                                  | In the bytecode                                 | What the application does                                                                                                                            |
-| ----------------------------------------------------------------------------------- | ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `System.out.println(…)`                                                             | `getstatic`, `invokevirtual`                    | Stops at the print. Everything before it stays playable.                                                                                             |
-| `Math.max`, `Integer.parseInt`, any call to another type                            | `invokestatic`/`invokevirtual` on another class | Stops with `unsupported-call`: calls resolve within the class being executed only.                                                                   |
-| `<<`, `>>`, `>>>`, `&`, `\|`, `^`                                                   | `ishl`, `ishr`, `iushr`, `iand`, `ior`, `ixor`  | Stops at the operator.                                                                                                                               |
-| `switch`                                                                            | `tableswitch`, `lookupswitch`                   | Variable-length instructions: decoding stops there, and the rest of that method is listed as "not decoded" instead of running.                       |
-| `long`, `float`, `double`                                                           | `ladd`, `fmul`, `dload`, two-slot locals        | Stops at the first such instruction; a method whose parameters are not all `int` cannot be called.                                                   |
-| `new`, instance methods, fields                                                     | `new`, `invokespecial`, `getfield`, `putfield`  | Stops at the allocation or the field access.                                                                                                         |
-| `try`/`catch`, `throw`                                                              | `athrow` and the `exception_table`              | Stops at the throw. The `exception_table` is skipped while `Code` is read, so nothing is caught.                                                     |
-| Lambdas, method references, `"a" + b`                                               | `invokedynamic`                                 | Stops at the call site. String concatenation compiles to `invokedynamic` on Java 9 and later.                                                        |
-| No static `main` — a utility class, an interface, an enum, a record, a nested class | no entry point to run                           | No snapshots are produced, so there is nothing to replay: the start screen returns, with a notice naming `<Class>.main` as a call it could not make. |
+A file that does not replay is not a dead end. Parsing, the constant pool, the method table and the
+full listing of every method do not depend on execution, so the class opens in the explorer either
+way, and a run that stops midway keeps the history it recorded up to that point.
+
+| In the Java source                                                                  | In the bytecode                                | What the application does                                                                                                          |
+| ----------------------------------------------------------------------------------- | ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `new`, instance methods, instance and static fields                                 | `new`, `invokespecial`, `getfield`, `putfield` | Stops at the allocation or the field access.                                                                                       |
+| `long`, `float`, `double`                                                           | `ladd`, `fmul`, `dload`, two-slot locals       | Stops at the first such instruction; a method whose parameters are not all `int` cannot be called.                                 |
+| `try`/`catch`, `throw`                                                              | `athrow` and the `exception_table`             | Stops at the throw. The `exception_table` is skipped while `Code` is read, so nothing is caught.                                   |
+| Lambdas, method references, `"a" + b`                                               | `invokedynamic`                                | Stops at the call site. String concatenation compiles to `invokedynamic` on Java 9 and later.                                      |
+| Arrays of anything but `int`                                                        | `anewarray`, `multianewarray`, `baload`, …     | Stops at the allocation. The heap holds `int` arrays only.                                                                         |
+| Standard library calls beyond `Math` and `System.out`                               | `invokestatic`/`invokevirtual` on another type | Stops with `unsupported-call`. The recognised members are a table in `web/src/core/interpreter/externals.ts`; adding one is a row. |
+| No static `main` — a utility class, an interface, an enum, a record, a nested class | no entry point to run                          | Opens in the explorer with no run attached: the listing, the pool and the class header are all still there to read.                |
 
 The parts that hold regardless of which file is loaded:
 
-- **An `int`-scale machine.** No `long`/`float`/`double`, no user-defined classes or instance fields,
-  no `String` beyond the constant pool, no exceptions, no threads, no lambdas, no bytecode
-  verification.
-- **The executable subset is integer computation and control flow** — constants, load/store, `iinc`,
-  stack manipulation, integer arithmetic, the `if<cond>`/`if_icmp<cond>` families, `goto`, and
-  `invokestatic`/`ireturn`/`return`, with `invokestatic` resolving within the class being executed
-  only. The definitive list is the dispatch `switch` in `web/src/core/interpreter/interpreter.ts`;
-  everything outside it is flagged `unsupported` while decoding.
-- **The parser is deliberately wider than the interpreter.** It reads the whole class file format —
-  every constant pool tag, unknown attributes skipped by length — because a modern `javac` emits
-  attributes that a narrow parser would choke on. An out-of-scope opcode is marked `unsupported`
-  while _decoding_; only an attempt to _execute_ it stops the run, so a file with an unsupported
-  instruction in dead code still replays.
-- **A stopped run is still a run.** Whatever was recorded before the failure stays loaded, and the
-  banner names the instruction and the offset that stopped it. The one case with nothing to show is
-  the missing entry point in the last row above.
-- **Examples cannot print.** `System.out.println` needs `getstatic`, `invokevirtual` and an object
-  model for `PrintStream` and `String` — the heap here holds `int` arrays and nothing else — so each
-  bundled example leaves its result in a local variable in `main` instead.
+- **An `int`-scale machine.** `int` values, `int` arrays on a small heap, and opaque tokens for the
+  few external members it recognises. No `long`/`float`/`double`, no user-defined classes, no
+  instance or static fields, no exceptions, no threads, no lambdas, no bytecode verification.
+- **The executable subset** is integer computation and control flow — constants, load/store, `iinc`,
+  stack manipulation, integer arithmetic, shifts and bitwise operations, narrowing conversions, the
+  `if<cond>`/`if_icmp<cond>` families, `goto`, `tableswitch`/`lookupswitch`, `wide`, `int` array
+  access, and `invokestatic`/`ireturn`/`return`, with `invokestatic` resolving within the class being
+  executed plus the `java/lang/Math` methods on the externals table. The definitive list is
+  `STACK_EFFECTS` in `web/src/core/disassembler/opcodes.ts`, and the welcome screen states it at
+  runtime rather than from a hand-written list, so it cannot drift.
+- **Decoding is wider than execution, on purpose.** Every assigned opcode below `0xca` is fully
+  decoded — mnemonic, operands, branch targets, switch tables — whether or not the interpreter runs
+  it, so `getfield #3` reads as `getfield #3 // Field Counter.value:I` in a class that never
+  executes. Decoding stops only at bytes that genuinely have no instruction boundary after them.
+- **The parser is wider still.** It reads the whole class file format — every constant pool tag,
+  unknown attributes skipped by length — because a modern `javac` emits attributes a narrow parser
+  would choke on.
+- **A stopped run is still a run.** Whatever was recorded before the failure stays loaded and
+  scrubbable, and the banner names the instruction and the offset that stopped it.
+- **The bundled examples do not print.** `System.out.println` works, but a printed line is a worse
+  teaching artefact than a named local you can watch change, so each example leaves its result in a
+  local variable in `main` instead.
 - **A step limit of 20,000** (raisable from the UI) stops runaway loops. The history collected up to
   that point stays playable, and so does the history up to a division by zero or an unsupported
   instruction.
@@ -274,10 +289,10 @@ than a code review.
 web/
   src/core/         pure TypeScript domain — no React, no DOM (lint-enforced)
     classfile/      ByteReader, parser, descriptors, typed ClassFileError
-    disassembler/   full opcode table, decoding, branch targets
-    interpreter/    execute() → snapshots, frames, 32-bit int arithmetic
-  src/components/   panels, transport, branch gutter, depth chart
-  src/services/     program building, app state machine, compile client
+    disassembler/   full opcode table, decoding, branch targets, switch tables
+    interpreter/    execute() → snapshots, frames, int32, heap, external members
+  src/components/   panels, transport, branch gutter, depth chart, constant pool
+  src/services/     program building, app state machine, capabilities, compile client
   fixtures/         example .java sources + the build script
   public/examples/  committed .class files and manifest.json
   tests/e2e/        Playwright specs
@@ -290,23 +305,22 @@ docs/adr/           architecture decision records
 Ordered by how often an uploaded file runs into them, which is not the order they are easiest to
 build in.
 
-1. **The rest of the everyday instruction set** — shifts and bitwise operations (`ishl`, `iand`, …),
-   `tableswitch`/`lookupswitch` behind a `switch`, and enough of `getstatic`/`invokevirtual` for
-   `System.out.println` and the static `Math` methods. Those four are what an uploaded file stops on
-   most often.
-2. **A disassembler-only explorer mode** — a class with no runnable entry point still has a constant
-   pool, a method table and a full listing worth reading. Showing those instead of the start screen
-   makes "this will not replay" an answer rather than a dead end.
-3. **Objects and `invokevirtual`** — instance fields, `new`, `invokespecial`, and dynamic dispatch
+1. **Arguments for the method a run starts from.** `ExecuteOptions` names an entry method but has no
+   channel for argument values, so a static `int` method that takes parameters is listed and marked
+   rather than offered. `notRunnableReasonOf` in `web/src/services/program.ts` is the one place that
+   has to change.
+2. **Objects and `invokevirtual`** — instance fields, `new`, `invokespecial`, and dynamic dispatch
    shown as it resolves.
-4. **Exceptions** — `athrow` and the `exception_table`, with the stack unwinding on screen.
-5. **Shareable links** — a program and a step index encoded in the URL, so a run can be linked to
+3. **Exceptions** — `athrow` and the `exception_table`, with the stack unwinding on screen.
+4. **Shareable links** — a program and a step index encoded in the URL, so a run can be linked to
    mid-execution.
-6. **Other JVM languages** — Kotlin and Scala compile to the same bytecode; the constraint is the
+5. **Other JVM languages** — Kotlin and Scala compile to the same bytecode; the constraint is the
    instruction set, not the source language.
 
-Arrays and a small heap (`newarray`, `iaload`/`iastore`, `arraylength`) were the first item on this
-list and are done — BubbleSort is a bundled example again.
+Three earlier items are done and are described above rather than here: arrays on a small heap
+(BubbleSort is a bundled example again), the everyday instruction set that uploads used to stop on
+(shifts and bitwise operations, `switch`, `System.out.println` and the static `Math` methods), and
+the explorer that opens a class file whether or not anything in it can run.
 
 ![Bubble sort mid-run: the heap panel shows the array being reordered, with the element the current `iastore` writes highlighted](docs/screenshots/bubble-sort.png)
 

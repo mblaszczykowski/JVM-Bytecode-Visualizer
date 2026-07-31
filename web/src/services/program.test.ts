@@ -3,21 +3,30 @@ import { describe, expect, it } from 'vitest';
 import { parseClassFile, type ClassFile } from '../core/classfile';
 import { syntheticClass } from '../core/interpreter/__fixtures__/synthetic-class';
 
-import { readExampleBytes, readExampleText } from './__fixtures__/example-files';
+import { AccessFlag } from '../core/classfile';
+
+import { readExampleBytes, readExampleText, readFixtureBytes } from './__fixtures__/example-files';
 import {
   buildProgram,
+  consoleLinesOf,
   deadOffsetsOf,
+  defaultListingOf,
   depthsOf,
   findListing,
   firstStepByLine,
   firstStepByOffset,
+  isCurrentListing,
   lastLiveSnapshot,
   lineForOffset,
   lineMappingNote,
   listingFor,
+  listingToShow,
+  methodKeyOf,
   NO_SOURCE_LINES,
   offsetsForLine,
   previewProgram,
+  runnableMethodsOf,
+  runPrintedOutput,
   runSummaryOf,
   type LoadedProgram,
   type MethodListing,
@@ -268,5 +277,152 @@ describe('line mapping', () => {
 
     expect(offsetsForLine(factorial, 26)).toEqual({ from: 0, to: 2 });
     expect(offsetsForLine(factorial, 1)).toBeUndefined();
+  });
+});
+
+/** A class file the interpreter cannot enter: static helpers that all take arguments. */
+function libraryProgram(): LoadedProgram {
+  return buildProgram({
+    origin: { kind: 'upload', fileName: 'Library.class' },
+    classFile: parseClassFile(readFixtureBytes('Library.class')),
+  });
+}
+
+describe('a class with no method a run can start from', () => {
+  it('is still a program: every method is listed, and no run was attempted', () => {
+    const program = libraryProgram();
+
+    expect(program.outcome).toEqual({ kind: 'no-entry-point' });
+    expect(program.snapshots).toHaveLength(0);
+    expect(program.methods.map(methodKeyOf)).toEqual(['<init>()V', 'twice(I)I', 'clamp(III)I']);
+    expect(runnableMethodsOf(program)).toEqual([]);
+  });
+
+  it('says of each method why a run cannot start there', () => {
+    const program = libraryProgram();
+
+    expect(program.methods.map((method) => method.notRunnable)).toEqual([
+      'instance-method',
+      'descriptor',
+      'descriptor',
+    ]);
+  });
+
+  it('opens the panel on the first method there is anything to disassemble', () => {
+    const program = libraryProgram();
+
+    expect(program.entry).toBeUndefined();
+    // No entry point is not an empty screen: the listing is what the reader came for.
+    expect(defaultListingOf(program)?.name).toBe('<init>');
+    expect(listingFor(program, undefined)?.name).toBe('<init>');
+    expect(listingToShow(program, undefined, 'clamp(III)I')?.descriptor).toBe('(III)I');
+  });
+
+  it('falls back rather than blanking when the opened method is not in this class', () => {
+    const program = libraryProgram();
+
+    expect(listingToShow(program, undefined, 'gone()V')?.name).toBe('<init>');
+  });
+
+  it('lists a method with no Code attribute instead of hiding it', () => {
+    const program = buildProgram({
+      origin: { kind: 'upload', fileName: 'Shape.class' },
+      classFile: syntheticClass({
+        methods: [
+          { name: 'area', descriptor: '()I', accessFlags: AccessFlag.Abstract },
+          { name: 'draw', descriptor: '()V', accessFlags: AccessFlag.Public, code: [0xb1] },
+        ],
+      }),
+    });
+
+    expect(program.methods.map((method) => method.notRunnable)).toEqual([
+      'no-code',
+      'instance-method',
+    ]);
+    expect(program.methods[0]?.instructions).toEqual([]);
+    // Nothing runnable, so the panel opens on the first method with code rather than on the
+    // abstract one, which has no listing to show.
+    expect(defaultListingOf(program)?.name).toBe('draw');
+  });
+});
+
+describe('entry points beyond main', () => {
+  it('runs the only runnable method a class has, whatever it is called', () => {
+    const program = buildProgram({
+      origin: { kind: 'upload', fileName: 'Counter.class' },
+      classFile: parseClassFile(readFixtureBytes('Counter.class')),
+    });
+
+    expect(program.entry?.name).toBe('count');
+    expect(program.outcome).toEqual({ kind: 'completed', returnValue: 15 });
+    expect(runnableMethodsOf(program).map(methodKeyOf)).toEqual(['count()I']);
+  });
+
+  it('marks a method that would need argument values rather than offering it', () => {
+    const program = buildProgram({
+      origin: { kind: 'upload', fileName: 'Counter.class' },
+      classFile: parseClassFile(readFixtureBytes('Counter.class')),
+    });
+
+    // `ExecuteOptions` names an entry method but carries no arguments for it.
+    expect(findListing(program, 'step', '(I)I')?.notRunnable).toBe('descriptor');
+  });
+
+  it('starts from the method the caller names', () => {
+    const classFile = syntheticClass({
+      // iconst_2, ireturn  /  iconst_3, ireturn
+      methods: [
+        { name: 'main', descriptor: '([Ljava/lang/String;)V', code: [0xb1] },
+        { name: 'answer', descriptor: '()I', code: [0x05, 0xac] },
+      ],
+    });
+
+    expect(buildProgram({ origin: UPLOAD, classFile }).entry?.name).toBe('main');
+    const chosen = buildProgram({ origin: UPLOAD, classFile, entryMethod: 'answer' });
+    expect(chosen.entry?.name).toBe('answer');
+    expect(chosen.outcome).toEqual({ kind: 'completed', returnValue: 2 });
+  });
+
+  it('never opens on the class initialiser, but keeps it runnable on request', () => {
+    const classFile = syntheticClass({
+      methods: [
+        { name: '<clinit>', descriptor: '()V', code: [0xb1] },
+        { name: 'compute', descriptor: '()I', code: [0x04, 0xac] },
+      ],
+    });
+
+    const program = buildProgram({ origin: UPLOAD, classFile });
+
+    expect(program.entry?.name).toBe('compute');
+    expect(runnableMethodsOf(program).map((method) => method.name)).toEqual([
+      '<clinit>',
+      'compute',
+    ]);
+    expect(buildProgram({ origin: UPLOAD, classFile, entryMethod: '<clinit>' }).entry?.name).toBe(
+      '<clinit>',
+    );
+  });
+});
+
+const UPLOAD = { kind: 'upload', fileName: 'Synthetic.class' } as const;
+
+describe('the listing the panels are looking at', () => {
+  it('is live only while the step is standing in it', () => {
+    const program = factorialProgram();
+    const frame = program.snapshots[12]?.callStack.at(-1);
+
+    expect(isCurrentListing(listing(program, 'factorial', '(I)I'), frame)).toBe(true);
+    expect(isCurrentListing(listing(program, '<init>', '()V'), frame)).toBe(false);
+    expect(isCurrentListing(undefined, frame)).toBe(false);
+  });
+});
+
+describe('console output', () => {
+  it('is empty for a run that printed nothing, and reports so for the whole run', () => {
+    const program = factorialProgram();
+
+    expect(consoleLinesOf(program.snapshots[0])).toEqual([]);
+    expect(consoleLinesOf(undefined)).toEqual([]);
+    expect(runPrintedOutput(program.snapshots)).toBe(false);
   });
 });

@@ -71,16 +71,18 @@ describe('instruction families', () => {
    * one opcode has to move that opcode into its family and out of the gap that named it.
    */
   it('follows the interpreter into an instruction it has just learned', async () => {
-    const getstatic = 0xb2;
-    expect(EXECUTABLE_OPCODES.has(getstatic)).toBe(false);
+    const getfield = 0xb4;
+    expect(EXECUTABLE_OPCODES.has(getfield)).toBe(false);
 
-    const widened = await capabilitiesWith(getstatic);
+    const widened = await capabilitiesWith(getfield);
 
     const fields = widened.executableFamilies().find((family) => family.name === 'Field access');
-    const printing = widened.featureGaps().find((gap) => gap.title === 'Printing to the console');
+    const state = widened
+      .featureGaps()
+      .find((gap) => gap.title === 'Fields — any state outside a local slot');
 
-    expect(fields?.mnemonics).toEqual(['getstatic']);
-    expect(printing?.missing).toEqual(['invokevirtual']);
+    expect(fields?.mnemonics).toContain('getfield');
+    expect(state?.missing).toEqual(['putfield']);
     expect(widened.capabilitySummary().executable).toBe(capabilitySummary().executable + 1);
   });
 });
@@ -101,19 +103,17 @@ describe('feature gaps', () => {
   it('still reports the absences the empirical probe kept hitting', () => {
     const titles = featureGaps().map((gap) => gap.title);
 
-    expect(titles).toContain('Printing to the console');
     expect(titles).toContain('Objects, constructors and instance methods');
+    expect(titles).toContain('Fields — any state outside a local slot');
   });
 
   it('drops a feature once every instruction behind it runs', async () => {
-    const ldc = 0x12;
-    const widened = await capabilitiesWith(ldc);
+    const athrow = 0xbf;
+    const widened = await capabilitiesWith(athrow);
 
-    expect(featureGaps().map((gap) => gap.title)).toContain(
-      'String literals and other pooled constants',
-    );
+    expect(featureGaps().map((gap) => gap.title)).toContain('Exceptions, throw and try/catch');
     expect(widened.featureGaps().map((gap) => gap.title)).not.toContain(
-      'String literals and other pooled constants',
+      'Exceptions, throw and try/catch',
     );
   });
 });

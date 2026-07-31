@@ -12,28 +12,63 @@ import {
   type MethodInfo,
 } from '../classfile';
 import { arrayTypeName, lookupOpcode, T_INT, type Instruction } from '../disassembler';
+import { ConsoleOutput } from './console';
 import { isVmFault, toVmError, VmFault } from './errors';
+import {
+  EXTERNAL_FIELDS,
+  EXTERNAL_METHODS,
+  ExternalPool,
+  memberKey,
+  stringConstant,
+  type ExternalArgument,
+  type ExternalMethod,
+} from './externals';
 import {
   createFrame,
   loadLocal,
+  loadReference,
   peekAny,
   pop,
   popAny,
+  popReference,
   prepareMethod,
   push,
   setPc,
   storeLocal,
   type Frame,
   type PreparedMethod,
+  type StackValue,
 } from './frame';
 import { Heap, NULL_REFERENCE } from './heap';
-import { iadd, idiv, imul, ineg, irem, isub } from './int32';
-import { createTerminalSnapshot, SnapshotWriter, sourceLineAt } from './snapshot';
+import {
+  i2b,
+  i2c,
+  i2s,
+  iadd,
+  iand,
+  idiv,
+  imul,
+  ineg,
+  ior,
+  irem,
+  ishl,
+  ishr,
+  isub,
+  iushr,
+  ixor,
+} from './int32';
+import {
+  createTerminalSnapshot,
+  SnapshotWriter,
+  sourceLineAt,
+  type MachineState,
+} from './snapshot';
 import {
   DEFAULT_MAX_CALL_DEPTH,
   DEFAULT_MAX_STEPS,
   type ExecuteOptions,
   type ExecutionResult,
+  type ExternalValue,
   type Snapshot,
   type ValueKind,
 } from './types';
@@ -84,6 +119,8 @@ export function execute(classFile: ClassFile, options: ExecuteOptions = {}): Exe
     maxCallDepth: atLeastOne(options.maxCallDepth, DEFAULT_MAX_CALL_DEPTH),
     callStack: [entryFrame],
     heap: new Heap(),
+    console: new ConsoleOutput(),
+    externals: new ExternalPool(),
     returnValue: undefined,
   };
 
@@ -103,7 +140,7 @@ export function execute(classFile: ClassFile, options: ExecuteOptions = {}): Exe
         writer.next(
           snapshots.length,
           machine.callStack,
-          machine.heap,
+          machine,
           fetched.instruction,
           sourceLineAt(frame),
         ),
@@ -117,7 +154,7 @@ export function execute(classFile: ClassFile, options: ExecuteOptions = {}): Exe
     }
   }
 
-  snapshots.push(createTerminalSnapshot(snapshots.length, machine.heap));
+  snapshots.push(createTerminalSnapshot(snapshots.length, machine));
   return {
     kind: 'completed',
     snapshots: Object.freeze(snapshots),
@@ -176,6 +213,8 @@ const Op = {
   iconst_5: 0x08,
   bipush: 0x10,
   sipush: 0x11,
+  ldc: 0x12,
+  ldc_w: 0x13,
   iload: 0x15,
   aload: 0x19,
   iload_0: 0x1a,
@@ -199,14 +238,28 @@ const Op = {
   astore_3: 0x4e,
   iastore: 0x4f,
   pop: 0x57,
+  pop2: 0x58,
   dup: 0x59,
+  dup_x1: 0x5a,
+  dup2: 0x5c,
+  dup2_x1: 0x5d,
+  swap: 0x5f,
   iadd: 0x60,
   isub: 0x64,
   imul: 0x68,
   idiv: 0x6c,
   irem: 0x70,
   ineg: 0x74,
+  ishl: 0x78,
+  ishr: 0x7a,
+  iushr: 0x7c,
+  iand: 0x7e,
+  ior: 0x80,
+  ixor: 0x82,
   iinc: 0x84,
+  i2b: 0x91,
+  i2c: 0x92,
+  i2s: 0x93,
   ifeq: 0x99,
   ifne: 0x9a,
   iflt: 0x9b,
@@ -220,8 +273,12 @@ const Op = {
   if_icmpgt: 0xa3,
   if_icmple: 0xa4,
   goto: 0xa7,
+  tableswitch: 0xaa,
+  lookupswitch: 0xab,
   ireturn: 0xac,
   return: 0xb1,
+  getstatic: 0xb2,
+  invokevirtual: 0xb6,
   invokestatic: 0xb8,
   newarray: 0xbc,
   arraylength: 0xbe,
@@ -236,13 +293,17 @@ function isExecutable(opcode: number): opcode is Op {
   return EXECUTABLE_OPCODES.has(opcode);
 }
 
-interface Machine {
+interface Machine extends MachineState {
   readonly classFile: ClassFile;
   readonly prepared: Map<MethodInfo, PreparedMethod>;
   readonly maxCallDepth: number;
   readonly callStack: Frame[];
   /** Shared by every frame of the run, and never unwound (JVMS §2.5.3). */
   readonly heap: Heap;
+  /** What the program has printed, in the order it printed it. */
+  readonly console: ConsoleOutput;
+  /** Objects the machine names but does not model, by handle — see externals.ts. */
+  readonly externals: ExternalPool;
   /** Set when the entry frame returns a value — the result of the whole run. */
   returnValue: number | undefined;
 }
@@ -313,6 +374,10 @@ function step(machine: Machine, frame: Frame, instruction: Instruction): void {
     case Op.sipush:
       push(frame, operand(instruction, 0), 'int');
       break;
+    case Op.ldc:
+    case Op.ldc_w:
+      pushPoolConstant(machine, frame, operand(instruction, 0));
+      break;
 
     case Op.iload:
       pushLocal(frame, operand(instruction, 0), 'int');
@@ -330,19 +395,19 @@ function step(machine: Machine, frame: Frame, instruction: Instruction): void {
       pushLocal(frame, 3, 'int');
       break;
     case Op.aload:
-      pushLocal(frame, operand(instruction, 0), 'ref');
+      pushReferenceLocal(frame, operand(instruction, 0));
       break;
     case Op.aload_0:
-      pushLocal(frame, 0, 'ref');
+      pushReferenceLocal(frame, 0);
       break;
     case Op.aload_1:
-      pushLocal(frame, 1, 'ref');
+      pushReferenceLocal(frame, 1);
       break;
     case Op.aload_2:
-      pushLocal(frame, 2, 'ref');
+      pushReferenceLocal(frame, 2);
       break;
     case Op.aload_3:
-      pushLocal(frame, 3, 'ref');
+      pushReferenceLocal(frame, 3);
       break;
     case Op.istore:
       popIntoLocal(frame, operand(instruction, 0), 'int');
@@ -360,19 +425,19 @@ function step(machine: Machine, frame: Frame, instruction: Instruction): void {
       popIntoLocal(frame, 3, 'int');
       break;
     case Op.astore:
-      popIntoLocal(frame, operand(instruction, 0), 'ref');
+      popIntoReferenceLocal(frame, operand(instruction, 0));
       break;
     case Op.astore_0:
-      popIntoLocal(frame, 0, 'ref');
+      popIntoReferenceLocal(frame, 0);
       break;
     case Op.astore_1:
-      popIntoLocal(frame, 1, 'ref');
+      popIntoReferenceLocal(frame, 1);
       break;
     case Op.astore_2:
-      popIntoLocal(frame, 2, 'ref');
+      popIntoReferenceLocal(frame, 2);
       break;
     case Op.astore_3:
-      popIntoLocal(frame, 3, 'ref');
+      popIntoReferenceLocal(frame, 3);
       break;
     case Op.iinc: {
       // Increments the slot in place — the operand stack is not touched, which is why every
@@ -404,13 +469,51 @@ function step(machine: Machine, frame: Frame, instruction: Instruction): void {
       break;
     }
 
+    // The operand stack instructions are type-agnostic (JVMS §6.5 dup): duplicating a
+    // reference must not turn it into an int, so all of them move `StackValue`s.
+    //
+    // `pop2`, `dup2` and `dup2_x1` also have a form that moves a single category-2 value
+    // (`long`/`double`) instead of two category-1 ones. No value in this machine is
+    // category 2 — there are no `long` or `double` slots at all — so only the category-1
+    // form can occur, and the category-2 form is deliberately not implemented rather than
+    // half-implemented.
     case Op.pop:
       popAny(frame);
       break;
-    case Op.dup: {
-      // Type-agnostic (JVMS §6.5 dup): duplicating a reference must not turn it into an int.
-      const top = peekAny(frame);
-      push(frame, top.value, top.kind);
+    case Op.pop2:
+      popAny(frame);
+      popAny(frame);
+      break;
+    case Op.dup:
+      pushValues(frame, [peekAny(frame)]);
+      break;
+    case Op.dup_x1: {
+      // `…, value2, value1 → …, value1, value2, value1`
+      const value1 = popAny(frame);
+      const value2 = popAny(frame);
+      pushValues(frame, [value1, value2, value1]);
+      break;
+    }
+    case Op.dup2: {
+      // `…, value2, value1 → …, value2, value1, value2, value1`
+      const value1 = popAny(frame);
+      const value2 = popAny(frame);
+      pushValues(frame, [value2, value1, value2, value1]);
+      break;
+    }
+    case Op.dup2_x1: {
+      // `…, value3, value2, value1 → …, value2, value1, value3, value2, value1`
+      const value1 = popAny(frame);
+      const value2 = popAny(frame);
+      const value3 = popAny(frame);
+      pushValues(frame, [value2, value1, value3, value2, value1]);
+      break;
+    }
+    case Op.swap: {
+      // `…, value2, value1 → …, value1, value2`
+      const value1 = popAny(frame);
+      const value2 = popAny(frame);
+      pushValues(frame, [value1, value2]);
       break;
     }
 
@@ -431,6 +534,34 @@ function step(machine: Machine, frame: Frame, instruction: Instruction): void {
       break;
     case Op.ineg:
       push(frame, ineg(pop(frame, 'int')), 'int');
+      break;
+    case Op.ishl:
+      binary(frame, ishl);
+      break;
+    case Op.ishr:
+      binary(frame, ishr);
+      break;
+    case Op.iushr:
+      binary(frame, iushr);
+      break;
+    case Op.iand:
+      binary(frame, iand);
+      break;
+    case Op.ior:
+      binary(frame, ior);
+      break;
+    case Op.ixor:
+      binary(frame, ixor);
+      break;
+
+    case Op.i2b:
+      push(frame, i2b(pop(frame, 'int')), 'int');
+      break;
+    case Op.i2c:
+      push(frame, i2c(pop(frame, 'int')), 'int');
+      break;
+    case Op.i2s:
+      push(frame, i2s(pop(frame, 'int')), 'int');
       break;
 
     case Op.ifeq:
@@ -472,7 +603,17 @@ function step(machine: Machine, frame: Frame, instruction: Instruction): void {
     case Op.goto:
       setPc(frame, branchTargetOf(instruction));
       break;
+    case Op.tableswitch:
+    case Op.lookupswitch:
+      setPc(frame, switchTargetOf(instruction, pop(frame, 'int')));
+      break;
 
+    case Op.getstatic:
+      pushStaticField(machine, frame, operand(instruction, 0));
+      break;
+    case Op.invokevirtual:
+      invokeVirtual(machine, frame, operand(instruction, 0));
+      break;
     case Op.invokestatic:
       invokeStatic(machine, frame, operand(instruction, 0));
       break;
@@ -489,14 +630,32 @@ function step(machine: Machine, frame: Frame, instruction: Instruction): void {
   }
 }
 
-/** `iload`/`aload`: the slot must already hold a value of the kind the instruction reads. */
+/** `iload`: the slot must already hold a value of the kind the instruction reads. */
 function pushLocal(frame: Frame, slot: number, kind: ValueKind): void {
   push(frame, loadLocal(frame, slot, kind), kind);
 }
 
-/** `istore`/`astore`: what the instruction takes off the stack is what the slot then holds. */
+/** `istore`: what the instruction takes off the stack is what the slot then holds. */
 function popIntoLocal(frame: Frame, slot: number, kind: ValueKind): void {
   storeLocal(frame, slot, pop(frame, kind), kind);
+}
+
+/** `aload`/`astore` move whatever reference the slot holds, heap handle or external token. */
+function pushReferenceLocal(frame: Frame, slot: number): void {
+  const held = loadReference(frame, slot);
+  push(frame, held.value, held.kind);
+}
+
+function popIntoReferenceLocal(frame: Frame, slot: number): void {
+  const popped = popReference(frame);
+  storeLocal(frame, slot, popped.value, popped.kind);
+}
+
+/** Pushes values bottom-first, so a list reads in the order JVMS §6.5 writes the result. */
+function pushValues(frame: Frame, values: readonly StackValue[]): void {
+  for (const value of values) {
+    push(frame, value.value, value.kind);
+  }
 }
 
 /**
@@ -566,6 +725,24 @@ function branchTargetOf(instruction: Instruction): number {
   return branchTarget;
 }
 
+/**
+ * JVMS §6.5 tableswitch/lookupswitch: the arm whose match is the popped key, and the default
+ * branch when none is. `tableswitch` states the same rule as a range check on [low, high],
+ * which is the range its arms cover, so one lookup answers both instructions.
+ *
+ * The decoder puts the default first, which is the only arm without a match value.
+ */
+function switchTargetOf(instruction: Instruction, key: number): number {
+  const [fallback, ...arms] = instruction.switchTargets ?? [];
+  if (fallback === undefined) {
+    throw new VmFault({
+      kind: 'invalid-state',
+      message: `${instruction.mnemonic} without a jump table`,
+    });
+  }
+  return arms.find((arm) => arm.match === key)?.target ?? fallback.target;
+}
+
 function returnFromFrame(machine: Machine, value: number | undefined): void {
   machine.callStack.pop();
   if (value === undefined) {
@@ -580,11 +757,153 @@ function returnFromFrame(machine: Machine, value: number | undefined): void {
   push(caller, value, 'int');
 }
 
+/**
+ * JVMS §6.5 ldc/ldc_w: an `int` is pushed as itself; a `String` constant becomes a token, so
+ * it can be passed to a recognised method without the machine having to build a String object
+ * (JVMS §5.1 interns one object per pool entry, which `ExternalPool` reproduces).
+ *
+ * Everything else the pool can hold there — `float`, a class literal, a method handle — has no
+ * representation in this machine and is reported as such rather than pushed as some number.
+ */
+function pushPoolConstant(machine: Machine, frame: Frame, poolIndex: number): void {
+  const pool = machine.classFile.constantPool;
+  const entry = poolEntry(pool, poolIndex);
+
+  if (entry?.tag === ConstantTag.Integer) {
+    push(frame, entry.value, 'int');
+    return;
+  }
+  if (entry?.tag === ConstantTag.String) {
+    push(
+      frame,
+      machine.externals.intern(stringConstant(utf8(pool, entry.stringIndex))),
+      'external',
+    );
+    return;
+  }
+  throw new VmFault({ kind: 'unsupported-constant', target: describeConstant(entry, poolIndex) });
+}
+
+/** Tag names as JVMS §4.4 writes them, so an error can say `a Double constant`. */
+const TAG_NAMES: ReadonlyMap<number, string> = new Map(
+  Object.entries(ConstantTag).map(([name, tag]) => [tag, name]),
+);
+
+function describeConstant(entry: ConstantPoolEntry | undefined, index: number): string {
+  const named = entry === undefined ? undefined : TAG_NAMES.get(entry.tag);
+  return named === undefined
+    ? `constant pool entry #${String(index)}`
+    : `the ${named} constant at #${String(index)}`;
+}
+
+/**
+ * JVMS §6.5 getstatic. There is no class initialisation and no static state here, so the only
+ * fields that resolve are the ones `externals.ts` lists — `System.out` and, one day, whatever
+ * else earns a row. The value pushed is a token, not an object.
+ */
+function pushStaticField(machine: Machine, frame: Frame, poolIndex: number): void {
+  const reference = resolveMemberReference(
+    machine.classFile.constantPool,
+    poolIndex,
+    ConstantTag.Fieldref,
+    'Fieldref',
+  );
+  const key = memberKey(reference.className, reference.name, reference.descriptor);
+  const value = EXTERNAL_FIELDS.get(key);
+  if (value === undefined) {
+    throw new VmFault({ kind: 'unsupported-field', target: key });
+  }
+  push(frame, machine.externals.intern(value), 'external');
+}
+
+/**
+ * JVMS §6.5 invokevirtual, restricted to the recognised members: the stack holds
+ * `…, objectref, [arg1, …]`, so the arguments come off first and the receiver last.
+ *
+ * The receiver has to be a token of the class the reference names. Calling a listed method on
+ * the wrong object — `PrintStream.println` on a `String` — is reported as the call it is,
+ * rather than being answered with the output of the method that was not invoked.
+ */
+function invokeVirtual(machine: Machine, frame: Frame, poolIndex: number): void {
+  const reference = resolveMethodref(machine.classFile.constantPool, poolIndex);
+  const method = EXTERNAL_METHODS.get(
+    memberKey(reference.className, reference.name, reference.descriptor),
+  );
+  if (method?.dispatch !== 'virtual') {
+    throw new VmFault({ kind: 'unsupported-call', target: callTarget(reference) });
+  }
+
+  const args = popArguments(machine, frame, method.parameters);
+  const receiver = machine.externals.at(pop(frame, 'external'));
+  if (receiver?.className !== reference.className) {
+    throw new VmFault({
+      kind: 'unsupported-call',
+      target: `${callTarget(reference)} on ${receiver?.label ?? 'an unknown object'}`,
+    });
+  }
+  applyExternal(machine, frame, method, receiver, args);
+}
+
+/**
+ * A call the machine answers itself rather than by pushing a frame. The result — an int or
+ * nothing — goes straight back on the caller's stack, so from the bytecode's point of view
+ * the call has simply returned.
+ */
+function applyExternal(
+  machine: Machine,
+  frame: Frame,
+  method: ExternalMethod,
+  receiver: ExternalValue | undefined,
+  args: readonly ExternalArgument[],
+): void {
+  const result = method.apply({ receiver, args, console: machine.console });
+  if (result !== undefined) {
+    push(frame, result, 'int');
+  }
+}
+
+/** Arguments were pushed left to right, so they come off the stack in reverse order. */
+function popArguments(
+  machine: Machine,
+  frame: Frame,
+  parameters: readonly ValueKind[],
+): readonly ExternalArgument[] {
+  const args = new Array<ExternalArgument>(parameters.length);
+  for (let index = parameters.length - 1; index >= 0; index -= 1) {
+    const kind = parameters[index];
+    if (kind === 'external') {
+      const value = machine.externals.at(pop(frame, 'external'));
+      if (value === undefined) {
+        throw new VmFault({ kind: 'invalid-state', message: 'argument names no known object' });
+      }
+      args[index] = { kind: 'external', value };
+    } else {
+      args[index] = { kind: 'int', value: pop(frame, 'int') };
+    }
+  }
+  return args;
+}
+
 function invokeStatic(machine: Machine, frame: Frame, poolIndex: number): void {
   const reference = resolveMethodref(machine.classFile.constantPool, poolIndex);
-  const target = `${reference.className}.${reference.name}${reference.descriptor}`;
+  const target = callTarget(reference);
   if (reference.className !== machine.classFile.thisClassName) {
-    throw new VmFault({ kind: 'unsupported-call', target });
+    // Outside the executed class, only the members `externals.ts` lists resolve — the class
+    // file names them but nothing here can load them.
+    const method = EXTERNAL_METHODS.get(
+      memberKey(reference.className, reference.name, reference.descriptor),
+    );
+    if (method?.dispatch !== 'static') {
+      throw new VmFault({ kind: 'unsupported-call', target });
+    }
+    applyExternal(
+      machine,
+      frame,
+      method,
+      undefined,
+      popArguments(machine, frame, method.parameters),
+    );
+    return;
   }
 
   const parameterCount = intParameterCount(reference.descriptor);
@@ -714,11 +1033,28 @@ interface MethodReference {
   readonly descriptor: string;
 }
 
-/** JVMS §4.4.2: Methodref → Class + NameAndType, all of them Utf8 in the end. */
+/** How a call is named in an error: `Factorial.factorial(I)I`, as the UI has always shown it. */
+function callTarget(reference: MethodReference): string {
+  return `${reference.className}.${reference.name}${reference.descriptor}`;
+}
+
 function resolveMethodref(pool: ConstantPool, index: number): MethodReference {
+  return resolveMemberReference(pool, index, ConstantTag.Methodref, 'Methodref');
+}
+
+/**
+ * JVMS §4.4.2: a Methodref and a Fieldref have the same shape — Class + NameAndType, all of
+ * them Utf8 in the end — and differ only in their tag.
+ */
+function resolveMemberReference(
+  pool: ConstantPool,
+  index: number,
+  tag: typeof ConstantTag.Methodref | typeof ConstantTag.Fieldref,
+  tagName: string,
+): MethodReference {
   const reference = poolEntry(pool, index);
-  if (reference?.tag !== ConstantTag.Methodref) {
-    throw badPoolEntry(index, 'Methodref');
+  if (reference?.tag !== tag) {
+    throw badPoolEntry(index, tagName);
   }
   const owner = poolEntry(pool, reference.classIndex);
   if (owner?.tag !== ConstantTag.Class) {

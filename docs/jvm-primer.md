@@ -416,7 +416,8 @@ more types, more instructions and a JIT compiler that eventually stops interpret
 
 For the precise boundary, and for what happens when a given Java construct crosses it, see
 [Scope and limitations](../README.md#scope-and-limitations). For why the boundary is drawn there,
-see [ADR-0002](adr/0002-int-only-mvp-without-heap.md).
+see [ADR-0002](adr/0002-int-only-mvp-without-heap.md), and
+[ADR-0005](adr/0005-heap-of-int-arrays.md) for where it moved to when arrays arrived.
 
 ## Further reading
 

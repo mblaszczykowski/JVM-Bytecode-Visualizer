@@ -15,10 +15,15 @@ export interface RowNavigation {
  *
  * The moved-to row is focused directly rather than through a ref array — a list this long
  * would otherwise carry one ref per instruction for the sake of four key presses.
+ *
+ * @param rowAttribute attribute the group's focusable elements carry. One list can hold two
+ *   independent groups — the seek target of each instruction row and the constant pool link
+ *   inside it — and each needs its own way of finding the element it is moving to.
  */
 export function useRowNavigation(
   rowCount: number,
   currentIndex: number | undefined,
+  rowAttribute = 'data-row-index',
 ): RowNavigation {
   const [roving, setRoving] = useState<number | undefined>(undefined);
   const lastIndex = Math.max(rowCount - 1, 0);
@@ -35,7 +40,7 @@ export function useRowNavigation(
     setRoving(target);
     event.currentTarget
       .closest('ol')
-      ?.querySelector<HTMLElement>(`[data-row-index="${String(target)}"]`)
+      ?.querySelector<HTMLElement>(`[${rowAttribute}="${String(target)}"]`)
       ?.focus();
   }
 

@@ -8,6 +8,12 @@ interface PanelProps {
   /** Right-hand metadata: file name, method signature, stack depth. */
   readonly meta?: ReactNode;
   /**
+   * Replaces the visible title with a control that names the panel — the Source/Class switch
+   * in the left column. The `<h2>` still carries `title`, so the region keeps its name whether
+   * or not the switch is on screen.
+   */
+  readonly titleControl?: ReactNode;
+  /**
    * `code` is a light pane floating on the glass; `state` is a section inside the State
    * column, which owns the surface for all three of its panels.
    */
@@ -59,6 +65,7 @@ const BODY_FILL = {
 export function Panel({
   title,
   meta,
+  titleControl,
   variant = 'code',
   footer,
   contentRef,
@@ -78,11 +85,17 @@ export function Panel({
       aria-label={title}
       className={`flex min-h-0 flex-col ${SURFACE[variant]} ${className}`}
     >
-      <header className="flex shrink-0 items-baseline justify-between gap-3 px-[18px] pt-[14px] pb-[10px]">
+      <header
+        className={`flex shrink-0 justify-between gap-3 px-[18px] pt-[14px] pb-[10px] ${
+          titleControl === undefined ? 'items-baseline' : 'items-center'
+        }`}
+      >
         <h2 className="sr-only">{title}</h2>
-        <span aria-hidden="true" className={`text-[11.5px] font-semibold ${TITLE[variant]}`}>
-          {title}
-        </span>
+        {titleControl ?? (
+          <span aria-hidden="true" className={`text-[11.5px] font-semibold ${TITLE[variant]}`}>
+            {title}
+          </span>
+        )}
         <span className="truncate font-mono text-[11px] text-white/32">{meta}</span>
       </header>
 

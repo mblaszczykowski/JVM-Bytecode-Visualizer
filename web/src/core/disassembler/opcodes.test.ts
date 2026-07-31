@@ -12,10 +12,11 @@ import {
 } from './opcodes';
 
 /**
- * The MVP instruction subset the interpreter executes — nothing outside this list may be
- * marked `supported`, or the interpreter would be asked to run something it cannot.
+ * The instructions the interpreter executes — nothing outside this list may be marked
+ * `supported`, or the interpreter would be asked to run something it cannot. Decoding is a
+ * separate question: every assigned opcode below 0xca is decoded, whether it is here or not.
  */
-const MVP_OPCODES: readonly (readonly [opcode: number, mnemonic: string])[] = [
+const EXECUTABLE_OPCODES: readonly (readonly [opcode: number, mnemonic: string])[] = [
   [0x00, 'nop'],
   [0x01, 'aconst_null'],
   [0x02, 'iconst_m1'],
@@ -27,6 +28,8 @@ const MVP_OPCODES: readonly (readonly [opcode: number, mnemonic: string])[] = [
   [0x08, 'iconst_5'],
   [0x10, 'bipush'],
   [0x11, 'sipush'],
+  [0x12, 'ldc'],
+  [0x13, 'ldc_w'],
   [0x15, 'iload'],
   [0x19, 'aload'],
   [0x1a, 'iload_0'],
@@ -50,14 +53,28 @@ const MVP_OPCODES: readonly (readonly [opcode: number, mnemonic: string])[] = [
   [0x4e, 'astore_3'],
   [0x4f, 'iastore'],
   [0x57, 'pop'],
+  [0x58, 'pop2'],
   [0x59, 'dup'],
+  [0x5a, 'dup_x1'],
+  [0x5c, 'dup2'],
+  [0x5d, 'dup2_x1'],
+  [0x5f, 'swap'],
   [0x60, 'iadd'],
   [0x64, 'isub'],
   [0x68, 'imul'],
   [0x6c, 'idiv'],
   [0x70, 'irem'],
   [0x74, 'ineg'],
+  [0x78, 'ishl'],
+  [0x7a, 'ishr'],
+  [0x7c, 'iushr'],
+  [0x7e, 'iand'],
+  [0x80, 'ior'],
+  [0x82, 'ixor'],
   [0x84, 'iinc'],
+  [0x91, 'i2b'],
+  [0x92, 'i2c'],
+  [0x93, 'i2s'],
   [0x99, 'ifeq'],
   [0x9a, 'ifne'],
   [0x9b, 'iflt'],
@@ -71,8 +88,12 @@ const MVP_OPCODES: readonly (readonly [opcode: number, mnemonic: string])[] = [
   [0xa3, 'if_icmpgt'],
   [0xa4, 'if_icmple'],
   [0xa7, 'goto'],
+  [0xaa, 'tableswitch'],
+  [0xab, 'lookupswitch'],
   [0xac, 'ireturn'],
   [0xb1, 'return'],
+  [0xb2, 'getstatic'],
+  [0xb6, 'invokevirtual'],
   [0xb8, 'invokestatic'],
   [0xbc, 'newarray'],
   [0xbe, 'arraylength'],
@@ -134,30 +155,35 @@ describe('opcode table coverage', () => {
   it('gives every fixed-length opcode a non-negative operand byte count', () => {
     for (const info of OPCODES.values()) {
       if (info.kind === 'supported' || info.kind === 'unsupported') {
-        expect(info.operandBytes).toBeGreaterThanOrEqual(0);
-        expect(Number.isInteger(info.operandBytes)).toBe(true);
+        // Only the two switches have no fixed width — their arms are counted by the bytes.
+        const variableLength = info.opcode === 0xaa || info.opcode === 0xab;
+        expect(info.operandBytes === undefined).toBe(variableLength);
+        expect(info.operandBytes ?? 0).toBeGreaterThanOrEqual(0);
+        expect(Number.isInteger(info.operandBytes ?? 0)).toBe(true);
       }
     }
   });
 });
 
 describe('opcode classification', () => {
-  it('marks exactly the MVP subset as supported', () => {
+  it('marks exactly the executable subset as supported', () => {
     const supported = [...OPCODES.values()]
       .filter((info) => info.kind === 'supported')
       .map((info) => [info.opcode, info.mnemonic] as const)
       .sort((a, b) => a[0] - b[0]);
 
-    expect(supported).toEqual(MVP_OPCODES);
-    expect(supported).toHaveLength(60);
+    expect(supported).toEqual(EXECUTABLE_OPCODES);
+    expect(supported).toHaveLength(80);
   });
 
-  it('marks tableswitch, lookupswitch and wide as variable-length', () => {
+  it('leaves `wide` alone as a prefix rather than an instruction of its own', () => {
     const variableLength = [...OPCODES.values()]
       .filter((info) => info.kind === 'variable-length')
       .map((info) => info.mnemonic);
 
-    expect(variableLength).toEqual(['tableswitch', 'lookupswitch', 'wide']);
+    // The switches are variable-length too, but they are instructions the interpreter runs;
+    // `wide` is folded into whatever follows it and never reaches a listing on its own.
+    expect(variableLength).toEqual(['wide']);
   });
 
   it('marks the JVMS §6.2 reserved opcodes as reserved', () => {
@@ -173,17 +199,35 @@ describe('opcode classification', () => {
     ]);
   });
 
-  it('reports common non-MVP instructions as unsupported but decodable', () => {
-    expect(infoFor(0xb6)).toEqual({
+  it('decodes the instructions it cannot execute just as completely', () => {
+    expect(infoFor(0xb7)).toEqual({
       kind: 'unsupported',
-      opcode: 0xb6,
-      mnemonic: 'invokevirtual',
+      opcode: 0xb7,
+      mnemonic: 'invokespecial',
       operandBytes: 2,
+      operands: [{ type: 'u2', role: 'constant-pool-index' }],
     });
     expect(infoFor(0xb9)).toMatchObject({ mnemonic: 'invokeinterface', operandBytes: 4 });
     expect(infoFor(0xc5)).toMatchObject({ mnemonic: 'multianewarray', operandBytes: 3 });
-    expect(isSupportedOpcode(0xb6)).toBe(false);
+    expect(isSupportedOpcode(0xb7)).toBe(false);
     expect(isSupportedOpcode(0xb8)).toBe(true);
+  });
+
+  it('gives every assigned opcode but the reserved three an operand encoding', () => {
+    for (const info of OPCODES.values()) {
+      const encoded = info.operands.reduce(
+        (total, operand) => total + operandWidth(operand.type),
+        0,
+      );
+      if (info.kind === 'reserved' || info.opcode === 0xaa || info.opcode === 0xab) {
+        expect(info.operands, `${info.mnemonic} takes no fixed operands`).toEqual([]);
+      } else if (info.kind === 'variable-length') {
+        // `wide` carries the operands of the instruction it prefixes, not its own.
+        expect(info.operands).toEqual([]);
+      } else {
+        expect(encoded, `operand encoding of ${info.mnemonic}`).toBe(info.operandBytes);
+      }
+    }
   });
 });
 
@@ -191,6 +235,9 @@ describe('operand encoding of supported opcodes', () => {
   it('agrees with the declared operand byte count', () => {
     for (const info of OPCODES.values()) {
       if (info.kind !== 'supported') {
+        continue;
+      }
+      if (info.operandBytes === undefined) {
         continue;
       }
       const encodedBytes = info.operands.reduce(

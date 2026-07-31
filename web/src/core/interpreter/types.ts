@@ -3,10 +3,26 @@
 import type { Instruction } from '../disassembler/types';
 
 /**
- * What a 32-bit slot holds. Both kinds are plain numbers — an `int` is its own value, a `ref`
- * is the handle of the object it points at, i.e. its index in `Snapshot.heap`.
+ * What a 32-bit slot holds. All three kinds are plain numbers — an `int` is its own value, a
+ * `ref` is the handle of the object it points at (its index in `Snapshot.heap`), and an
+ * `external` is the index in `Snapshot.externals` of an object the interpreter names but does
+ * not model, such as `System.out` or a `String` constant.
  */
-export type ValueKind = 'int' | 'ref';
+export type ValueKind = 'int' | 'ref' | 'external';
+
+/**
+ * An object the machine can pass around and print but cannot build: it has a name and, for a
+ * `String` constant, contents, and nothing else. Kept out of the heap on purpose — the heap
+ * holds objects whose fields the program can read, and these have none.
+ */
+export interface ExternalValue {
+  /** Internal name of what it stands for, e.g. `java/io/PrintStream` (JVMS §4.2.1). */
+  readonly className: string;
+  /** How it reads on screen and in an error message: `System.out`, `"hello"`. */
+  readonly label: string;
+  /** The characters it stands for — a `String` constant is the one kind that has any. */
+  readonly text?: string;
+}
 
 /** The only object this heap knows: a fixed-length array of ints (`newarray T_INT`). */
 export interface ArrayObject {
@@ -54,6 +70,17 @@ export interface Snapshot {
    * `execute()` produced; optional for the same reason as the kind arrays above.
    */
   readonly heap?: readonly ArrayObject[];
+  /**
+   * Every line the program has printed up to and including this snapshot's state, i.e. before
+   * `currentInstruction` runs. Cumulative, and shared with the previous snapshot whenever that
+   * step printed nothing — which is almost every step — so the history stays cheap.
+   */
+  readonly consoleOutput?: readonly string[];
+  /**
+   * Objects named but not modelled, by index: a value of kind `external` is a position in
+   * this list. Append-only during a run and shared between snapshots, exactly like `heap`.
+   */
+  readonly externals?: readonly ExternalValue[];
 }
 
 export type VmError =
@@ -121,6 +148,25 @@ export type VmError =
       /** `newarray` with an element type outside the int-only heap, e.g. `long[]`. */
       readonly kind: 'unsupported-array-type';
       readonly typeName: string;
+      readonly offset: number;
+      readonly methodName: string;
+    }
+  | {
+      /**
+       * A field access the machine has no object for. It models a fixed list of external
+       * members (`System.out`) and no instance state at all, so everything else stops here.
+       */
+      readonly kind: 'unsupported-field';
+      /** The member as javap writes it, e.g. `java/lang/System.in:Ljava/io/InputStream;`. */
+      readonly target: string;
+      readonly offset: number;
+      readonly methodName: string;
+    }
+  | {
+      /** `ldc` of a constant pool entry outside the `int` and `String` values it can push. */
+      readonly kind: 'unsupported-constant';
+      /** What the entry is, e.g. `a Double constant` or `constant pool entry #9`. */
+      readonly target: string;
       readonly offset: number;
       readonly methodName: string;
     };

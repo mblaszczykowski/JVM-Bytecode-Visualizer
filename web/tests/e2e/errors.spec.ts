@@ -30,7 +30,7 @@ test('an unsupported instruction stops the run but keeps the history playable', 
   await fileInput(page).setInputFiles(fixturePath('UnsupportedInstruction.class'));
 
   await expect(page.getByTestId('error-banner')).toContainText(
-    'Unsupported instruction: getstatic (pc 19, method main)',
+    'Unsupported instruction: i2l (pc 20, method main)',
   );
 
   // ADR-0001: the snapshots collected before the fault are still a full recording.
@@ -41,6 +41,6 @@ test('an unsupported instruction stops the run but keeps the history playable', 
   await expect(page.getByTestId('step-counter')).toHaveText(/^step 2 \/ \d+$/);
   await expect(page.getByTestId('current-instruction')).toContainText('istore_1');
 
-  await page.getByRole('slider', { name: 'Execution history position' }).fill('34');
-  await expect(page.getByTestId('current-instruction')).toContainText('getstatic');
+  await page.getByRole('slider', { name: 'Execution history position' }).fill('35');
+  await expect(page.getByTestId('current-instruction')).toContainText('i2l');
 });

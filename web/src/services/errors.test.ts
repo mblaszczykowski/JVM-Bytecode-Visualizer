@@ -53,7 +53,9 @@ const CASES: readonly {
     },
     severity: 'error',
     message:
-      'Unsupported instruction: invokevirtual (pc 23, method main). This interpreter runs the int-only subset of the JVM instruction set.',
+      'Unsupported instruction: invokevirtual (pc 23, method main). This interpreter implements ' +
+      'the int-only subset of the JVM instruction set, and invokevirtual is outside it. The ' +
+      'history up to this point is still playable.',
   },
   {
     name: 'call outside the executed class',
@@ -68,7 +70,9 @@ const CASES: readonly {
     },
     severity: 'error',
     message:
-      'Unsupported call: java/lang/Math.max(II)I (pc 7, method main). Only static int methods of the class being executed can be called.',
+      'Unsupported call: java/lang/Math.max(II)I (pc 7, method main). This interpreter resolves ' +
+      'calls inside the class it is executing only, and only to its static int methods — there ' +
+      'is no Java library behind it. The history up to this point is still playable.',
   },
   {
     name: 'division by zero',
@@ -91,7 +95,9 @@ const CASES: readonly {
       },
     },
     severity: 'error',
-    message: 'Invalid bytecode state: execution ran past the end of main() (pc 9, method main).',
+    message:
+      'The run could not go on: execution ran past the end of main() (pc 9, method main). The ' +
+      'history up to this point is still playable.',
   },
   {
     name: 'runaway recursion',
@@ -179,6 +185,50 @@ const CASES: readonly {
       'Unsupported array type: long[] (pc 3, method main). This interpreter only allocates int arrays.',
   },
   {
+    name: 'a field this machine has no object behind',
+    error: {
+      kind: 'vm',
+      error: {
+        kind: 'unsupported-field',
+        target: 'java/lang/System.in:Ljava/io/InputStream;',
+        offset: 3,
+        methodName: 'main',
+      },
+    },
+    severity: 'error',
+    message:
+      'Unsupported field: java/lang/System.in:Ljava/io/InputStream; (pc 3, method main). This ' +
+      'interpreter models a short list of external members — System.out among them — and no ' +
+      'instance state at all, so there is no object here to read the field from. The history ' +
+      'up to this point is still playable.',
+  },
+  {
+    name: 'a pooled constant with no value this machine can hold',
+    error: {
+      kind: 'vm',
+      error: {
+        kind: 'unsupported-constant',
+        target: 'a Double constant',
+        offset: 5,
+        methodName: 'main',
+      },
+    },
+    severity: 'error',
+    message:
+      'Unsupported constant: a Double constant (pc 5, method main). ldc pushes the int and ' +
+      'String entries of the constant pool here; the other constant kinds have no value this ' +
+      'machine can hold. The history up to this point is still playable.',
+  },
+  {
+    name: 'a class file with nothing this machine can run',
+    error: { kind: 'no-entry-point', className: 'Library' },
+    severity: 'info',
+    message:
+      'Library has no method this machine can start from — a run needs a static method it can ' +
+      'enter with no argument values. Nothing is missing from the file itself: the constant ' +
+      'pool, the fields and every method listing are on screen to read.',
+  },
+  {
     name: 'step limit',
     error: { kind: 'step-limit', limit: 20_000 },
     severity: 'warning',
@@ -240,6 +290,8 @@ describe('error messages', () => {
       'negative-array-size',
       'null-reference',
       'unsupported-array-type',
+      'unsupported-field',
+      'unsupported-constant',
     ];
     const covered = CASES.filter((testCase) => testCase.error.kind === 'vm').map(
       (testCase) => (testCase.error as { error: VmError }).error.kind,

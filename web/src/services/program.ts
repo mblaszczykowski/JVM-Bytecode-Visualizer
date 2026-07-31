@@ -3,14 +3,28 @@
  *
  * The disassembly of every method and the set of offsets the run actually reached are
  * derived here rather than in render, so replaying the history stays a lookup by index.
+ *
+ * A run is a capability of a parsed class file, not a precondition for having one: every
+ * method is listed whether or not the interpreter could enter it, and a class with nothing
+ * runnable in it still produces a `LoadedProgram` — with `no-entry-point` as its outcome.
  */
 
-import type { ClassFile, LineNumberEntry, LocalVariableEntry } from '../core/classfile';
+import {
+  isClassFileError,
+  isStatic,
+  parseMethodDescriptor,
+  type ClassFile,
+  type LineNumberEntry,
+  type LocalVariableEntry,
+  type MethodInfo,
+} from '../core/classfile';
 import { disassemble, type Instruction } from '../core/disassembler';
 import {
+  DEFAULT_ENTRY_METHOD,
   DEFAULT_MAX_STEPS,
   execute,
-  findEntryMethod,
+  isEntryMethod,
+  type ExecutionResult,
   type Snapshot,
   type StackFrame,
   type VmError,
@@ -18,9 +32,28 @@ import {
 
 import type { ExampleEntry } from './manifest';
 
+/** Why a run cannot start from a method. `undefined` on a `MethodListing` means it can. */
+export type NotRunnableReason = 'no-code' | 'instance-method' | 'needs-arguments' | 'descriptor';
+
+/** Said next to a method in the picker, so "listing only" is never left as a verdict. */
+export function describeNotRunnable(reason: NotRunnableReason): string {
+  switch (reason) {
+    case 'no-code':
+      return 'no Code attribute — abstract, native, or declared by an interface';
+    case 'instance-method':
+      return 'an instance method, and this machine has no objects to call one on';
+    case 'needs-arguments':
+      return 'takes arguments, and a run cannot be given values for them yet';
+    case 'descriptor':
+      return 'its descriptor is outside the int-only subset this machine executes';
+  }
+}
+
 export interface MethodListing {
   readonly name: string;
   readonly descriptor: string;
+  /** JVMS §4.6 table 4.6-A; the picker decodes it into modifier names. */
+  readonly accessFlags: number;
   readonly maxStack: number;
   readonly maxLocals: number;
   readonly instructions: readonly Instruction[];
@@ -31,6 +64,8 @@ export interface MethodListing {
   readonly localVariables: readonly LocalVariableEntry[];
   /** Offsets reached by this run; everything else is dead code in this run. */
   readonly executedOffsets: ReadonlySet<number>;
+  /** Absent when a run can start here; otherwise the reason it cannot. */
+  readonly notRunnable: NotRunnableReason | undefined;
 }
 
 export type ProgramOrigin =
@@ -42,13 +77,16 @@ export type ProgramOrigin =
 export type ExecutionOutcome =
   | { readonly kind: 'completed'; readonly returnValue: number | undefined }
   | { readonly kind: 'vm-error'; readonly error: VmError }
-  | { readonly kind: 'step-limit'; readonly limit: number };
+  | { readonly kind: 'step-limit'; readonly limit: number }
+  /** No run was attempted: the class declares no method this machine can enter. */
+  | { readonly kind: 'no-entry-point' };
 
 export interface LoadedProgram {
   readonly origin: ProgramOrigin;
   readonly classFile: ClassFile;
+  /** Every declared method, including the ones with no Code attribute to disassemble. */
   readonly methods: readonly MethodListing[];
-  /** Method the run started from; absent only when the class has no usable entry point. */
+  /** Method the run started from; absent when the class has no usable entry point. */
   readonly entry: MethodListing | undefined;
   readonly sourceFileName: string;
   readonly sourceLines: readonly string[];
@@ -56,6 +94,11 @@ export interface LoadedProgram {
   readonly snapshots: readonly Snapshot[];
   readonly outcome: ExecutionOutcome;
   readonly maxSteps: number;
+}
+
+/** Methods a run could start from — the picker's runnable set, in declaration order. */
+export function runnableMethodsOf(program: LoadedProgram): readonly MethodListing[] {
+  return program.methods.filter((method) => method.notRunnable === undefined);
 }
 
 export interface ProgramSource {
@@ -69,6 +112,11 @@ export interface BuildProgramInput {
   /** The matching `.java`; uploads rarely have one. */
   readonly source?: ProgramSource | undefined;
   readonly maxSteps?: number | undefined;
+  /**
+   * Name of the method to start from. Defaults to `main`, then to the first runnable method
+   * the class declares — a utility class runs its first helper rather than nothing at all.
+   */
+  readonly entryMethod?: string | undefined;
 }
 
 /** Shown instead of source code when a `.class` arrives without its `.java`. */
@@ -85,56 +133,114 @@ export function buildProgram({
   classFile,
   source,
   maxSteps = DEFAULT_MAX_STEPS,
+  entryMethod,
 }: BuildProgramInput): LoadedProgram {
-  const result = execute(classFile, { maxSteps });
-  const executed = executedOffsets(result.snapshots);
+  const entry = chooseEntry(classFile, entryMethod);
+  // A class with nothing runnable in it is still a class: no run is attempted, and every
+  // panel below reads from the parse rather than from the history.
+  const result =
+    entry === undefined ? undefined : execute(classFile, { entryMethod: entry.name, maxSteps });
+  const executed = executedOffsets(result?.snapshots ?? NO_SNAPSHOTS);
 
-  const methods = classFile.methods.flatMap<MethodListing>((method) => {
+  const methods = classFile.methods.map<MethodListing>((method) => {
     const { code } = method;
-    if (code === undefined) {
-      return [];
-    }
-    const decoded = disassemble(code.code);
-    return [
-      {
-        name: method.name,
-        descriptor: method.descriptor,
-        maxStack: code.maxStack,
-        maxLocals: code.maxLocals,
-        instructions: decoded.instructions,
-        truncatedAtOffset: decoded.truncatedAtOffset,
-        lineNumbers: code.lineNumberTable ?? [],
-        localVariables: code.localVariableTable ?? [],
-        executedOffsets: executed.get(methodKey(method.name, method.descriptor)) ?? EMPTY_OFFSETS,
-      },
-    ];
+    const decoded = code === undefined ? undefined : disassemble(code.code);
+    return {
+      name: method.name,
+      descriptor: method.descriptor,
+      accessFlags: method.accessFlags,
+      maxStack: code?.maxStack ?? 0,
+      maxLocals: code?.maxLocals ?? 0,
+      instructions: decoded?.instructions ?? NO_INSTRUCTIONS,
+      truncatedAtOffset: decoded?.truncatedAtOffset,
+      lineNumbers: code?.lineNumberTable ?? [],
+      localVariables: code?.localVariableTable ?? [],
+      executedOffsets: executed.get(methodKey(method.name, method.descriptor)) ?? EMPTY_OFFSETS,
+      notRunnable: notRunnableReasonOf(method),
+    };
   });
-
-  // The same rule the interpreter starts from, so the panel never opens on a method the run
-  // would have refused: static, with a Code attribute and a descriptor inside the int subset.
-  const entryPoint = findEntryMethod(classFile);
 
   return {
     origin,
     classFile,
     methods,
     entry:
-      entryPoint === undefined
+      entry === undefined
         ? undefined
         : methods.find(
-            (method) =>
-              method.name === entryPoint.method.name &&
-              method.descriptor === entryPoint.method.descriptor,
+            (method) => method.name === entry.name && method.descriptor === entry.descriptor,
           ),
     sourceFileName: source?.fileName ?? fileNameOf(origin),
     sourceLines: source === undefined ? NO_SOURCE_LINES : source.text.split(/\r?\n/),
-    snapshots: result.snapshots,
-    outcome: outcomeOf(result),
+    snapshots: result?.snapshots ?? NO_SNAPSHOTS,
+    outcome: result === undefined ? NO_ENTRY_POINT : outcomeOf(result),
     maxSteps,
   };
 }
 
 const EMPTY_OFFSETS: ReadonlySet<number> = new Set<number>();
+const NO_INSTRUCTIONS: readonly Instruction[] = [];
+/** One identity for every run that produced nothing — a fresh `[]` rewinds the player. */
+const NO_SNAPSHOTS: readonly Snapshot[] = Object.freeze([]);
+const NO_ENTRY_POINT: ExecutionOutcome = { kind: 'no-entry-point' };
+
+/** `main`'s array parameter, which the interpreter deliberately leaves as an empty slot. */
+const MAIN_DESCRIPTOR = '([Ljava/lang/String;)V';
+
+/**
+ * Whether the interpreter could start at this method, and if not, why. `isEntryMethod` is the
+ * authority on the first three conditions — asking it rather than restating the rule keeps the
+ * picker from offering a method the run would then refuse.
+ *
+ * The fourth is this layer's own: `ExecuteOptions` names an entry method but carries no
+ * argument values, so a method that reads a parameter faults on its first `iload`. It is
+ * listed, and marked, rather than offered. `main` is the standing exception — nothing in the
+ * subset can allocate a `String[]`, so its slot is meant to stay empty.
+ */
+function notRunnableReasonOf(method: MethodInfo): NotRunnableReason | undefined {
+  if (method.code === undefined) {
+    return 'no-code';
+  }
+  if (!isStatic(method.accessFlags)) {
+    return 'instance-method';
+  }
+  if (!isEntryMethod(method)) {
+    return 'descriptor';
+  }
+  return takesArguments(method.descriptor) ? 'needs-arguments' : undefined;
+}
+
+function takesArguments(descriptor: string): boolean {
+  if (descriptor === MAIN_DESCRIPTOR) {
+    return false;
+  }
+  try {
+    return parseMethodDescriptor(descriptor).params.length > 0;
+  } catch (error) {
+    if (!isClassFileError(error)) {
+      throw error;
+    }
+    // A descriptor the class file itself got wrong; `isEntryMethod` has already refused it.
+    return true;
+  }
+}
+
+/**
+ * Where the run starts: what the caller asked for, then `main`, then the first runnable
+ * method. `<clinit>` is never chosen on its own — it is the class initialiser, not a program,
+ * and opening on it would answer "run this class" with a static-field setup nobody asked for.
+ * It stays in the runnable set, so the picker can still offer it deliberately.
+ */
+function chooseEntry(classFile: ClassFile, requested: string | undefined): MethodInfo | undefined {
+  const runnable = classFile.methods.filter((method) => notRunnableReasonOf(method) === undefined);
+  return (
+    (requested === undefined ? undefined : runnable.find((method) => method.name === requested)) ??
+    runnable.find((method) => method.name === DEFAULT_ENTRY_METHOD) ??
+    runnable.find((method) => method.name !== CLASS_INITIALISER)
+  );
+}
+
+const CLASS_INITIALISER = '<clinit>';
 
 export function findListing(
   program: LoadedProgram,
@@ -145,7 +251,38 @@ export function findListing(
 }
 
 /**
- * Listing to show for a snapshot: the method of the top frame, or the entry method once the
+ * Listing the Bytecode panel opens on when the run has nothing to say: the method it started
+ * from, else the first one there is anything to disassemble. A class with no entry point still
+ * has code to read, and an empty panel would hide it.
+ */
+export function defaultListingOf(program: LoadedProgram): MethodListing | undefined {
+  return program.entry ?? program.methods.find((method) => method.instructions.length > 0);
+}
+
+/** A name alone does not identify a method — overloads differ only in their descriptor. */
+export function methodKeyOf(method: MethodListing): string {
+  return `${method.name}${method.descriptor}`;
+}
+
+/**
+ * The listing on screen: whichever method the reader opened in the picker, and until they open
+ * one, whichever method the run is standing in. Browsing takes over from replaying here, and a
+ * key that names nothing in this class file falls back rather than blanking the panel.
+ */
+export function listingToShow(
+  program: LoadedProgram,
+  snapshot: Snapshot | undefined,
+  viewedMethodKey: string | undefined,
+): MethodListing | undefined {
+  const viewed =
+    viewedMethodKey === undefined
+      ? undefined
+      : program.methods.find((method) => methodKeyOf(method) === viewedMethodKey);
+  return viewed ?? listingFor(program, snapshot);
+}
+
+/**
+ * Listing to show for a snapshot: the method of the top frame, or the default listing once the
  * stack is empty — the terminal snapshot should not blank the panel.
  */
 export function listingFor(
@@ -154,10 +291,54 @@ export function listingFor(
 ): MethodListing | undefined {
   const frame = snapshot?.callStack.at(-1);
   if (frame === undefined) {
-    return program.entry;
+    return defaultListingOf(program);
   }
-  return findListing(program, frame.methodName, frame.methodDescriptor) ?? program.entry;
+  return (
+    findListing(program, frame.methodName, frame.methodDescriptor) ?? defaultListingOf(program)
+  );
 }
+
+/**
+ * Whether `listing` is the method the snapshot is standing in. Everything the panels derive
+ * from the current step — the pc highlight, the "Next" card, the dead-code dimming — only
+ * means anything while the two agree; browsing another method's listing must not borrow them.
+ */
+export function isCurrentListing(
+  listing: MethodListing | undefined,
+  frame: StackFrame | undefined,
+): boolean {
+  return (
+    listing !== undefined &&
+    frame?.methodName === listing.name &&
+    frame.methodDescriptor === listing.descriptor
+  );
+}
+
+/**
+ * Lines the program has printed by this snapshot. The interpreter's `consoleOutput` is
+ * cumulative and optional — a build whose interpreter does not record it yet simply has a run
+ * that printed nothing, rather than a panel that crashes.
+ */
+export function consoleLinesOf(snapshot: Snapshot | undefined): readonly string[] {
+  // Structural rather than a cast: `Snapshot` is assignable to this whether or not it has
+  // grown the field yet, and the day it does, nothing here has to change.
+  const printing: PrintingSnapshot | undefined = snapshot;
+  return printing?.consoleOutput ?? NO_CONSOLE_OUTPUT;
+}
+
+/** The additive half of the interpreter's snapshot contract, as this layer relies on it. */
+interface PrintingSnapshot {
+  readonly step: number;
+  /** Every line printed up to and including this snapshot's state. Cumulative. */
+  readonly consoleOutput?: readonly string[];
+}
+
+/** Whether the run printed anything at all — the Console panel joins the column only then. */
+export function runPrintedOutput(snapshots: readonly Snapshot[]): boolean {
+  return snapshots.some((snapshot) => consoleLinesOf(snapshot).length > 0);
+}
+
+const NO_CONSOLE_OUTPUT: readonly string[] = [];
 
 /** Offsets of `listing` that this run never reached. */
 export function deadOffsetsOf(listing: MethodListing): ReadonlySet<number> {
@@ -387,7 +568,7 @@ function executedOffsets(snapshots: readonly Snapshot[]): ReadonlyMap<string, Se
   return byMethod;
 }
 
-function outcomeOf(result: ReturnType<typeof execute>): ExecutionOutcome {
+function outcomeOf(result: ExecutionResult): ExecutionOutcome {
   switch (result.kind) {
     case 'completed':
       return { kind: 'completed', returnValue: result.returnValue };

@@ -1,0 +1,12 @@
+
+42
+-1
+hello
+
+true
+false
+A
+abc
+123
+from a local
+from a local

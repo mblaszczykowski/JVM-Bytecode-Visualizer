@@ -16,6 +16,7 @@ export {
   DEFAULT_MAX_STEPS,
   type ArrayObject,
   type ExecuteOptions,
+  type ExternalValue,
   type ExecutionResult,
   type Snapshot,
   type StackFrame,

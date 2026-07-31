@@ -229,10 +229,24 @@ const TAG_NAMES: ReadonlyMap<number, string> = new Map(
   Object.entries(ConstantTag).map(([name, tag]) => [tag, name]),
 );
 
-/** Constant pool index of an instruction that has one, from the opcode table. */
+/**
+ * Name of a constant pool tag (JVMS §4.4, table 4.4-B). Kept separate from `resolveConstant`
+ * because an entry that cannot be followed to its strings still has a kind worth naming.
+ */
+export function tagNameOf(tag: number): string {
+  return TAG_NAMES.get(tag) ?? `tag ${String(tag)}`;
+}
+
+/**
+ * Constant pool index of an instruction that has one, from the opcode table.
+ *
+ * Deliberately not restricted to the executable subset: the decoder gives every assigned
+ * opcode its operand roles, so `getfield #3` can carry its `// Field Counter.value:I` comment
+ * in a class this machine will never run. Reading a class file is not the same as executing it.
+ */
 export function constantPoolIndexOf(instruction: Instruction): number | undefined {
   const info = lookupOpcode(instruction.opcode);
-  if (info?.kind !== 'supported') {
+  if (info === undefined) {
     return undefined;
   }
   const position = info.operands.findIndex((operand) => operand.role === 'constant-pool-index');

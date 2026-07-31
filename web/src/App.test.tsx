@@ -403,6 +403,139 @@ describe('uploads', () => {
   });
 });
 
+describe('exploring a class file with nothing to run', () => {
+  /** The largest failure bucket of the measured set: a class with no runnable entry point. */
+  async function openLibrary(): Promise<void> {
+    stubFetch(exampleRoutes());
+    await openApp();
+    chooseFile(uploadFile('Library.class', new Uint8Array(readFixtureBytes('Library.class'))));
+    await screen.findByTestId('class-panel');
+  }
+
+  it('lands in the explorer instead of bouncing back to the welcome screen', async () => {
+    await openLibrary();
+
+    expect(screen.queryByTestId('welcome-screen')).not.toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Bytecode' })).toBeInTheDocument();
+    // Nothing ran, so there is no history and no transport over it.
+    expect(screen.queryByTestId('step-counter')).not.toBeInTheDocument();
+  });
+
+  it('says why nothing ran, as a notice rather than as a failure', async () => {
+    await openLibrary();
+
+    const banner = screen.getByTestId('error-banner');
+    expect(banner).toHaveAttribute('data-severity', 'info');
+    expect(banner).toHaveTextContent('Library has no method this machine can start from');
+    expect(banner).toHaveTextContent('every method listing are on screen to read');
+  });
+
+  it('lists every method, each marked as listing only, and offers to run none', async () => {
+    await openLibrary();
+
+    const rows = screen.getAllByTestId('method-row');
+    expect(rows.map((row) => row.getAttribute('data-method'))).toEqual([
+      '<init>()V',
+      'twice(I)I',
+      'clamp(III)I',
+    ]);
+    expect(screen.getAllByText('listing only')).toHaveLength(3);
+    expect(screen.queryByRole('button', { name: /^Run / })).not.toBeInTheDocument();
+  });
+
+  it('opens the listing of any method the reader picks', async () => {
+    await openLibrary();
+    const bytecode = screen.getByRole('region', { name: 'Bytecode' });
+    expect(bytecode).toHaveTextContent('<init>()V');
+
+    fireEvent.click(within(rowFor('clamp(III)I')).getByText('clamp'));
+
+    expect(bytecode).toHaveTextContent('clamp(III)I');
+    expect(within(bytecode).getByText('if_icmpge')).toBeInTheDocument();
+  });
+
+  it('shows the constant pool resolved down to the strings behind each entry', async () => {
+    await openLibrary();
+
+    const pool = screen.getAllByTestId('constant-row');
+    expect(pool.length).toBeGreaterThan(10);
+    expect(screen.getByText('java/lang/Object.<init>:()V')).toBeInTheDocument();
+  });
+
+  it('follows a #n in the listing to the entry it names', async () => {
+    await openLibrary();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show constant pool entry #1' }));
+
+    const followed = screen
+      .getAllByTestId('constant-row')
+      .find((row) => row.getAttribute('data-index') === '1');
+    expect(followed).toHaveAttribute('aria-current', 'true');
+  });
+
+  it('carries the class metadata a javap dump opens with', async () => {
+    await openLibrary();
+
+    const facts = screen.getAllByTestId('class-fact');
+    const text = facts.map((fact) => fact.textContent).join(' | ');
+    expect(text).toContain('Library');
+    expect(text).toContain('java/lang/Object');
+    expect(text).toContain('class file format of Java 21');
+    expect(text).toContain('public final super');
+  });
+});
+
+describe('a class whose entry point is not called main', () => {
+  async function openCounter(): Promise<void> {
+    stubFetch(exampleRoutes());
+    await openApp();
+    chooseFile(uploadFile('Counter.class', new Uint8Array(readFixtureBytes('Counter.class'))));
+    await screen.findByTestId('step-counter');
+  }
+
+  it('runs the only method it could start from', async () => {
+    await openCounter();
+
+    expect(screen.getByRole('region', { name: 'Bytecode' })).toHaveTextContent('count()I');
+    expect(within(rowFor('count()I')).getByText('entry')).toBeInTheDocument();
+    expect(within(rowFor('step(I)I')).getByText('listing only')).toBeInTheDocument();
+  });
+
+  it('re-runs from a method the picker offers', async () => {
+    await openCounter();
+    seekTo(20);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Run count()I' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('step-counter')).toHaveTextContent('step 1 / 70');
+    });
+  });
+
+  it('reads a method the run never entered without reporting it as dead code', async () => {
+    await openCounter();
+
+    fireEvent.click(within(rowFor('step(I)I')).getByText('step'));
+
+    const bytecode = screen.getByRole('region', { name: 'Bytecode' });
+    expect(bytecode).toHaveTextContent('step(I)I');
+    // The listing is browsed, not replayed: nothing in it is the current instruction.
+    expect(within(bytecode).queryByTestId('current-instruction')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('next-instruction-card')).not.toBeInTheDocument();
+  });
+});
+
+/** The picker row for one method, by the `name + descriptor` that identifies it. */
+function rowFor(signature: string): HTMLElement {
+  const row = screen
+    .getAllByTestId('method-row')
+    .find((candidate) => candidate.getAttribute('data-method') === signature);
+  if (row === undefined) {
+    throw new Error(`no method row for ${signature}`);
+  }
+  return row;
+}
+
 const GCD_SOURCE = 'public class Gcd {\n    static int gcd(int a, int b) { return a; }\n}';
 const GCD_STEPS = 43;
 

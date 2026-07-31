@@ -8,6 +8,7 @@ import {
   readJavap,
   type JavapInstruction,
   type JavapMethod,
+  type JavapSwitchCase,
 } from './__fixtures__/javap';
 import { disassemble } from './disassembler';
 import { arrayTypeName, lookupOpcode, OPCODES, type SupportedOpcode } from './opcodes';
@@ -20,12 +21,15 @@ import type { Instruction } from './types';
  *
  * `Factorial` is the int-only subset the interpreter runs. `OpcodeZoo` is everything around
  * it — one method per operand width the opcode table knows, plus both switches — so a wrong
- * width desynchronises the offsets and shows up here immediately.
+ * width desynchronises the offsets and shows up here immediately. `WideOps` is the `wide`
+ * prefix, which javac emits for nothing else than a local above slot 255.
  */
 const FACTORIAL_CLASS = new URL('../classfile/__fixtures__/Factorial.class', import.meta.url);
 const FACTORIAL_JAVAP = new URL('../classfile/__fixtures__/Factorial.javap.txt', import.meta.url);
 const OPCODE_ZOO_CLASS = new URL('./__fixtures__/OpcodeZoo.class', import.meta.url);
 const OPCODE_ZOO_JAVAP = new URL('./__fixtures__/OpcodeZoo.javap.txt', import.meta.url);
+const WIDE_OPS_CLASS = new URL('./__fixtures__/WideOps.class', import.meta.url);
+const WIDE_OPS_JAVAP = new URL('./__fixtures__/WideOps.javap.txt', import.meta.url);
 
 function parseFixture(classFile: URL): ClassFile {
   // Copy into a fresh buffer: Node's Buffer can be a view into a shared pool.
@@ -46,59 +50,59 @@ function codeOf(methodName: string): Uint8Array {
   return codeIn(FACTORIAL_CLASS, methodName);
 }
 
-const OPCODES_BY_MNEMONIC = new Map([...OPCODES.values()].map((info) => [info.mnemonic, info]));
-
-/** Decoding cannot continue past these, so javap keeps listing where the decoder stops. */
-const VARIABLE_LENGTH_MNEMONICS: ReadonlySet<string> = new Set([
-  'tableswitch',
-  'lookupswitch',
-  'wide',
-]);
-
 /**
- * One listing row in a form both sides can produce, e.g. `2: if_icmpgt 7`. Operands are only
- * rendered for the MVP subset: outside it the decoder skips the bytes without reading them,
- * and the offsets lining up is precisely what proves it skipped the right number of them.
- *
- * javap prints the absolute branch target, so that is what the delta in `operands` is
- * compared through, and a constant pool index keeps its `#`.
+ * One listing row in a form both sides can produce, e.g. `2: if_icmpgt 7`. Operands are
+ * rendered from the roles in the opcode table, which is what makes them comparable: javap
+ * prints the absolute branch target rather than the encoded delta, keeps the `#` on a constant
+ * pool index and names a `newarray` element type instead of printing its atype byte.
  */
 function renderDecoded(instruction: Instruction): string {
-  const info = lookupOpcode(instruction.opcode);
-  if (info?.kind !== 'supported') {
-    return `${String(instruction.offset)}: ${instruction.mnemonic}`;
-  }
+  const specs = lookupOpcode(instruction.opcode)?.operands ?? [];
+  // JVMS requires a zero byte at the end of `invokeinterface` and `invokedynamic`; javap
+  // prints everything before it and drops that one.
+  const shown = specs.at(-1)?.role === 'mandated-zero' ? specs.slice(0, -1) : specs;
 
-  const operands = info.operands.map((spec, index) => {
+  const operands = shown.map((spec, index) => {
+    const value = instruction.operands[index] ?? 0;
     if (spec.role === 'branch-offset') {
       return String(instruction.branchTarget ?? 0);
     }
-    const value = instruction.operands[index] ?? 0;
     if (spec.role === 'constant-pool-index') {
       return `#${String(value)}`;
     }
-    // javap prints `newarray int`, not the atype byte behind it.
+    // A local slot, an immediate, a dimension count and an argument count all print as
+    // themselves; only `newarray` names its operand instead of numbering it.
     return spec.role === 'array-type' ? (arrayTypeName(value) ?? String(value)) : String(value);
   });
   return `${String(instruction.offset)}: ${instruction.mnemonic} ${operands.join(', ')}`.trimEnd();
 }
 
+/** javap separates the operands of `#33,  2` by two spaces and those of `2, 1` by one. */
 function renderJavap(instruction: JavapInstruction): string {
-  const info = OPCODES_BY_MNEMONIC.get(instruction.mnemonic);
-  const operands = info?.kind === 'supported' ? instruction.operandText : '';
+  const operands = instruction.operandText.replace(/\s+/g, ' ');
   return `${String(instruction.offset)}: ${instruction.mnemonic} ${operands}`.trimEnd();
+}
+
+/** javap prints the default arm last; the decoder puts it first, where the interpreter wants it. */
+function defaultFirst(cases: readonly JavapSwitchCase[]): readonly JavapSwitchCase[] {
+  return [
+    ...cases.filter((arm) => arm.match === undefined),
+    ...cases.filter((arm) => arm.match !== undefined),
+  ];
 }
 
 /** Compares a decoded method with the javap dump of the same method, row for row. */
 function expectJavapParity(code: Uint8Array, method: JavapMethod): void {
-  const stop = method.instructions.findIndex((entry) =>
-    VARIABLE_LENGTH_MNEMONICS.has(entry.mnemonic),
-  );
-  const decodable = stop < 0 ? method.instructions : method.instructions.slice(0, stop);
   const result = disassemble(code);
 
-  expect(result.instructions.map(renderDecoded)).toEqual(decodable.map(renderJavap));
-  expect(result.truncatedAtOffset).toBe(stop < 0 ? undefined : method.instructions[stop]?.offset);
+  expect(result.instructions.map(renderDecoded)).toEqual(method.instructions.map(renderJavap));
+  // javac only emits instructions this decoder knows, so a fixture is never truncated.
+  expect(result.truncatedAtOffset).toBeUndefined();
+
+  for (const [index, decoded] of result.instructions.entries()) {
+    const cases = method.instructions[index]?.switchCases ?? [];
+    expect(decoded.switchTargets ?? []).toEqual(defaultFirst(cases));
+  }
 }
 
 function bytes(...values: number[]): Uint8Array {
@@ -107,15 +111,6 @@ function bytes(...values: number[]): Uint8Array {
 
 function mnemonicsOf(code: Uint8Array): readonly string[] {
   return disassemble(code).instructions.map((instruction) => instruction.mnemonic);
-}
-
-/** End offset of a decoded instruction; only fixed-length opcodes ever reach the listing. */
-function endOffsetOf(instruction: Instruction): number {
-  const info = lookupOpcode(instruction.opcode);
-  if (info === undefined || info.kind === 'variable-length' || info.kind === 'reserved') {
-    throw new Error(`instruction 0x${instruction.opcode.toString(16)} should not be decodable`);
-  }
-  return instruction.offset + 1 + info.operandBytes;
 }
 
 describe('disassemble — javap parity on Factorial.class', () => {
@@ -194,70 +189,69 @@ describe('disassemble — javap parity on OpcodeZoo.class', () => {
     expectJavapParity(codeIn(OPCODE_ZOO_CLASS, methodName), javapMethod(dump, signature));
   });
 
-  it('skips the operands of instructions outside the subset by every width in the table', () => {
-    const mnemonics = new Set<string>();
-    const widths = new Set<number>();
+  it('decodes the operands of every instruction, in or out of the executable subset', () => {
+    const withOperands = new Map<string, readonly number[]>();
 
     for (const [methodName] of METHODS) {
       for (const instruction of disassemble(codeIn(OPCODE_ZOO_CLASS, methodName)).instructions) {
-        const info = lookupOpcode(instruction.opcode);
-        if (info?.kind === 'unsupported') {
-          mnemonics.add(info.mnemonic);
-          widths.add(info.operandBytes);
-          expect(instruction.unsupported).toBe(true);
-          expect(instruction.operands).toEqual([]);
+        if (instruction.operands.length > 0) {
+          withOperands.set(instruction.mnemonic, instruction.operands);
         }
       }
     }
 
-    // 1 byte (ldc) through 4 (invokeinterface, invokedynamic), and the operandless ones.
-    expect([...widths].sort()).toEqual([0, 1, 2, 3, 4]);
-    expect([...mnemonics].sort()).toEqual(
-      expect.arrayContaining([
-        'anewarray',
-        'checkcast',
-        'getstatic',
-        'instanceof',
-        'invokedynamic',
-        'invokeinterface',
-        'invokespecial',
-        'invokevirtual',
-        'ldc',
-        'ldc2_w',
-        'multianewarray',
-        'new',
-      ]),
-    );
+    // The instructions the decoder used to list bare, now carrying their real pool indices.
+    expect(withOperands.get('invokespecial')).toEqual([32]);
+    expect(withOperands.get('ldc2_w')).toEqual([8]);
+    expect(withOperands.get('anewarray')).toEqual([12]);
+    expect(withOperands.get('checkcast')).toEqual([12]);
+    expect(withOperands.get('instanceof')).toEqual([12]);
+    // Both operands of the three-byte and four-byte forms, mandated zero byte included.
+    expect(withOperands.get('multianewarray')).toEqual([10, 2]);
+    expect(withOperands.get('invokeinterface')).toEqual([39, 1, 0]);
+    expect(withOperands.get('invokedynamic')).toEqual([43, 0, 0]);
   });
 
-  it('stops at the switches, whose length javap can print but the decoder cannot compute', () => {
-    // Both switches sit at offset 1, right behind the `iload_0` that pushes the selector.
-    for (const methodName of ['table', 'lookup']) {
-      const result = disassemble(codeIn(OPCODE_ZOO_CLASS, methodName));
+  it('decodes both switches, arms and all, instead of stopping at them', () => {
+    const table = disassemble(codeIn(OPCODE_ZOO_CLASS, 'table'));
+    const lookup = disassemble(codeIn(OPCODE_ZOO_CLASS, 'lookup'));
 
-      expect(result.instructions.map((instruction) => instruction.mnemonic)).toEqual(['iload_0']);
-      expect(result.truncatedAtOffset).toBe(1);
-    }
+    // Both switches sit at offset 1, right behind the `iload_0` that pushes the selector.
+    expect(table.instructions[1]?.switchTargets).toEqual([
+      { match: undefined, target: 37 },
+      { match: 0, target: 28 },
+      { match: 1, target: 31 },
+      { match: 2, target: 34 },
+    ]);
+    expect(lookup.instructions[1]?.switchTargets).toEqual([
+      { match: undefined, target: 42 },
+      { match: 1, target: 36 },
+      { match: 500, target: 38 },
+      { match: 100_000, target: 40 },
+    ]);
+    expect(table.truncatedAtOffset).toBeUndefined();
+    expect(lookup.truncatedAtOffset).toBeUndefined();
   });
 
   it('marks only the instructions the interpreter can run as supported', () => {
     const supported = new Set<string>();
+    const unsupported = new Set<string>();
 
     for (const [methodName] of METHODS) {
       for (const instruction of disassemble(codeIn(OPCODE_ZOO_CLASS, methodName)).instructions) {
-        if (instruction.unsupported === undefined) {
-          supported.add(instruction.mnemonic);
-        }
+        (instruction.unsupported === undefined ? supported : unsupported).add(instruction.mnemonic);
       }
     }
 
-    // The switch arms are in the subset too, but they sit behind a switch: never decoded.
+    // Every switch arm is reachable now, so the arms of `table` and `lookup` are listed too.
     expect([...supported].sort()).toEqual([
       'aload_0',
       'aload_1',
       'arraylength',
       'astore_1',
+      'bipush',
       'dup',
+      'getstatic',
       'iadd',
       'iaload',
       'iastore',
@@ -265,12 +259,55 @@ describe('disassemble — javap parity on OpcodeZoo.class', () => {
       'iconst_1',
       'iconst_2',
       'iconst_3',
+      'iconst_m1',
       'ifeq',
       'iload_0',
+      'invokevirtual',
       'ireturn',
+      'ldc',
+      'lookupswitch',
       'newarray',
       'pop',
       'return',
+      'tableswitch',
+    ]);
+    expect([...unsupported].sort()).toEqual([
+      'aastore',
+      'anewarray',
+      'areturn',
+      'checkcast',
+      'dreturn',
+      'instanceof',
+      'invokedynamic',
+      'invokeinterface',
+      'invokespecial',
+      'ldc2_w',
+      'multianewarray',
+      'new',
+    ]);
+  });
+});
+
+describe('disassemble — javap parity on WideOps.class', () => {
+  const dump = readJavap(WIDE_OPS_JAVAP);
+
+  it.each([
+    ['far', 'static int far(int)'],
+    ['main', 'public static void main(java.lang.String[])'],
+  ])('reproduces the javap listing of %s', (methodName, signature) => {
+    expectJavapParity(codeIn(WIDE_OPS_CLASS, methodName), javapMethod(dump, signature));
+  });
+
+  it('folds the wide prefix into the instruction it widens, as javap does', () => {
+    const instructions = disassemble(codeIn(WIDE_OPS_CLASS, 'far')).instructions;
+
+    // One row per wide form, at the offset of the 0xc4 byte, carrying the widened operands
+    // and the opcode of the instruction that was widened — 0x36 istore, 0x84 iinc, 0x15 iload.
+    expect(instructions.slice(3)).toEqual([
+      { offset: 3, opcode: 0x36, mnemonic: 'istore_w', operands: [257] },
+      { offset: 7, opcode: 0x84, mnemonic: 'iinc_w', operands: [257, 200] },
+      { offset: 13, opcode: 0x15, mnemonic: 'iload_w', operands: [257] },
+      { offset: 17, opcode: 0xac, mnemonic: 'ireturn', operands: [] },
     ]);
   });
 });
@@ -301,6 +338,9 @@ describe('disassemble — operand signedness', () => {
     expect(disassemble(bytes(0x15, 0xff)).instructions[0]?.operands).toEqual([255]);
     expect(disassemble(bytes(0x36, 0x80)).instructions[0]?.operands).toEqual([128]);
     expect(disassemble(bytes(0xb8, 0xff, 0xfe)).instructions[0]?.operands).toEqual([65534]);
+    // `ldc` addresses the pool with a single unsigned byte, `ldc_w` with two.
+    expect(disassemble(bytes(0x12, 0xff)).instructions[0]?.operands).toEqual([255]);
+    expect(disassemble(bytes(0x13, 0xff, 0xff)).instructions[0]?.operands).toEqual([65535]);
   });
 });
 
@@ -342,6 +382,28 @@ describe('disassemble — branch targets', () => {
     ]);
   });
 
+  it('reads the goto_w and jsr_w deltas as signed four-byte values', () => {
+    // JVMS §6.5 goto_w: the wide jump javac emits for a method body above 32 KiB.
+    expect(disassemble(bytes(0xc8, 0x00, 0x01, 0x00, 0x00)).instructions).toEqual([
+      {
+        offset: 0,
+        opcode: 0xc8,
+        mnemonic: 'goto_w',
+        operands: [65_536],
+        branchTarget: 65_536,
+        unsupported: true,
+      },
+    ]);
+    expect(disassemble(bytes(0x00, 0xc9, 0xff, 0xff, 0xff, 0xff)).instructions[1]).toEqual({
+      offset: 1,
+      opcode: 0xc9,
+      mnemonic: 'jsr_w',
+      operands: [-1],
+      branchTarget: 0,
+      unsupported: true,
+    });
+  });
+
   it('leaves branchTarget unset for non-branching instructions', () => {
     for (const instruction of disassemble(codeOf('main')).instructions) {
       expect(instruction.branchTarget).toBeUndefined();
@@ -349,15 +411,16 @@ describe('disassemble — branch targets', () => {
   });
 });
 
-describe('disassemble — unsupported instructions', () => {
-  it('lists a fixed-length unsupported opcode and keeps decoding after its operands', () => {
-    // iconst_1; invokevirtual #5; iadd
-    const result = disassemble(bytes(0x04, 0xb6, 0x00, 0x05, 0x60));
+describe('disassemble — instructions outside the executable subset', () => {
+  it('decodes an unsupported opcode in full and keeps decoding after its operands', () => {
+    // iconst_1; invokevirtual #5; new #7; iadd
+    const result = disassemble(bytes(0x04, 0xb6, 0x00, 0x05, 0xbb, 0x00, 0x07, 0x60));
 
     expect(result.instructions).toEqual([
       { offset: 0, opcode: 0x04, mnemonic: 'iconst_1', operands: [] },
-      { offset: 1, opcode: 0xb6, mnemonic: 'invokevirtual', operands: [], unsupported: true },
-      { offset: 4, opcode: 0x60, mnemonic: 'iadd', operands: [] },
+      { offset: 1, opcode: 0xb6, mnemonic: 'invokevirtual', operands: [5] },
+      { offset: 4, opcode: 0xbb, mnemonic: 'new', operands: [7], unsupported: true },
+      { offset: 7, opcode: 0x60, mnemonic: 'iadd', operands: [] },
     ]);
     expect(result.truncatedAtOffset).toBeUndefined();
   });
@@ -372,32 +435,110 @@ describe('disassemble — unsupported instructions', () => {
   });
 
   it('marks only out-of-subset opcodes as unsupported', () => {
-    const result = disassemble(bytes(0x04, 0xb6, 0x00, 0x05, 0x60));
+    // athrow and monitorenter are decodable and will never be runnable here.
+    const result = disassemble(bytes(0x04, 0xbf, 0xc2, 0x60));
 
     expect(result.instructions.map((instruction) => instruction.unsupported)).toEqual([
       undefined,
+      true,
       true,
       undefined,
     ]);
   });
 });
 
-describe('disassemble — stopping conditions', () => {
-  it('stops at tableswitch, whose length depends on padding and operands', () => {
-    const result = disassemble(bytes(0x04, 0xaa, 0x00, 0x00, 0x00, 0x08, 0x60));
+describe('disassemble — the variable-length instructions', () => {
+  /** `code[]` where a tableswitch starts at `offset`, so the padding varies with it. */
+  function tableSwitchAt(offset: number): Uint8Array {
+    const code = [
+      ...new Array<number>(offset).fill(0x00), // nop padding in front of the switch
+      0xaa,
+    ];
+    while (code.length % 4 !== 0) {
+      code.push(0x00); // JVMS §6.5: 0-3 pad bytes, counted from the start of code[]
+    }
+    // default = +40, low = 1, high = 2, targets +20 and +30
+    code.push(0, 0, 0, 40, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 20, 0, 0, 0, 30);
+    return Uint8Array.from(code);
+  }
+
+  it.each([0, 1, 2, 3])('skips the padding of a tableswitch at offset %i', (offset) => {
+    const result = disassemble(tableSwitchAt(offset));
+    const decoded = result.instructions.at(-1);
+
+    expect(decoded?.mnemonic).toBe('tableswitch');
+    expect(decoded?.switchTargets).toEqual([
+      { match: undefined, target: offset + 40 },
+      { match: 1, target: offset + 20 },
+      { match: 2, target: offset + 30 },
+    ]);
+    expect(result.truncatedAtOffset).toBeUndefined();
+  });
+
+  it('decodes a lookupswitch with no arms at all', () => {
+    // JVMS §6.5 lookupswitch: npairs may be zero, which javac emits for `switch (x) {}`.
+    // Layout: opcode, 3 pad bytes, default = +9, npairs = 0.
+    const result = disassemble(bytes(0xab, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 0));
+
+    expect(result.instructions[0]?.switchTargets).toEqual([{ match: undefined, target: 9 }]);
+    expect(result.truncatedAtOffset).toBeUndefined();
+  });
+
+  it('stops at a switch whose table does not fit in code[]', () => {
+    // A tableswitch claiming 1000 arms in sixteen bytes is corruption, not a long switch.
+    expect(
+      disassemble(bytes(0xaa, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 1, 0, 0, 3, 0xe8)).truncatedAtOffset,
+    ).toBe(0);
+    // high < low: JVMS requires low <= high, so the arm count would be negative.
+    expect(
+      disassemble(bytes(0xaa, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 1)).truncatedAtOffset,
+    ).toBe(0);
+    // A negative npairs is the same corruption in the other switch.
+    expect(
+      disassemble(bytes(0xab, 0, 0, 0, 0, 0, 0, 4, 0xff, 0xff, 0xff, 0xff)).truncatedAtOffset,
+    ).toBe(0);
+    // Not even the fixed head of the instruction fits.
+    expect(disassemble(bytes(0x00, 0xaa, 0x00, 0x00)).truncatedAtOffset).toBe(1);
+    expect(disassemble(bytes(0xaa, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0)).truncatedAtOffset).toBe(0);
+  });
+
+  /** The `wide` prefix in front of the instruction it widens (JVMS §6.5 wide). */
+  function widened(opcode: number, ...operands: number[]): readonly number[] {
+    return [0xc4, opcode, ...operands];
+  }
+
+  it('decodes every instruction the wide prefix may carry', () => {
+    const result = disassemble(
+      bytes(
+        ...widened(0x15, 0x01, 0x2c), //             wide iload 300
+        ...widened(0x3a, 0x01, 0x90), //             wide astore 400
+        ...widened(0x84, 0x01, 0x2c, 0xff, 0xff), // wide iinc 300, -1
+        ...widened(0xa9, 0x00, 0x04), //             wide ret 4
+      ),
+    );
 
     expect(result.instructions).toEqual([
-      { offset: 0, opcode: 0x04, mnemonic: 'iconst_1', operands: [] },
+      { offset: 0, opcode: 0x15, mnemonic: 'iload_w', operands: [300] },
+      { offset: 4, opcode: 0x3a, mnemonic: 'astore_w', operands: [400] },
+      { offset: 8, opcode: 0x84, mnemonic: 'iinc_w', operands: [300, -1] },
+      // `ret` belongs to the abandoned jsr/ret pair, so its wide form is listed, not runnable.
+      { offset: 14, opcode: 0xa9, mnemonic: 'ret_w', operands: [4], unsupported: true },
     ]);
-    expect(result.truncatedAtOffset).toBe(1);
+    expect(result.truncatedAtOffset).toBeUndefined();
   });
 
-  it('stops at lookupswitch and at wide', () => {
-    expect(disassemble(bytes(0x00, 0xab, 0x00, 0x00)).truncatedAtOffset).toBe(1);
-    expect(disassemble(bytes(0x00, 0xc4, 0x15, 0x01, 0x00)).truncatedAtOffset).toBe(1);
-    expect(disassemble(bytes(0x00, 0xc4, 0x15, 0x01, 0x00)).instructions).toHaveLength(1);
+  it('stops at a wide prefix on an instruction it cannot widen', () => {
+    // `wide iadd` is not an instruction: JVMS lists the twelve opcodes wide may precede.
+    expect(disassemble(bytes(0x00, ...widened(0x60), 0x00)).truncatedAtOffset).toBe(1);
+    // A wide prefix as the last byte of the method has nothing to widen either.
+    expect(disassemble(bytes(0x00, 0xc4)).truncatedAtOffset).toBe(1);
+    // The widened operands themselves can run past the end.
+    expect(disassemble(bytes(...widened(0x15, 0x01))).truncatedAtOffset).toBe(0);
+    expect(disassemble(bytes(...widened(0x84, 0x01, 0x2c, 0xff))).truncatedAtOffset).toBe(0);
   });
+});
 
+describe('disassemble — stopping conditions', () => {
   it('stops at a reserved opcode', () => {
     for (const reserved of [0xca, 0xfe, 0xff]) {
       const result = disassemble(bytes(0x00, reserved, 0x00));
@@ -414,7 +555,7 @@ describe('disassemble — stopping conditions', () => {
     expect(result.truncatedAtOffset).toBe(1);
   });
 
-  it('stops cleanly when a supported operand runs past the end of code[]', () => {
+  it('stops cleanly when an operand runs past the end of code[]', () => {
     expect(disassemble(bytes(0x10))).toEqual({
       instructions: [],
       indexByOffset: new Map(),
@@ -423,13 +564,9 @@ describe('disassemble — stopping conditions', () => {
     expect(disassemble(bytes(0x04, 0x11, 0x00)).truncatedAtOffset).toBe(1);
     expect(disassemble(bytes(0x04, 0x84, 0x01)).truncatedAtOffset).toBe(1);
     expect(disassemble(bytes(0xa7, 0x00)).instructions).toEqual([]);
-  });
-
-  it('stops cleanly when an unsupported operand runs past the end of code[]', () => {
-    const result = disassemble(bytes(0x60, 0xb6, 0x00));
-
-    expect(result.instructions).toHaveLength(1);
-    expect(result.truncatedAtOffset).toBe(1);
+    // The same for an instruction outside the executable subset, and for a four-byte operand.
+    expect(disassemble(bytes(0x60, 0xb7, 0x00)).truncatedAtOffset).toBe(1);
+    expect(disassemble(bytes(0xc8, 0x00, 0x00, 0x01)).truncatedAtOffset).toBe(0);
   });
 
   it('returns an empty, untruncated listing for empty code[]', () => {
@@ -452,8 +589,13 @@ describe('disassemble — stopping conditions', () => {
 });
 
 describe('disassemble — properties on arbitrary input', () => {
-  const supportedOpcodes: readonly SupportedOpcode[] = [...OPCODES.values()].filter(
-    (info) => info.kind === 'supported',
+  /** Fixed-length opcodes only: a switch is sized by its own bytes, not by the table. */
+  const fixedLengthOpcodes: readonly (SupportedOpcode & { operandBytes: number })[] = [
+    ...OPCODES.values(),
+  ].flatMap((info) =>
+    info.kind === 'supported' && info.operandBytes !== undefined
+      ? [{ ...info, operandBytes: info.operandBytes }]
+      : [],
   );
 
   /** Bytes biased towards real opcodes, so the generator reaches deeper listings. */
@@ -466,21 +608,21 @@ describe('disassemble — properties on arbitrary input', () => {
     .array(byteArbitrary, { maxLength: 64 })
     .map((values) => Uint8Array.from(values));
 
-  it('never throws and never reports an instruction past the end of code[]', () => {
+  it('never throws and covers code[] from the first byte without a gap', () => {
     fc.assert(
       fc.property(codeArbitrary, (code) => {
         const result = disassemble(code);
-        let previousEnd = 0;
+        const end = result.truncatedAtOffset ?? code.length;
 
+        let previousOffset = -1;
         for (const instruction of result.instructions) {
-          expect(instruction.offset).toBe(previousEnd);
-          expect(endOffsetOf(instruction)).toBeLessThanOrEqual(code.length);
-          previousEnd = endOffsetOf(instruction);
+          expect(instruction.offset).toBeGreaterThan(previousOffset);
+          expect(instruction.offset).toBeLessThan(end);
+          previousOffset = instruction.offset;
         }
-
-        // Every byte is accounted for: either the listing covers code[] completely,
-        // or it ends exactly where decoding was abandoned.
-        expect(result.truncatedAtOffset ?? code.length).toBe(previousEnd);
+        // Either the listing starts at byte 0 or nothing at all was decodable.
+        expect(result.instructions[0]?.offset ?? 0).toBe(0);
+        expect(end).toBeLessThanOrEqual(code.length);
       }),
     );
   });
@@ -515,10 +657,23 @@ describe('disassemble — properties on arbitrary input', () => {
     );
   });
 
-  it('decodes any concatenation of well-formed supported instructions completely', () => {
+  it('gives every switch a default arm, and only the default arm no match value', () => {
+    fc.assert(
+      fc.property(codeArbitrary, (code) => {
+        for (const { switchTargets } of disassemble(code).instructions) {
+          if (switchTargets !== undefined) {
+            expect(switchTargets[0]?.match).toBeUndefined();
+            expect(switchTargets.slice(1).every((arm) => arm.match !== undefined)).toBe(true);
+          }
+        }
+      }),
+    );
+  });
+
+  it('decodes any concatenation of well-formed fixed-length instructions completely', () => {
     const programArbitrary = fc
       .array(
-        fc.constantFrom(...supportedOpcodes).chain((info) =>
+        fc.constantFrom(...fixedLengthOpcodes).chain((info) =>
           fc
             .array(fc.integer({ min: 0, max: 255 }), {
               minLength: info.operandBytes,

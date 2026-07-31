@@ -1,7 +1,20 @@
 import type { Instruction } from '../disassembler';
+import type { ConsoleOutput } from './console';
+import type { ExternalPool } from './externals';
 import { localNamesAt, type Frame } from './frame';
 import type { Heap } from './heap';
 import type { Snapshot, StackFrame } from './types';
+
+/**
+ * Everything a snapshot copies that outlives a single frame: the heap, what has been printed,
+ * and the external objects the run has named. All three are shared between snapshots rather
+ * than copied per step — see `Heap.freeze`.
+ */
+export interface MachineState {
+  readonly heap: Heap;
+  readonly console: ConsoleOutput;
+  readonly externals: ExternalPool;
+}
 
 /**
  * Turns the mutable machine state into the frozen shapes the player replays.
@@ -22,7 +35,7 @@ export class SnapshotWriter {
   next(
     step: number,
     callStack: readonly Frame[],
-    heap: Heap,
+    state: MachineState,
     currentInstruction: Instruction,
     sourceLine: number | undefined,
   ): Snapshot {
@@ -33,8 +46,7 @@ export class SnapshotWriter {
     return Object.freeze({
       step,
       callStack: Object.freeze(frames),
-      // The heap shares the same way the call stack does — see `Heap.freeze`.
-      heap: heap.freeze(),
+      ...machineView(state),
       currentInstruction: freezeInstruction(currentInstruction),
       ...(sourceLine === undefined ? {} : { sourceLine }),
     });
@@ -58,9 +70,19 @@ interface EmittedFrame {
   readonly stackFrame: StackFrame;
 }
 
-/** Closing state after the entry frame returns: nothing left to execute, the heap as it ended. */
-export function createTerminalSnapshot(step: number, heap: Heap): Snapshot {
-  return Object.freeze({ step, callStack: Object.freeze([]), heap: heap.freeze() });
+/** Closing state after the entry frame returns: nothing left to execute, the run as it ended. */
+export function createTerminalSnapshot(step: number, state: MachineState): Snapshot {
+  return Object.freeze({ step, callStack: Object.freeze([]), ...machineView(state) });
+}
+
+/** The three shared views, taken together because every snapshot carries all of them. */
+function machineView(state: MachineState) {
+  return {
+    // Each of these hands back the array it handed back last time unless it changed.
+    heap: state.heap.freeze(),
+    consoleOutput: state.console.freeze(),
+    externals: state.externals.freeze(),
+  };
 }
 
 /** JVMS §4.7.12: the current line is the entry with the largest `startPc <= pc`. */

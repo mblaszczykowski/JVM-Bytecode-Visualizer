@@ -7,6 +7,7 @@ import { syntheticClass } from '../core/interpreter/__fixtures__/synthetic-class
 import { readExampleBytes, readExampleText } from './__fixtures__/example-files';
 import {
   constantPoolComments,
+  constantPoolIndexOf,
   describeNextInstruction,
   describeOperandRoles,
   explainMnemonic,
@@ -162,15 +163,15 @@ describe('next instruction summary', () => {
   });
 
   it('warns that an unsupported instruction ends the run', () => {
-    // invokevirtual #1 — decoded, listed, never executable.
+    // invokespecial #1 — decoded, listed, outside the executable subset.
     const program = buildProgram({
       origin: { kind: 'upload', fileName: 'Unsupported.class' },
       classFile: syntheticClass({
-        methods: [{ name: 'main', descriptor: '([Ljava/lang/String;)V', code: [0xb6, 0x00, 0x01] }],
+        methods: [{ name: 'main', descriptor: '([Ljava/lang/String;)V', code: [0xb7, 0x00, 0x01] }],
       }),
     });
 
-    const summary = summaryOf(program, 'invokevirtual');
+    const summary = summaryOf(program, 'invokespecial');
 
     expect(summary.effects).toEqual([]);
     expect(summary.explanation).toContain('outside the supported instruction subset');
@@ -418,6 +419,23 @@ describe('constant pool', () => {
     const program = factorialProgram();
 
     expect(resolveConstant(program.classFile.constantPool, 9999)).toBeUndefined();
+  });
+
+  it('names the pool entry of an instruction the interpreter cannot run', () => {
+    // Reading a class file is not executing it: `getfield` is outside the executable subset,
+    // and its listing still has to resolve `#7` the way javap does.
+    expect(
+      constantPoolIndexOf({ offset: 0, opcode: 0xb4, mnemonic: 'getfield', operands: [7] }),
+    ).toBe(7);
+    expect(constantPoolIndexOf({ offset: 0, opcode: 0xbb, mnemonic: 'new', operands: [2] })).toBe(
+      2,
+    );
+  });
+
+  it('has no pool entry for an instruction whose operand is not one', () => {
+    expect(
+      constantPoolIndexOf({ offset: 0, opcode: 0x15, mnemonic: 'iload', operands: [3] }),
+    ).toBeUndefined();
   });
 });
 

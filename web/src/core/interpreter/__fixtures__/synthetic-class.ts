@@ -33,13 +33,35 @@ export class ConstantPoolBuilder {
   }
 
   methodref(className: string, name: string, descriptor: string): number {
+    return this.memberref(ConstantTag.Methodref, className, name, descriptor);
+  }
+
+  fieldref(className: string, name: string, descriptor: string): number {
+    return this.memberref(ConstantTag.Fieldref, className, name, descriptor);
+  }
+
+  integer(value: number): number {
+    return this.raw({ tag: ConstantTag.Integer, value });
+  }
+
+  stringEntry(value: string): number {
+    return this.raw({ tag: ConstantTag.String, stringIndex: this.utf8(value) });
+  }
+
+  /** JVMS §4.4.2: a Methodref and a Fieldref differ only in their tag. */
+  private memberref(
+    tag: typeof ConstantTag.Methodref | typeof ConstantTag.Fieldref,
+    className: string,
+    name: string,
+    descriptor: string,
+  ): number {
     const classIndex = this.classEntry(className);
     const nameAndTypeIndex = this.raw({
       tag: ConstantTag.NameAndType,
       nameIndex: this.utf8(name),
       descriptorIndex: this.utf8(descriptor),
     });
-    return this.raw({ tag: ConstantTag.Methodref, classIndex, nameAndTypeIndex });
+    return this.raw({ tag, classIndex, nameAndTypeIndex });
   }
 
   /** Escape hatch for pools that are deliberately inconsistent. */

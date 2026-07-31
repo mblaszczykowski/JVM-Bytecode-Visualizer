@@ -78,6 +78,90 @@ describe('execute — differential against the real JVM', () => {
 });
 
 /**
+ * The other half of the differential suite: programs compiled with `javac -g` and run on the
+ * real `java`, with the whole of their standard output committed next to them. Every value a
+ * program computes is printed, so comparing the console line for line pins the arithmetic, the
+ * switch dispatch, the `wide` forms and the printing itself against the reference
+ * implementation — nothing here is an expectation anyone wrote by hand.
+ *
+ * `WideOps` lives with the disassembler fixtures because `javap` parity is what it was built
+ * for; it is int-only and runnable, so it doubles as the differential case for `wide`.
+ */
+const PROGRAMS = new URL('./__fixtures__/programs/', import.meta.url);
+const DISASSEMBLER_FIXTURES = new URL('../disassembler/__fixtures__/', import.meta.url);
+
+interface DifferentialProgram {
+  readonly name: string;
+  readonly directory: URL;
+  /** What the program exercises, so a failure names the feature and not just the file. */
+  readonly covers: string;
+}
+
+const BITS: DifferentialProgram = {
+  name: 'Bits',
+  directory: PROGRAMS,
+  covers: 'shifts, bitwise logic and narrowing casts',
+};
+
+const PROGRAMS_UNDER_TEST: readonly DifferentialProgram[] = [
+  BITS,
+  { name: 'Switches', directory: PROGRAMS, covers: 'tableswitch and lookupswitch' },
+  { name: 'MathOps', directory: PROGRAMS, covers: 'the java.lang.Math intrinsics' },
+  { name: 'Console', directory: PROGRAMS, covers: 'every println and print overload' },
+  { name: 'WideOps', directory: DISASSEMBLER_FIXTURES, covers: 'the wide prefix' },
+];
+
+/** Lines of a text file, without the empty string a trailing newline leaves behind. */
+function expectedOutput({ name, directory }: DifferentialProgram): readonly string[] {
+  const lines = readFileSync(new URL(`${name}.stdout.txt`, directory), 'utf8').split('\n');
+  return lines.at(-1) === '' ? lines.slice(0, -1) : lines;
+}
+
+function runProgram({ name, directory }: DifferentialProgram): readonly Snapshot[] {
+  const bytes = new Uint8Array(readFileSync(new URL(`${name}.class`, directory)));
+  // These programs print hundreds of lines, which takes more steps than the UI default.
+  return expectCompleted(execute(parseClassFile(bytes.buffer), { maxSteps: 200_000 })).snapshots;
+}
+
+describe('execute — console output, differential against the real JVM', () => {
+  it.each(PROGRAMS_UNDER_TEST)('$name prints what java printed ($covers)', (program) => {
+    const snapshots = runProgram(program);
+
+    expect(snapshots.at(-1)?.consoleOutput).toEqual(expectedOutput(program));
+  });
+
+  it.each(PROGRAMS_UNDER_TEST)('$name only ever appends to the console', (program) => {
+    const snapshots = runProgram(program);
+    const final = expectedOutput(program);
+
+    for (const snapshot of snapshots) {
+      const output = snapshot.consoleOutput ?? [];
+      // Whatever has been printed by a given step is what the program ends up printing, cut
+      // short: the completed lines are a prefix of the final ones, and the line still open is
+      // a prefix of the line it will become.
+      const completed = output.slice(0, -1);
+      const open = output.at(-1);
+
+      expect(final.slice(0, completed.length)).toEqual([...completed]);
+      if (open !== undefined) {
+        expect(final[output.length - 1]?.startsWith(open)).toBe(true);
+      }
+    }
+  });
+
+  it('hands the same console array to every step that prints nothing', () => {
+    const snapshots = runProgram(BITS);
+    const distinct = new Set(snapshots.map((snapshot) => snapshot.consoleOutput));
+    const lines = snapshots.at(-1)?.consoleOutput?.length ?? 0;
+
+    // One array per write, plus the empty one every step before the first of them shares —
+    // not one array per step, which is what copying the output on every step would cost.
+    expect(distinct.size).toBeLessThanOrEqual(lines + 2);
+    expect(snapshots.length).toBeGreaterThan(distinct.size * 5);
+  });
+});
+
+/**
  * `expectedResult` only covers `a[0]`, and a[0] alone would also be 1 if the sort had stopped
  * after moving the smallest value to the front. The array on the heap is the rest of the
  * proof: same five values, all of them in order.

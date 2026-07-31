@@ -103,11 +103,16 @@ or a response from the compile service:
    `NestMembers` and friends on every class.
 2. **Disassemble.** `disassemble(code)` produces `Instruction[]` — offset, opcode, mnemonic, decoded
    operands and, for branches, an absolute `branchTarget` resolved from the signed delta relative to
-   the _opcode's_ offset. Opcodes outside the executable subset still decode with their real
-   mnemonic and are flagged `unsupported`, so an error message can say `invokevirtual` rather than
-   `0xb6`. Variable-length instructions (`wide`, `tableswitch`, `lookupswitch`) cannot be skipped
-   safely without implementing their padding rules, so decoding stops there and the rest of the
-   method is reported through `truncatedAtOffset` and rendered as a "not decoded" row.
+   the _opcode's_ offset. Decoding is deliberately wider than execution: every assigned opcode below
+   `0xca` carries its real operand specification, so an opcode outside the executable subset still
+   decodes with its mnemonic, its operands and its constant pool references, and is flagged
+   `unsupported` only to say that running it would stop the program. That is what lets a class this
+   machine will never execute still read like `javap -c`. The two switches arrive with their jump
+   tables in `Instruction.switchTargets`, and `wide` is folded into the instruction it widens rather
+   than listed separately — the representation javap prints. `truncatedAtOffset` is left for bytes
+   that genuinely have no instruction boundary after them (a reserved or unassigned opcode, an
+   operand cut off by the end of `code[]`, a switch table that does not fit), and is rendered as a
+   "not decoded" row.
 3. **Execute.** `execute(classFile)` starts from a static entry method — `main([Ljava/lang/String;)V`
    by default — and runs the fetch-decode-execute loop, pushing a snapshot before each instruction.
    Each method is disassembled once per run and cached in a `PreparedMethod`, since loops and

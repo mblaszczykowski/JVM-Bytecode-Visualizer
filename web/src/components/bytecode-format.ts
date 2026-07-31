@@ -29,6 +29,12 @@ export function hasConstantPoolOperand(instruction: Instruction): boolean {
   return CONSTANT_POOL_OPERAND_MNEMONICS.has(instruction.mnemonic);
 }
 
+/** Pool index this instruction names, if any — what a `#n` in its row leads to. */
+export function constantIndexOf(instruction: Instruction): number | undefined {
+  return operandTokens(instruction).find((token) => token.constantIndex !== undefined)
+    ?.constantIndex;
+}
+
 /** Operand text for one instruction row; empty when the instruction has no operands. */
 export function formatOperands(instruction: Instruction): string {
   return operandTokens(instruction)
@@ -44,6 +50,11 @@ export interface OperandToken {
    * a local slot or an immediate is just a number and stays neutral.
    */
   readonly isReference: boolean;
+  /**
+   * The pool index behind a `#n` token, so the row can be followed into the constant pool
+   * table. Absent on every other operand, including branch targets.
+   */
+  readonly constantIndex?: number;
 }
 
 /**
@@ -56,16 +67,16 @@ export function operandTokens(instruction: Instruction): readonly OperandToken[]
     return [{ text: String(instruction.branchTarget), isReference: true }];
   }
 
-  const info = lookupOpcode(instruction.opcode);
-  const specs = info?.kind === 'supported' ? info.operands : undefined;
-  // Outside the supported subset the operand roles are unknown; javap's `#n` shorthand for
-  // the pool references it does recognise is still the more readable rendering.
+  // Every assigned opcode carries its operand roles, executable or not, so a `#n` is rendered
+  // from the table rather than from a guess about the mnemonic. The mnemonic set below is the
+  // fallback for a byte the table does not know at all.
+  const specs = lookupOpcode(instruction.opcode)?.operands;
   const poolIndex = specs === undefined && hasConstantPoolOperand(instruction);
 
   return instruction.operands.map((operand, position) => {
     const role = specs?.[position]?.role;
     if (role === 'constant-pool-index' || poolIndex) {
-      return { text: `#${String(operand)}`, isReference: true };
+      return { text: `#${String(operand)}`, isReference: true, constantIndex: operand };
     }
     return { text: String(operand), isReference: role === 'branch-offset' };
   });

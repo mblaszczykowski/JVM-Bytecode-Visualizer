@@ -109,7 +109,13 @@ describe('execute — Factorial fixture', () => {
     const snapshots = runFactorial();
     const terminal = snapshots.at(-1);
 
-    expect(terminal).toEqual({ step: snapshots.length - 1, callStack: [], heap: [] });
+    expect(terminal).toEqual({
+      step: snapshots.length - 1,
+      callStack: [],
+      heap: [],
+      consoleOutput: [],
+      externals: [],
+    });
     expect(snapshots.at(-2)?.currentInstruction?.mnemonic).toBe('return');
   });
 
@@ -631,5 +637,186 @@ describe('findEntryMethod', () => {
 
       expect(findEntryMethod(classFile, 'run')?.method.descriptor).toBe(descriptor);
     }
+  });
+});
+
+/** A signed 4-byte value, the unit every operand of a switch table is made of (JVMS §6.5). */
+function i4(value: number): readonly number[] {
+  return [(value >>> 24) & 0xff, (value >>> 16) & 0xff, (value >>> 8) & 0xff, value & 0xff];
+}
+
+/** The three arms every switch below jumps into: `return 1`, `return 2` and `return -1`. */
+const SWITCH_ARMS: readonly number[] = [0x04, 0xac, 0x05, 0xac, 0x02, 0xac];
+
+/**
+ * A `tableswitch`, laid out by hand so its padding is exercised: the selector arrives through
+ * a `bipush`, which puts the opcode at offset 2 and therefore leaves exactly one pad byte
+ * before the 4-byte operands. Every offset below is relative to that opcode byte, and the
+ * three arms start at 24, 26 and 28.
+ */
+function tableSwitchProgram(selector: number, defaultDelta = 26): readonly number[] {
+  return [
+    ...[0x10, selector], // 0: bipush selector
+    ...[0xaa, 0x00], //     2: tableswitch, one pad byte
+    ...i4(defaultDelta), //    default -> 28
+    ...i4(1), //               low = 1
+    ...i4(2), //               high = 2
+    ...i4(22), //              case 1 -> 24
+    ...i4(24), //              case 2 -> 26
+    ...SWITCH_ARMS,
+  ];
+}
+
+/** The same three answers through a `lookupswitch`, whose matches are far enough apart. */
+function lookupSwitchProgram(selector: number): readonly number[] {
+  return [
+    ...[0x10, selector], // 0: bipush selector
+    ...[0xab, 0x00], //     2: lookupswitch, one pad byte
+    ...i4(30), //              default -> 32
+    ...i4(2), //               npairs = 2
+    ...i4(10),
+    ...i4(26), //              case 10 -> 28
+    ...i4(100_000),
+    ...i4(28), //              case 100000 -> 30
+    ...SWITCH_ARMS,
+  ];
+}
+
+describe('execute — switch dispatch', () => {
+  it.each([
+    { selector: 1, answer: 1 },
+    { selector: 2, answer: 2 },
+    { selector: 0, answer: -1 },
+    { selector: 3, answer: -1 },
+    { selector: -1, answer: -1 },
+  ])('tableswitch on $selector answers $answer', ({ selector, answer }) => {
+    expect(evaluate(tableSwitchProgram(selector))).toBe(answer);
+  });
+
+  it.each([
+    { selector: 10, answer: 1 },
+    { selector: 11, answer: -1 },
+    { selector: 0, answer: -1 },
+  ])('lookupswitch on $selector answers $answer', ({ selector, answer }) => {
+    expect(evaluate(lookupSwitchProgram(selector))).toBe(answer);
+  });
+
+  it('consumes the selector, leaving the operand stack as it found it', () => {
+    const classFile = syntheticClass({
+      methods: [{ name: 'main', descriptor: '()I', code: tableSwitchProgram(1) }],
+    });
+    const snapshots = expectCompleted(execute(classFile)).snapshots;
+    const afterDispatch = snapshots[2];
+
+    expect(afterDispatch?.currentInstruction?.mnemonic).toBe('iconst_1');
+    expect(afterDispatch?.callStack[0]?.operandStack).toEqual([]);
+  });
+
+  it('rejects a switch arm that does not point at an instruction (JVMS §4.9.1)', () => {
+    // A default branch into the pad byte of the switch itself is not a jump target.
+    const classFile = syntheticClass({
+      methods: [{ name: 'main', descriptor: '()I', code: tableSwitchProgram(9, 1) }],
+    });
+
+    expect(expectVmError(execute(classFile))).toMatchObject({
+      kind: 'bad-branch-target',
+      mnemonic: 'tableswitch',
+      target: 3,
+    });
+  });
+});
+
+describe('execute — the wide prefix', () => {
+  /** The prefix in front of the instruction it widens; slot 300 is out of reach without it. */
+  function widened(opcode: number, ...operands: number[]): readonly number[] {
+    return [0xc4, opcode, ...operands];
+  }
+
+  it('reads and writes a local above slot 255', () => {
+    const code = [
+      ...[0x10, 7], //                             0: bipush 7
+      ...widened(0x36, 0x01, 0x2c), //             2: wide istore 300
+      ...widened(0x84, 0x01, 0x2c, 0x00, 0x05), // 6: wide iinc 300, 5
+      ...widened(0x15, 0x01, 0x2c), //            12: wide iload 300
+      0xac, //                                    16: ireturn
+    ];
+
+    expect(evaluate(code, 301)).toBe(12);
+  });
+
+  it('widens the iinc constant past the signed byte the narrow form carries', () => {
+    const code = [
+      0x03, //                                     0: iconst_0
+      ...widened(0x36, 0x01, 0x2c), //             1: wide istore 300
+      ...widened(0x84, 0x01, 0x2c, 0xfe, 0xd4), // 5: wide iinc 300, -300
+      ...widened(0x15, 0x01, 0x2c), //            11: wide iload 300
+      0xac,
+    ];
+
+    expect(evaluate(code, 301)).toBe(-300);
+  });
+
+  it('stops on a wide form outside the executable subset, naming it as javap does', () => {
+    // wide lload 300 — decoded and listed, and there are no long values to load.
+    const classFile = syntheticClass({
+      methods: [{ name: 'main', descriptor: '()I', code: [...widened(0x16, 0x01, 0x2c), 0xac] }],
+    });
+
+    expect(expectVmError(execute(classFile))).toMatchObject({
+      kind: 'unsupported-opcode',
+      mnemonic: 'lload_w',
+    });
+  });
+});
+
+describe('execute — the rest of the operand stack instructions', () => {
+  it.each([
+    // iconst_1; iconst_2; <op>; … — each program returns what the reshuffling left on top.
+    { mnemonic: 'pop2', code: [0x04, 0x05, 0x06, 0x58, 0xac], answer: 1 },
+    { mnemonic: 'dup_x1', code: [0x04, 0x05, 0x5a, 0x57, 0x57, 0xac], answer: 2 },
+    { mnemonic: 'dup2', code: [0x04, 0x05, 0x5c, 0x57, 0xac], answer: 1 },
+    { mnemonic: 'dup2_x1', code: [0x04, 0x05, 0x06, 0x5d, 0x57, 0x57, 0x57, 0xac], answer: 3 },
+    { mnemonic: 'swap', code: [0x04, 0x05, 0x5f, 0xac], answer: 1 },
+  ])('$mnemonic leaves $answer on top', ({ code, answer }) => {
+    expect(evaluate(code)).toBe(answer);
+  });
+
+  it('reshuffles whole stacks, not just their top', () => {
+    const classFile = syntheticClass({
+      // iconst_1; iconst_2; iconst_3; dup2_x1; return
+      methods: [{ name: 'main', descriptor: '()V', code: [0x04, 0x05, 0x06, 0x5d, 0xb1] }],
+    });
+    const snapshots = expectCompleted(execute(classFile)).snapshots;
+
+    // `…, 1, 2, 3` becomes `…, 2, 3, 1, 2, 3` (JVMS §6.5 dup2_x1, form 1).
+    expect(snapshots[4]?.callStack[0]?.operandStack).toEqual([2, 3, 1, 2, 3]);
+  });
+
+  it('moves references without turning them into ints', () => {
+    const classFile = syntheticClass({
+      // iconst_1; newarray int; iconst_7; swap; return — the array reference ends up on top
+      methods: [{ name: 'main', descriptor: '()V', code: [0x04, 0xbc, 0x0a, 0x10, 7, 0x5f, 0xb1] }],
+    });
+    const frame = expectCompleted(execute(classFile)).snapshots.at(-2)?.callStack[0];
+
+    expect(frame?.operandKinds).toEqual(['int', 'ref']);
+    expect(frame?.operandStack).toEqual([7, 0]);
+  });
+});
+
+describe('execute — shifts, bitwise logic and narrowing conversions', () => {
+  it.each([
+    // The int32 module is pinned by properties; these check the wiring of each opcode.
+    { mnemonic: 'ishl', code: [0x04, 0x10, 33, 0x78, 0xac], answer: 2 },
+    { mnemonic: 'ishr', code: [0x02, 0x04, 0x7a, 0xac], answer: -1 },
+    { mnemonic: 'iushr', code: [0x02, 0x04, 0x7c, 0xac], answer: 0x7fffffff },
+    { mnemonic: 'iand', code: [0x06, 0x05, 0x7e, 0xac], answer: 2 },
+    { mnemonic: 'ior', code: [0x04, 0x05, 0x80, 0xac], answer: 3 },
+    { mnemonic: 'ixor', code: [0x06, 0x05, 0x82, 0xac], answer: 1 },
+    { mnemonic: 'i2b', code: [0x11, 0x00, 0xff, 0x91, 0xac], answer: -1 },
+    { mnemonic: 'i2c', code: [0x02, 0x92, 0xac], answer: 65_535 },
+    { mnemonic: 'i2s', code: [0x11, 0x80, 0x00, 0x93, 0xac], answer: -32_768 },
+  ])('$mnemonic answers $answer', ({ code, answer }) => {
+    expect(evaluate(code)).toBe(answer);
   });
 });

@@ -122,6 +122,34 @@ export function popAny(frame: Frame): StackValue {
   return { value, kind };
 }
 
+/**
+ * JVMS §6.5 astore: the slot of an `astore` holds a reference or a returnAddress — anything
+ * the verifier does not call an int. A `String` constant and `System.out` are references as
+ * far as the bytecode is concerned, so the check is "not an int" rather than "a heap handle".
+ */
+export function popReference(frame: Frame): StackValue {
+  const popped = popAny(frame);
+  if (popped.kind === 'int') {
+    throw new VmFault({
+      kind: 'invalid-state',
+      message: `expected a reference on the operand stack, found ${KIND_NAMES.int}`,
+    });
+  }
+  return popped;
+}
+
+/** `aload`: the mirror of `popReference` — the slot must hold something that is not an int. */
+export function loadReference(frame: Frame, slot: number): StackValue {
+  const held = readSlot(frame, slot);
+  if (held.kind === 'int') {
+    throw new VmFault({
+      kind: 'invalid-state',
+      message: `local slot ${String(slot)} holds ${KIND_NAMES.int}, not a reference`,
+    });
+  }
+  return held;
+}
+
 export function peekAny(frame: Frame): StackValue {
   const value = frame.operandStack.at(-1);
   const kind = frame.operandKinds.at(-1);
@@ -132,6 +160,18 @@ export function peekAny(frame: Frame): StackValue {
 }
 
 export function loadLocal(frame: Frame, slot: number, expected: ValueKind): number {
+  const held = readSlot(frame, slot);
+  if (held.kind !== expected) {
+    throw new VmFault({
+      kind: 'invalid-state',
+      message: `local slot ${String(slot)} holds ${KIND_NAMES[held.kind]}, not ${KIND_NAMES[expected]}`,
+    });
+  }
+  return held.value;
+}
+
+/** The value in a slot, whatever kind it is — the type check belongs to the caller. */
+function readSlot(frame: Frame, slot: number): StackValue {
   checkSlot(frame, slot);
   const value = frame.locals[slot];
   const kind = frame.localKinds[slot];
@@ -143,13 +183,7 @@ export function loadLocal(frame: Frame, slot: number, expected: ValueKind): numb
       message: `read from uninitialised local slot ${String(slot)}`,
     });
   }
-  if (kind !== expected) {
-    throw new VmFault({
-      kind: 'invalid-state',
-      message: `local slot ${String(slot)} holds ${KIND_NAMES[kind]}, not ${KIND_NAMES[expected]}`,
-    });
-  }
-  return value;
+  return { value, kind };
 }
 
 export function storeLocal(frame: Frame, slot: number, value: number, kind: ValueKind): void {
@@ -162,6 +196,7 @@ export function storeLocal(frame: Frame, slot: number, value: number, kind: Valu
 const KIND_NAMES: Readonly<Record<ValueKind, string>> = {
   int: 'an int',
   ref: 'a reference',
+  external: 'a standard library object',
 };
 
 /**
@@ -223,7 +258,8 @@ function flowOf(
  * JVMS §4.9.1: a branch may only target the first byte of an instruction of the same method.
  * Checked once per method, so a target past the end of `code[]` or in the middle of another
  * instruction's operands is named as such, instead of surfacing later as whatever byte the
- * pc happened to land on.
+ * pc happened to land on. A switch is checked arm by arm, default included — every one of
+ * them is a branch target and any of them can be the corrupt one.
  */
 function checkBranchTargets(
   methodName: string,
@@ -231,12 +267,16 @@ function checkBranchTargets(
   flow: ReadonlyMap<number, FetchedInstruction>,
 ): void {
   for (const instruction of instructions) {
-    const { branchTarget } = instruction;
-    if (branchTarget !== undefined && !flow.has(branchTarget)) {
-      throw new VmFault(
-        { kind: 'bad-branch-target', mnemonic: instruction.mnemonic, target: branchTarget },
-        { offset: instruction.offset, methodName },
-      );
+    const targets =
+      instruction.switchTargets?.map((arm) => arm.target) ??
+      (instruction.branchTarget === undefined ? [] : [instruction.branchTarget]);
+    for (const target of targets) {
+      if (!flow.has(target)) {
+        throw new VmFault(
+          { kind: 'bad-branch-target', mnemonic: instruction.mnemonic, target },
+          { offset: instruction.offset, methodName },
+        );
+      }
     }
   }
 }

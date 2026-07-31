@@ -232,18 +232,18 @@ describe('execute — branch targets', () => {
 
 describe('execute — unsupported instructions', () => {
   it('names the instruction that stopped the run', () => {
-    // invokevirtual #1; return
-    const result = run([0xb6, 0x00, 0x01, 0xb1]);
+    // new #1; return — objects are decoded and listed, and will never be allocated here.
+    const result = run([0xbb, 0x00, 0x01, 0xb1]);
 
     expect(expectVmError(result)).toEqual({
       kind: 'unsupported-opcode',
-      mnemonic: 'invokevirtual',
+      mnemonic: 'new',
       offset: 0,
       methodName: 'main',
     });
     // The snapshot of the offending instruction stays in the history so the UI can point at it.
     expect(result.snapshots.at(-1)?.currentInstruction).toMatchObject({
-      mnemonic: 'invokevirtual',
+      mnemonic: 'new',
       unsupported: true,
     });
   });
@@ -254,9 +254,9 @@ describe('execute — unsupported instructions', () => {
       0xa7,
       0x00,
       0x06, // 1: goto 7
-      0xb6,
+      0xbb,
       0x00,
-      0x01, // 4: invokevirtual #1 — never reached
+      0x01, // 4: new #1 — never reached
       0x3b, //             7: istore_0
       0xb1, //             8: return
     ]);
@@ -503,18 +503,20 @@ describe('execute — invokestatic restrictions', () => {
     );
   }
 
-  it('refuses to call another class', () => {
+  it('refuses to call a class it has no implementation for', () => {
+    // `java.lang.Math` has a handful of recognised methods; `sqrt` is not one of them, and
+    // no class outside the executed one is loaded.
     const error = expectVmError(
-      callTo({ className: 'java/lang/Math', name: 'max', descriptor: '(II)I' }),
+      callTo({ className: 'java/lang/Math', name: 'sqrt', descriptor: '(D)D' }),
     );
 
     expect(error).toEqual({
       kind: 'unsupported-call',
-      target: 'java/lang/Math.max(II)I',
+      target: 'java/lang/Math.sqrt(D)D',
       offset: 0,
       methodName: 'main',
     });
-    expect(formatVmError(error)).toContain('java/lang/Math.max(II)I');
+    expect(formatVmError(error)).toContain('java/lang/Math.sqrt(D)D');
   });
 
   it.each([

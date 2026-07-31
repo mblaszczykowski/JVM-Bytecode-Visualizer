@@ -5,11 +5,16 @@ import { Segment, SegmentedControl } from './ui/SegmentedControl';
 /** `hidden` until a compile backend is configured and reachable. */
 export type CompilerStatus = 'hidden' | 'online' | 'offline';
 
-/** Below 768px the three panels share one cell and this picks which of them holds it. */
-export type PanelName = 'source' | 'bytecode' | 'state';
+/**
+ * Below 768px the panels share one cell and this picks which of them holds it. `source` and
+ * `class` are the two faces of the left column everywhere else, so choosing one here also
+ * chooses which of them that column shows.
+ */
+export type PanelName = 'source' | 'class' | 'bytecode' | 'state';
 
 const PANEL_NAMES: readonly { readonly id: PanelName; readonly label: string }[] = [
   { id: 'source', label: 'Source' },
+  { id: 'class', label: 'Class' },
   { id: 'bytecode', label: 'Bytecode' },
   { id: 'state', label: 'State' },
 ];

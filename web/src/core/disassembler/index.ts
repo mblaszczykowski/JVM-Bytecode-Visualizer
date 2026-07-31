@@ -19,4 +19,4 @@ export {
   type UnsupportedOpcode,
   type VariableLengthOpcode,
 } from './opcodes';
-export type { DisassembledCode, Instruction } from './types';
+export type { DisassembledCode, Instruction, SwitchCase } from './types';

@@ -17,7 +17,9 @@ export type VmFaultDetail =
   | { readonly kind: 'array-index-out-of-bounds'; readonly index: number; readonly length: number }
   | { readonly kind: 'negative-array-size'; readonly size: number }
   | { readonly kind: 'null-reference' }
-  | { readonly kind: 'unsupported-array-type'; readonly typeName: string };
+  | { readonly kind: 'unsupported-array-type'; readonly typeName: string }
+  | { readonly kind: 'unsupported-field'; readonly target: string }
+  | { readonly kind: 'unsupported-constant'; readonly target: string };
 
 /** Where a fault happened, when that is not the instruction currently being executed. */
 export interface FaultLocation {
@@ -62,7 +64,7 @@ function describeFault(detail: VmFaultDetail): string {
       // Wording taken from the exception a real JVM throws here (java.lang.ArithmeticException).
       return 'ArithmeticException: / by zero';
     case 'unsupported-call':
-      return `Unsupported call: ${detail.target} — only static int methods of the executed class can be called`;
+      return `Unsupported call: ${detail.target} — the executed class's own static int methods and a small set of java.lang.Math and System.out members are all this interpreter can call`;
     case 'invalid-state':
       return detail.message;
     case 'stack-overflow':
@@ -80,5 +82,9 @@ function describeFault(detail: VmFaultDetail): string {
       return 'NullPointerException: the reference is null';
     case 'unsupported-array-type':
       return `Unsupported array type: ${detail.typeName} — only int arrays can be allocated`;
+    case 'unsupported-field':
+      return `Unsupported field: ${detail.target} — this interpreter has no objects to hold fields, and java/lang/System.out is the only one it recognises`;
+    case 'unsupported-constant':
+      return `Unsupported constant: ${detail.target} — ldc can push an int or a String constant, and nothing else`;
   }
 }
