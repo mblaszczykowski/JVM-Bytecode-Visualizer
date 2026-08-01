@@ -2,7 +2,11 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { App } from './App';
-import { readExampleBytes, readFixtureBytes } from './services/__fixtures__/example-files';
+import {
+  readExampleBytes,
+  readExampleManifest,
+  readFixtureBytes,
+} from './services/__fixtures__/example-files';
 import {
   exampleRoutes,
   okResponse,
@@ -12,8 +16,14 @@ import {
 } from './services/__fixtures__/fake-fetch';
 import { uploadFile } from './services/__fixtures__/upload-file';
 import { exampleUrl, MANIFEST_FILE } from './services/examples';
+import { inlineRunner, RunCancelled, type ProgramRunner } from './services/program-runner';
 
 const FACTORIAL_STEPS = 40;
+
+/** However many examples ship: this suite is about the screen, not about the catalogue. */
+function exampleCount(): number {
+  return (readExampleManifest() as { examples: readonly unknown[] }).examples.length;
+}
 const SCRUBBER = { name: 'Execution history position' };
 
 const COMPILE_API = 'http://compile.test';
@@ -88,11 +98,12 @@ describe('welcome screen', () => {
     ).toBeVisible();
   });
 
-  it('offers the five examples and a drop zone before anything is loaded', async () => {
+  it('offers the bundled examples and a drop zone before anything is loaded', async () => {
     stubFetch(exampleRoutes());
     await openApp();
 
-    expect(screen.getAllByTestId('welcome-example')).toHaveLength(5);
+    // The count belongs to the manifest, not to this test: examples come and go.
+    expect(screen.getAllByTestId('welcome-example').length).toBe(exampleCount());
     expect(screen.getByText(/one bytecode instruction at a time/)).toBeVisible();
     expect(screen.queryByTestId('step-counter')).not.toBeInTheDocument();
     expect(screen.getAllByTestId('file-drop-zone').length).toBeGreaterThan(0);
@@ -284,7 +295,87 @@ describe('running an example', () => {
     fireEvent.click(screen.getByRole('radio', { name: 'Factorial' }));
 
     expect(await screen.findByTestId('error-banner')).toHaveTextContent('the server answered 503');
-    expect(screen.getAllByTestId('welcome-example')).toHaveLength(5);
+    expect(screen.getAllByTestId('welcome-example').length).toBe(exampleCount());
+  });
+});
+
+/**
+ * A runner that answers the first `settled` runs the way this thread always did, and then
+ * holds every run after that open — the only way to catch a load mid-flight, since a real
+ * one is over before an assertion can run.
+ */
+function stallingRunner(settled: number, cancellable = true): ProgramRunner {
+  let runs = 0;
+  return {
+    cancellable,
+    run(command, options) {
+      runs += 1;
+      if (runs <= settled) {
+        return inlineRunner.run(command, options);
+      }
+      return new Promise((_resolve, reject) => {
+        options?.onProgress?.(125_000);
+        options?.signal?.addEventListener(
+          'abort',
+          () => {
+            reject(new RunCancelled());
+          },
+          { once: true },
+        );
+      });
+    },
+  };
+}
+
+describe('giving up on a run', () => {
+  it('says how far a long run has got, and offers to end it', async () => {
+    stubFetch(exampleRoutes());
+    render(<App programRunner={stallingRunner(0)} />);
+    fireEvent.click(await screen.findByRole('radio', { name: 'Factorial' }));
+
+    expect(await screen.findByRole('button', { name: 'Cancel' })).toBeVisible();
+    expect(screen.getByRole('status')).toHaveTextContent('Loading Factorial');
+    await waitFor(() => {
+      expect(screen.getByTestId('loading-steps')).toHaveTextContent('125,000 steps');
+    });
+  });
+
+  it('puts the run the reader was reading back, rather than an empty screen', async () => {
+    stubFetch(exampleRoutes());
+    render(<App programRunner={stallingRunner(1)} />);
+    fireEvent.click(await screen.findByRole('radio', { name: 'Factorial' }));
+    await screen.findByTestId('step-counter');
+
+    // The scenario the step-limit banner creates: a second run, thought better of.
+    fireEvent.click(screen.getByRole('radio', { name: 'GCD' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Cancel' }));
+
+    expect(screen.getByTestId('step-counter')).toHaveTextContent(
+      `step 1 / ${String(FACTORIAL_STEPS)}`,
+    );
+    expect(screen.getByRole('region', { name: 'Source' })).toHaveTextContent('Factorial.java');
+    expect(screen.queryByTestId('panel-skeleton')).not.toBeInTheDocument();
+    // The abandoned run must not land on the screen it was given up on.
+    expect(screen.queryByTestId('error-banner')).not.toBeInTheDocument();
+  });
+
+  it('goes back to the welcome screen when there was nothing to go back to', async () => {
+    stubFetch(exampleRoutes());
+    render(<App programRunner={stallingRunner(0)} />);
+    fireEvent.click(await screen.findByRole('radio', { name: 'Factorial' }));
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Cancel' }));
+
+    expect(screen.getByTestId('welcome-screen')).toBeInTheDocument();
+  });
+
+  it('does not offer to cancel a run this thread could not stop', async () => {
+    stubFetch(exampleRoutes());
+    render(<App programRunner={stallingRunner(0, false)} />);
+    fireEvent.click(await screen.findByRole('radio', { name: 'Factorial' }));
+
+    expect(await screen.findByRole('status')).toHaveTextContent('Loading Factorial');
+    expect(screen.queryByRole('button', { name: 'Cancel' })).not.toBeInTheDocument();
   });
 });
 
@@ -353,7 +444,7 @@ describe('uploads', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Dismiss this message' }));
 
     expect(screen.queryByTestId('error-banner')).not.toBeInTheDocument();
-    expect(screen.getAllByTestId('welcome-example')).toHaveLength(5);
+    expect(screen.getAllByTestId('welcome-example').length).toBe(exampleCount());
   });
 
   it('rejects a file over the size limit', async () => {

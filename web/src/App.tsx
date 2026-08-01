@@ -65,6 +65,12 @@ import {
   topFrameOf,
   type MethodListing,
 } from './services/program';
+import {
+  defaultProgramRunner,
+  isRunCancelled,
+  type LoadContext,
+  type ProgramRunner,
+} from './services/program-runner';
 
 const APP_NAME = 'JVM Bytecode Visualizer';
 
@@ -122,33 +128,36 @@ const STRUCTURE_VIEWS: readonly {
 ];
 
 /**
- * One macrotask, so React can commit and paint the loading skeleton before the parse and the
- * run block this thread — half a million steps take long enough to freeze the tab otherwise.
- */
-function yieldToPaint(): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, 0);
-  });
-}
-
-/**
  * The single place a load may throw: every path into the grid comes through here, so a
  * failure ends as a banner rather than as a skeleton that never goes away.
+ *
+ * `undefined` for a run the reader gave up on. That is not an outcome and has no state —
+ * `load-cancelled` put the previous screen back the moment they asked, and the answer this
+ * load would have produced no longer belongs anywhere.
  */
-async function settle(load: () => Promise<AppState> | AppState): Promise<AppState> {
+async function settle(load: () => Promise<AppState>): Promise<AppState | undefined> {
   try {
     return await load();
   } catch (error) {
-    return failedState(toAppError(error));
+    return isRunCancelled(error) ? undefined : failedState(toAppError(error));
   }
 }
 
 interface AppProps {
   /** Base URL of the compile service; `undefined` switches the editor off (ADR-0004). */
   readonly compileApiUrl?: string | undefined;
+  /**
+   * Where programs are executed. Injected for the same reason as `compileApiUrl`: the default
+   * needs a `Worker`, which neither jsdom nor Node has, and a test that wants to watch a load
+   * mid-flight needs to hold the run open rather than race a real thread.
+   */
+  readonly programRunner?: ProgramRunner | undefined;
 }
 
-export function App({ compileApiUrl = compileApiBaseUrl() }: AppProps = {}) {
+export function App({
+  compileApiUrl = compileApiBaseUrl(),
+  programRunner = defaultProgramRunner(),
+}: AppProps = {}) {
   const [model, dispatch] = useReducer(appReducer, compileApiUrl !== undefined, initialAppModel);
   const { editor, compiler } = model;
   const state = model.load;
@@ -212,21 +221,49 @@ export function App({ compileApiUrl = compileApiBaseUrl() }: AppProps = {}) {
     };
   }, [compileApiUrl]);
 
-  /** Only the most recent load may land: a slow example must not overwrite a newer upload. */
+  /**
+   * Only the most recent load may land: a slow example must not overwrite a newer upload.
+   *
+   * The token settles which answer counts; the controller settles which run continues. They
+   * are separate on purpose — a run this application has stopped caring about is not the same
+   * thing as a run it has stopped, and only a worker can do the second.
+   */
+  const running = useRef<AbortController | undefined>(undefined);
   const startLoad = useCallback(
-    async (label: string, load: () => Promise<AppState> | AppState): Promise<void> => {
+    async (label: string, load: (context: LoadContext) => Promise<AppState>): Promise<void> => {
       const token = issueToken();
-      dispatch({ kind: 'load-started', token, label });
+      // Whatever was still executing belongs to a screen the reader has already left.
+      running.current?.abort();
+      const controller = new AbortController();
+      running.current = controller;
+
+      dispatch({ kind: 'load-started', token, label, cancellable: programRunner.cancellable });
       // Everywhere the reader had navigated to belongs to the program they are leaving.
       setViewedMethodKey(undefined);
       setSelectedConstant(undefined);
       setStructureChoice(undefined);
-      // follow-up: move execute() to a worker for cancellation
-      await yieldToPaint();
-      dispatch({ kind: 'load-settled', token, state: await settle(load) });
+
+      const state = await settle(() =>
+        load({
+          runner: programRunner,
+          signal: controller.signal,
+          onProgress: (steps) => {
+            dispatch({ kind: 'load-progress', token, steps });
+          },
+        }),
+      );
+      if (state !== undefined) {
+        dispatch({ kind: 'load-settled', token, state });
+      }
     },
-    [issueToken],
+    [issueToken, programRunner],
   );
+
+  /** Ends the run and puts back whatever the load replaced — see `load-cancelled`. */
+  const cancelLoad = useCallback(() => {
+    running.current?.abort();
+    dispatch({ kind: 'load-cancelled', token: issueToken() });
+  }, [issueToken]);
 
   const examples = exampleEntriesOf(model.examples);
 
@@ -236,14 +273,18 @@ export function App({ compileApiUrl = compileApiBaseUrl() }: AppProps = {}) {
       if (entry === undefined) {
         return;
       }
-      void startLoad(`Loading ${entry.title}`, () => loadExampleState(entry));
+      void startLoad(`Loading ${entry.title}`, (context) =>
+        loadExampleState(entry, undefined, context),
+      );
     },
     [examples, startLoad],
   );
 
   const selectFile = useCallback(
     (file: File) => {
-      void startLoad(`Reading ${file.name}`, () => loadUploadState(file));
+      void startLoad(`Reading ${file.name}`, (context) =>
+        loadUploadState(file, undefined, context),
+      );
     },
     [startLoad],
   );
@@ -276,12 +317,12 @@ export function App({ compileApiUrl = compileApiBaseUrl() }: AppProps = {}) {
 
     if (result.kind === 'compiled') {
       // `startLoad` closes the editor; the visualization is the answer to the compile.
-      void startLoad(`Running ${result.className}`, () =>
-        loadCompiledState({
-          className: result.className,
-          classBytes: result.classBytes,
-          source: draft,
-        }),
+      void startLoad(`Running ${result.className}`, (context) =>
+        loadCompiledState(
+          { className: result.className, classBytes: result.classBytes, source: draft },
+          undefined,
+          context,
+        ),
       );
     }
   }, [compileApiUrl, draft, issueToken, startLoad]);
@@ -439,7 +480,9 @@ export function App({ compileApiUrl = compileApiBaseUrl() }: AppProps = {}) {
       if (program === undefined) {
         return;
       }
-      void startLoad(`Running ${method.name}`, () => runFromState(program, method.name));
+      void startLoad(`Running ${method.name}`, (context) =>
+        runFromState(program, method.name, context),
+      );
     },
     [program, startLoad],
   );
@@ -524,8 +567,9 @@ export function App({ compileApiUrl = compileApiBaseUrl() }: AppProps = {}) {
         : {
             label: 'Raise the limit',
             onAction: () => {
-              void startLoad(`Re-running with ${nextStepLimit.toLocaleString('en-US')} steps`, () =>
-                rerunState(program, nextStepLimit),
+              void startLoad(
+                `Re-running with ${nextStepLimit.toLocaleString('en-US')} steps`,
+                (context) => rerunState(program, nextStepLimit, context),
               );
             },
           },
@@ -600,7 +644,11 @@ export function App({ compileApiUrl = compileApiBaseUrl() }: AppProps = {}) {
           onClose={closeEditor}
         />
       ) : state.status === 'loading' ? (
-        <LoadingPanels label={state.label} />
+        <LoadingPanels
+          label={state.label}
+          steps={state.steps}
+          onCancel={state.cancellable ? cancelLoad : undefined}
+        />
       ) : canExplore ? (
         <ErrorBoundary
           key={`${program.sourceFileName}:${String(snapshots.length)}:${String(program.maxSteps)}`}

@@ -80,8 +80,8 @@ function ConsoleSection({ lines }: { readonly lines: readonly string[] }) {
  * give way in place and scroll rather than pushing each other past the edge of the pane.
  *
  * The heap joins them only for a program that allocates — and the console only for a run that
- * prints — because the four int-only examples have nothing to put in either, and a section
- * reading "no objects" on every one of their steps would be a permanent fixture saying nothing.
+ * prints — because otherwise the section would read "no objects" on every step of a program
+ * that never allocates one: a permanent fixture saying nothing.
  *
  * At the end of a finished run there are no frames left to describe. Rather than panels all
  * saying "no active frame", the column becomes the payoff: the value the program computed, the

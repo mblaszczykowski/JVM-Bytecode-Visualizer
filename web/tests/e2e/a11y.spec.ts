@@ -1,7 +1,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 
-import { fixturePath } from './fixtures';
+import { bundledExamples, fixturePath } from './fixtures';
 
 /**
  * Axe on the three screens a reader actually lands on. Only `serious` and `critical` are
@@ -32,7 +32,7 @@ async function seriousViolations(page: Page): Promise<Violation[]> {
 
 test('the welcome screen has no serious accessibility violations', async ({ page }) => {
   await page.goto('/');
-  await expect(page.getByTestId('welcome-example')).toHaveCount(5);
+  await expect(page.getByTestId('welcome-example')).toHaveCount(bundledExamples().length);
 
   expect(await seriousViolations(page)).toEqual([]);
 });

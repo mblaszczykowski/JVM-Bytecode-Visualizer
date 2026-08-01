@@ -155,8 +155,8 @@ export function HeapArrayRow({ array, handle, focus, pulses }: HeapArrayRowProps
 
 /**
  * Objects the run allocated, in handle order. The panel is not rendered at all for a program
- * that never touches the heap — four of the five examples are pure int arithmetic, and an
- * empty section saying so would be noise on every one of their steps.
+ * that never touches the heap — most programs worth watching here never allocate, and an empty
+ * section saying so would be noise on every one of their steps.
  */
 export function HeapPanel({ heap, frame, mnemonic }: HeapPanelProps) {
   const pulses = usePulses(heap);

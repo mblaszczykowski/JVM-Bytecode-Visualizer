@@ -4,8 +4,11 @@ import { describe, expect, it, vi } from 'vitest';
 import { exampleOptions } from './__fixtures__/factorial-run';
 import { ExamplePicker } from './ExamplePicker';
 
-/** The five options App builds from the shipped manifest, names included. */
+/** The options App builds from the shipped manifest, names included — however many there are. */
 const examples = exampleOptions();
+
+/** The option a wrapping arrow key has to come back round to. */
+const last = examples[examples.length - 1] ?? { id: '', name: '' };
 
 describe('ExamplePicker', () => {
   it('renders the examples it is given', () => {
@@ -31,21 +34,18 @@ describe('ExamplePicker', () => {
     render(
       <ExamplePicker
         examples={examples}
-        selectedId="bubble-sort"
+        selectedId={last.id}
         onExampleSelected={onExampleSelected}
       />,
     );
 
     const options = screen.getAllByRole('radio');
-    expect(options.map((option) => option.getAttribute('tabindex'))).toEqual([
-      '-1',
-      '-1',
-      '-1',
-      '-1',
-      '0',
-    ]);
+    // One tab stop, on the selected option; every other option is reached with an arrow.
+    expect(options.map((option) => option.getAttribute('tabindex'))).toEqual(
+      examples.map((_, index) => (index === examples.length - 1 ? '0' : '-1')),
+    );
 
-    fireEvent.keyDown(screen.getByRole('radio', { name: 'Bubble sort' }), { key: 'ArrowRight' });
+    fireEvent.keyDown(screen.getByRole('radio', { name: last.name }), { key: 'ArrowRight' });
 
     // Wraps round to the first option, and selection does not follow focus: opening an
     // example parses and runs a whole class file.

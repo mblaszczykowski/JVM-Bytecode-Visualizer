@@ -55,6 +55,58 @@
       "entryMethod": "main",
       "resultVariable": "result",
       "expectedResult": 1
+    },
+    {
+      "id": "collatz",
+      "title": "Collatz — printing as it runs",
+      "tagline": "Console fills line by line: 7 falls to 1.",
+      "description": "The Collatz sequence from 7, printed term by term. Halve an even number, triple an odd one and add one: sixteen steps later it reaches 1. The only example that prints, so the console grows by a line per iteration — getstatic reads System.out and invokevirtual hands it the number.",
+      "classFile": "Collatz.class",
+      "sourceFile": "Collatz.java",
+      "entryMethod": "main",
+      "resultVariable": "result",
+      "expectedResult": 16,
+      "expectedOutput": [
+        "7",
+        "22",
+        "11",
+        "34",
+        "17",
+        "52",
+        "26",
+        "13",
+        "40",
+        "20",
+        "10",
+        "5",
+        "16",
+        "8",
+        "4",
+        "2",
+        "1"
+      ]
+    },
+    {
+      "id": "days-in-year",
+      "title": "Days in a year — switch dispatch",
+      "tagline": "One jump table, twelve months, 365 days.",
+      "description": "The length of a common year, month by month. Dense case labels make javac emit tableswitch: ten table entries for five cases, so the four thirty-day months share a target and the months missing from the table fall to the default one. Every call reaches its arm in the same number of steps, whatever the month.",
+      "classFile": "DaysInYear.class",
+      "sourceFile": "DaysInYear.java",
+      "entryMethod": "main",
+      "resultVariable": "result",
+      "expectedResult": 365
+    },
+    {
+      "id": "fast-power",
+      "title": "Fast power — shifts and masks",
+      "tagline": "Reading 13 bit by bit: 3^13 in four steps.",
+      "description": "Exponentiation by squaring, 3^13 = 1594323. The bits of the exponent are the algorithm: iand against a mask of one asks whether the lowest bit is set, iushr throws it away and brings down the next. Four iterations instead of thirteen multiplications, and the operand stack does the work in plain sight.",
+      "classFile": "FastPower.class",
+      "sourceFile": "FastPower.java",
+      "entryMethod": "main",
+      "resultVariable": "result",
+      "expectedResult": 1594323
     }
   ]
 }

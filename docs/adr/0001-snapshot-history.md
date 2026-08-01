@@ -1,6 +1,9 @@
 # ADR-0001 — Snapshot history instead of a live interpreter
 
-- **Status:** Accepted
+- **Status:** Accepted; the costs recorded below are amended by
+  [ADR-0006](0006-execution-in-a-worker.md) (2026-08-01), which moves the run off the main thread
+  and carries the benchmark this record asked for. The recording model — execute ahead of time,
+  replay by index — stands as written.
 - **Date:** 2026-07-16
 
 ## Context

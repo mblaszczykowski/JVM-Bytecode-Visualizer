@@ -20,13 +20,14 @@ const SELECTED = 'bg-white/[0.18] text-white/95 shadow-control-raised';
 const RESTING = 'text-white/52 hover:text-white/85';
 
 /**
- * Four programs, one of them loaded: that is a single value with four options, so it is a
- * radio group rather than four independent toggles. `aria-pressed` on each would have said
- * "three of these are off", which is not what a reader needs to hear.
+ * The bundled programs, one of them loaded: that is a single value with as many options as
+ * there are examples, so it is a radio group rather than a row of independent toggles.
+ * `aria-pressed` on each would have said "the others are off", which is not what a reader
+ * needs to hear.
  *
  * Roving tabindex, as the pattern requires: one tab stop for the group, arrows inside it.
  * Selection does not follow focus here — picking an option parses and runs a whole class
- * file, which is too much to do four times while someone arrows past the choices.
+ * file, which is too much to do once per choice while someone arrows past them.
  */
 export function ExamplePicker({ examples, selectedId, onExampleSelected }: ExamplePickerProps) {
   const groupRef = useRef<HTMLDivElement>(null);
@@ -49,7 +50,7 @@ export function ExamplePicker({ examples, selectedId, onExampleSelected }: Examp
   }
 
   return (
-    // Below the width of four segments the row scrolls instead of pushing the toolbar apart.
+    // Below the width of the segments the row scrolls instead of pushing the toolbar apart.
     <div className="scroll-slim -mx-1 min-w-0 overflow-x-auto px-1 md:mx-0 md:overflow-visible md:px-0">
       <div
         ref={groupRef}

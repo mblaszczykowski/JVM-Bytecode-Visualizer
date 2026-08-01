@@ -11,6 +11,13 @@
  * the editor, the compile service and the examples — under one reducer, because they are not
  * independent: a load closes the editor, a compile answer revives the service badge, and a
  * manifest that never arrived must not erase a program the reader already opened.
+ *
+ * Every load below runs its program through a `ProgramRunner` rather than calling `execute()`
+ * itself, because a run is the one part of a load that can take long enough to be worth
+ * abandoning. That makes `loading` a state the reader can act on and not only wait through:
+ * it carries how far the run has got, whether giving up would really stop it, and — since a
+ * reader who changes their mind about "Raise the limit" wants the run they were reading, not
+ * an empty screen — the state it goes back to if they do.
  */
 
 import { parseClassFile } from '../core/classfile';
@@ -20,11 +27,21 @@ import type { CompileDiagnostic, CompileResult } from './compile-client';
 import { toAppError, type AppError, type CompileFailure } from './errors';
 import { fetchExampleResources } from './examples';
 import type { ExampleEntry } from './manifest';
-import { buildProgram, type LoadedProgram } from './program';
+import { runProgram, type LoadedProgram } from './program';
+import { inlineRunner, isRunCancelled, type LoadContext } from './program-runner';
 
 export type AppState =
   | { readonly status: 'idle' }
-  | { readonly status: 'loading'; readonly label: string }
+  | {
+      readonly status: 'loading';
+      readonly label: string;
+      /** Steps recorded so far; absent until the run starts handing its history over. */
+      readonly steps: number | undefined;
+      /** Whether "Cancel" would stop the work or only stop its answer being used. */
+      readonly cancellable: boolean;
+      /** Where giving up lands: the reader abandons the new run, not the one they had. */
+      readonly resume: AppState;
+    }
   | { readonly status: 'ready'; readonly program: LoadedProgram }
   | {
       readonly status: 'error';
@@ -43,13 +60,12 @@ const STEP_LIMIT_FACTOR = 5;
 
 export const IDLE: AppState = { status: 'idle' };
 
-export function loadingState(label: string): AppState {
-  return { status: 'loading', label };
-}
-
 export function failedState(error: AppError): AppState {
   return { status: 'error', error, program: undefined };
 }
+
+/** Runs on this thread and cannot be stopped once started — the shape every caller defaults to. */
+const INLINE_LOAD: LoadContext = { runner: inlineRunner };
 
 /** The program a state can still display, if any. */
 export function programOf(state: AppState): LoadedProgram | undefined {
@@ -97,28 +113,45 @@ export function stateFor(program: LoadedProgram): AppState {
   }
 }
 
+/**
+ * The single funnel every load comes through. Anything that goes wrong ends as a banner
+ * rather than as a skeleton that never goes away — except an abandoned run, which is not a
+ * failure and has no state to show: `load-cancelled` has already put the screen back.
+ */
+async function settled(build: () => Promise<LoadedProgram>): Promise<AppState> {
+  try {
+    return stateFor(await build());
+  } catch (error) {
+    if (isRunCancelled(error)) {
+      throw error;
+    }
+    return failedState(toAppError(error));
+  }
+}
+
 export async function loadExampleState(
   entry: ExampleEntry,
   maxSteps: number = DEFAULT_MAX_STEPS,
+  context: LoadContext = INLINE_LOAD,
 ): Promise<AppState> {
-  try {
+  return settled(async () => {
     const resources = await fetchExampleResources(entry);
-    return stateFor(
-      buildProgram({
+    return runProgram(
+      {
         origin: { kind: 'example', entry },
         classFile: parseClassFile(resources.classBytes),
         source: { fileName: entry.sourceFile, text: resources.source },
         maxSteps,
-      }),
+      },
+      context,
     );
-  } catch (error) {
-    return failedState(toAppError(error));
-  }
+  });
 }
 
 export async function loadUploadState(
   file: File,
   maxSteps: number = DEFAULT_MAX_STEPS,
+  context: LoadContext = INLINE_LOAD,
 ): Promise<AppState> {
   if (file.size > MAX_UPLOAD_BYTES) {
     return failedState({
@@ -140,17 +173,16 @@ export async function loadUploadState(
     });
   }
 
-  try {
-    return stateFor(
-      buildProgram({
+  return settled(() =>
+    runProgram(
+      {
         origin: { kind: 'upload', fileName: file.name },
         classFile: parseClassFile(bytes),
         maxSteps,
-      }),
-    );
-  } catch (error) {
-    return failedState(toAppError(error));
-  }
+      },
+      context,
+    ),
+  );
 }
 
 export interface CompiledClass {
@@ -164,49 +196,57 @@ export interface CompiledClass {
 export function loadCompiledState(
   compiled: CompiledClass,
   maxSteps: number = DEFAULT_MAX_STEPS,
-): AppState {
-  try {
-    return stateFor(
-      buildProgram({
+  context: LoadContext = INLINE_LOAD,
+): Promise<AppState> {
+  return settled(() =>
+    runProgram(
+      {
         origin: { kind: 'compiled', className: compiled.className },
         classFile: parseClassFile(compiled.classBytes),
         source: { fileName: `${compiled.className}.java`, text: compiled.source },
         maxSteps,
-      }),
-    );
-  } catch (error) {
-    return failedState(toAppError(error));
-  }
+      },
+      context,
+    ),
+  );
 }
 
 /** Same class file and source, a different step limit — the "Raise the limit" action. */
-export function rerunState(program: LoadedProgram, maxSteps: number): AppState {
-  return rebuiltState(program, maxSteps, program.entry?.name);
+export function rerunState(
+  program: LoadedProgram,
+  maxSteps: number,
+  context: LoadContext = INLINE_LOAD,
+): Promise<AppState> {
+  return rebuiltState(program, maxSteps, program.entry?.name, context);
 }
 
 /** Same class file, a different method to start from — the method picker's run action. */
-export function runFromState(program: LoadedProgram, entryMethod: string): AppState {
-  return rebuiltState(program, program.maxSteps, entryMethod);
+export function runFromState(
+  program: LoadedProgram,
+  entryMethod: string,
+  context: LoadContext = INLINE_LOAD,
+): Promise<AppState> {
+  return rebuiltState(program, program.maxSteps, entryMethod, context);
 }
 
 function rebuiltState(
   program: LoadedProgram,
   maxSteps: number,
   entryMethod: string | undefined,
-): AppState {
-  try {
-    return stateFor(
-      buildProgram({
+  context: LoadContext,
+): Promise<AppState> {
+  return settled(() =>
+    runProgram(
+      {
         origin: program.origin,
         classFile: program.classFile,
         source: sourceOf(program),
         maxSteps,
         entryMethod,
-      }),
-    );
-  } catch (error) {
-    return failedState(toAppError(error));
-  }
+      },
+      context,
+    ),
+  );
 }
 
 /** Uploads have no source — feeding the placeholder lines back would fake one. */
@@ -258,12 +298,23 @@ export interface AppModel {
    * The newest request the reader issued. Loads and compiles run past their own screen —
    * an answer that comes back carrying an older token lost the race and is dropped, so a
    * slow compile can never write into an editor that has since closed or moved on.
+   *
+   * Terminating a worker complements this rather than replacing it: the token is what makes
+   * a late answer harmless, and only some runs can be stopped at all. Both are needed, and
+   * cancelling does both — it issues a new token *and* ends the work behind the old one.
    */
   readonly token: number;
 }
 
 export type AppAction =
-  | { readonly kind: 'load-started'; readonly token: number; readonly label: string }
+  | {
+      readonly kind: 'load-started';
+      readonly token: number;
+      readonly label: string;
+      readonly cancellable: boolean;
+    }
+  | { readonly kind: 'load-progress'; readonly token: number; readonly steps: number }
+  | { readonly kind: 'load-cancelled'; readonly token: number }
   | { readonly kind: 'load-settled'; readonly token: number; readonly state: AppState }
   | { readonly kind: 'examples-loaded'; readonly entries: readonly ExampleEntry[] }
   | { readonly kind: 'examples-failed'; readonly error: AppError }
@@ -290,11 +341,28 @@ export function appReducer(model: AppModel, action: AppAction): AppModel {
       // A new program takes the grid back; the draft itself survives outside the model.
       return {
         ...model,
-        load: loadingState(action.label),
+        load: {
+          status: 'loading',
+          label: action.label,
+          steps: undefined,
+          cancellable: action.cancellable,
+          // A load that replaced a load inherits its escape route: giving up on the second
+          // should land where giving up on the first would have, never on a skeleton.
+          resume: model.load.status === 'loading' ? model.load.resume : model.load,
+        },
         editor: CLOSED_EDITOR,
         compileFailure: undefined,
         token: action.token,
       };
+    case 'load-progress':
+      return action.token === model.token && model.load.status === 'loading'
+        ? { ...model, load: { ...model.load, steps: action.steps } }
+        : model;
+    case 'load-cancelled':
+      // The new token is what makes the abandoned run's answer harmless if it still arrives.
+      return model.load.status === 'loading'
+        ? { ...model, load: model.load.resume, token: action.token }
+        : model;
     case 'load-settled':
       return action.token === model.token ? { ...model, load: action.state } : model;
     case 'examples-loaded':

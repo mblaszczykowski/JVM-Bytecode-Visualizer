@@ -15,6 +15,13 @@ const reactCompiler: [string, { readonly target: string }] = [
 
 export default defineConfig({
   plugins: [react({ babel: { plugins: [reactCompiler] } }), tailwindcss()],
+  /**
+   * The run worker is spawned with `{ type: 'module' }`, so its chunk has to be a module too —
+   * Vite's default for workers is an IIFE, which loads but stops the worker from ever being
+   * code-split. A browser that refuses module workers fires `error` instead, and
+   * `services/program-runner` answers that by running the program on this thread.
+   */
+  worker: { format: 'es' },
   test: {
     // Two projects mirror the ADR-0001 boundary: `core/` is plain TypeScript and has to pass
     // its tests without a DOM anywhere in sight.

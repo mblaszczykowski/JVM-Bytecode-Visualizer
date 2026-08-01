@@ -50,7 +50,7 @@ deploys are a Vercel git integration and a `fly deploy` you run yourself.
    Vite inlines this at build time, so a change only takes effect on the next deploy. Unset, the
    editor tab does not exist and nothing else changes.
 
-5. **Deploy**, then load the site: the four examples should replay, and dragging a `.class` file
+5. **Deploy**, then load the site: the bundled examples should replay, and dragging a `.class` file
    onto the window should load it.
 
 ## The backend on Fly.io

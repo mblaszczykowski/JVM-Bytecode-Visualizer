@@ -1,5 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
+import { bundledExamples } from './fixtures';
+
 /** Factorial(4): 39 executed instructions plus the terminal snapshot. */
 const FACTORIAL_STEPS = 40;
 
@@ -16,7 +18,7 @@ async function openFactorial(page: Page): Promise<void> {
 test('replays a recursive program from the welcome screen to its result', async ({ page }) => {
   await page.goto('/');
 
-  await expect(page.getByTestId('welcome-example')).toHaveCount(5);
+  await expect(page.getByTestId('welcome-example')).toHaveCount(bundledExamples().length);
   await expect(page.getByTestId('step-counter')).toHaveCount(0);
 
   await page.getByRole('radio', { name: 'Factorial', exact: true }).click();

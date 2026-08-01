@@ -58,7 +58,10 @@ describe('fetchExampleManifest', () => {
     const manifest = await fetchExampleManifest();
 
     expect(manifest.version).toBe(1);
-    expect(manifest.examples).toHaveLength(5);
+    // However many examples ship, the loader hands back the ones the file lists.
+    expect(manifest.examples.map((example) => example.id)).toEqual(
+      (readExampleManifest() as ExampleManifest).examples.map((example) => example.id),
+    );
   });
 
   it('reports an unreachable server as a network failure', async () => {

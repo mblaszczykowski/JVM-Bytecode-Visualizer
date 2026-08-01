@@ -52,11 +52,14 @@ jobs:
       - name: Build
         run: npm run build
 
-  # Separate job, because it is the only one that needs a JDK: it recompiles the examples and
-  # re-runs them on a real JVM, so a drift between an example's source, its committed class
-  # file and its recorded result cannot reach main unnoticed.
+  # Separate job, because it is the only one that needs a JDK: it recompiles every committed
+  # Java source and re-runs it on a real JVM, so a drift between a source, its class file and
+  # the result recorded next to it cannot reach main unnoticed. That covers the examples the
+  # application ships and the fixtures src/core is tested against — the latter matter most,
+  # because their whole value is that a reference implementation, and not a reading of the
+  # specification, produced the expected output.
   fixtures:
-    name: example fixtures match the JDK
+    name: fixtures match the JDK
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -68,11 +71,14 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
+      # 25 rather than the 21 the class files target: `javac --release 21` pins those on any
+      # JDK, but the committed javap dumps are byte-exact and javap changed its disassembly
+      # layout in 25. build-test-fixtures.mjs refuses to run on another release.
       - name: Setup JDK
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '21'
+          java-version: '25'
 
       - name: Install dependencies
         run: npm ci
@@ -80,9 +86,20 @@ jobs:
       - name: Rebuild the examples
         run: npm run fixtures -w web
 
+      - name: Rebuild the test fixtures
+        run: npm run fixtures:tests -w web
+
       # `git add` first: a rebuild that produced a file nobody committed is drift too, and a
       # plain `git diff` would not see it.
       - name: Fail on any drift
         run: |
-          git add --all web/public/examples
-          git diff --cached --exit-code web/public/examples
+          git add --all \
+            web/public/examples \
+            web/src/core/classfile/__fixtures__ \
+            web/src/core/disassembler/__fixtures__ \
+            web/src/core/interpreter/__fixtures__/programs
+          git diff --cached --exit-code \
+            web/public/examples \
+            web/src/core/classfile/__fixtures__ \
+            web/src/core/disassembler/__fixtures__ \
+            web/src/core/interpreter/__fixtures__/programs

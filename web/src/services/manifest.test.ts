@@ -7,7 +7,7 @@
 // tsconfig.app.json narrows `types` to "vite/client" (application code targets the browser),
 // so the `node:*` module declarations have to be pulled in explicitly here.
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import * as process from 'node:process';
 import { describe, expect, it } from 'vitest';
@@ -19,22 +19,25 @@ import { exampleManifestSchema, parseExampleManifest, type ExampleManifest } fro
  * so `import.meta.url` is not a `file:` URL. Vitest roots at `web/` (where vite.config.ts
  * lives); the second candidate covers a run from the repo root.
  */
-function resolveExamplesDir(): string {
+function resolveUnderWeb(...segments: readonly string[]): string {
   const candidates = [
-    resolve(process.cwd(), 'public', 'examples'),
-    resolve(process.cwd(), 'web', 'public', 'examples'),
+    resolve(process.cwd(), ...segments),
+    resolve(process.cwd(), 'web', ...segments),
   ];
-  const found = candidates.find((dir) => existsSync(join(dir, 'manifest.json')));
+  const found = candidates.find((directory) => existsSync(directory));
   if (found === undefined) {
     throw new Error(
-      `manifest.json not found (looked in: ${candidates.join(', ')}). ` +
+      `${segments.join('/')} not found (looked in: ${candidates.join(', ')}). ` +
         'Generate the fixtures with `npm run fixtures -w web`.',
     );
   }
   return found;
 }
 
-const EXAMPLES_DIR = resolveExamplesDir();
+const EXAMPLES_DIR = resolveUnderWeb('public', 'examples');
+
+/** The Java the fixtures build compiles — the other end of the manifest. */
+const SOURCE_DIR = resolveUnderWeb('fixtures', 'src');
 
 function readManifest(): ExampleManifest {
   const raw: unknown = JSON.parse(readFileSync(join(EXAMPLES_DIR, 'manifest.json'), 'utf8'));
@@ -46,15 +49,20 @@ describe('example manifest', () => {
     expect(() => readManifest()).not.toThrow();
   });
 
-  it('contains the five expected examples', () => {
-    const manifest = readManifest();
-    expect(manifest.examples.map((example) => example.id)).toEqual([
-      'factorial',
-      'fibonacci',
-      'sum-of-products',
-      'gcd',
-      'bubble-sort',
-    ]);
+  it('lists exactly the examples there are sources for', () => {
+    // Every `.java` in `fixtures/src` is meant to reach the UI. The build copies the classes
+    // it is told about, so a source added there and nowhere else would simply never ship —
+    // this is what notices. Written against the sources rather than a list of names, so
+    // adding the next example does not mean editing this test.
+    const sources = readdirSync(SOURCE_DIR)
+      .filter((file) => file.endsWith('.java'))
+      .sort();
+
+    expect(
+      readManifest()
+        .examples.map((example) => example.sourceFile)
+        .sort(),
+    ).toEqual(sources);
   });
 
   // Reference values computed by a real JVM in build-fixtures.mjs.
@@ -64,9 +72,30 @@ describe('example manifest', () => {
     { id: 'gcd', expectedResult: 21 },
     // a[0] of {5, 3, 4, 1, 2} once the sort has run.
     { id: 'bubble-sort', expectedResult: 1 },
+    // Steps from 7 down to 1, months in a common year, and 3^13.
+    { id: 'collatz', expectedResult: 16 },
+    { id: 'days-in-year', expectedResult: 365 },
+    { id: 'fast-power', expectedResult: 1_594_323 },
   ])('$id has expectedResult $expectedResult', ({ id, expectedResult }) => {
     const entry = readManifest().examples.find((example) => example.id === id);
     expect(entry?.expectedResult).toBe(expectedResult);
+  });
+
+  it('carries the console output a real JVM produced, for the example that prints', () => {
+    const entry = readManifest().examples.find((example) => example.id === 'collatz');
+
+    // The whole sequence, one term per line — what `java Collatz` wrote during the build.
+    expect(entry?.expectedOutput).toEqual(
+      ['7', '22', '11', '34', '17', '52', '26', '13', '40', '20', '10', '5', '16', '8', '4', '2', '1'], // prettier-ignore
+    );
+  });
+
+  it('leaves the field off for an example that prints nothing', () => {
+    const silent = readManifest().examples.filter((example) => example.id !== 'collatz');
+
+    // Absence is the statement: these programs leave their answer in a local variable and
+    // write nothing at all, which is why they have no console in the UI either.
+    expect(silent.map((example) => example.expectedOutput)).toEqual(silent.map(() => undefined));
   });
 
   it('points at existing .class and .java files', () => {
@@ -107,6 +136,16 @@ describe('manifest schema', () => {
     const result = exampleManifestSchema.safeParse({
       ...manifest,
       examples: [{ ...first, expectedResult: 2_147_483_648 }, ...rest],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects console output that is not a list of lines', () => {
+    const manifest = readManifest();
+    const [first, ...rest] = manifest.examples;
+    const result = exampleManifestSchema.safeParse({
+      ...manifest,
+      examples: [{ ...first, expectedOutput: 'one line' }, ...rest],
     });
     expect(result.success).toBe(false);
   });

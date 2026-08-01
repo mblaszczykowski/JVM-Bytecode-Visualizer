@@ -9,7 +9,7 @@
 A browser-based JVM bytecode visualizer: load a `.class` file or write Java, then watch the virtual
 machine execute it one instruction at a time.
 
-![The visualizer replaying a recursive program](docs/screenshots/app-ready.png)
+![Four frames deep into a recursive factorial, with the branch arcs and the depth chart](docs/screenshots/app-ready.png)
 
 > Live demo: _coming soon_
 
@@ -38,6 +38,8 @@ machine execute it one instruction at a time.
   pool operand — the resolution chain, e.g. `#7 → Methodref → Factorial.factorial:(I)I`.
 - **A depth chart under the scrubber.** Call stack depth across the entire run, which makes
   recursion visible as a shape you can click into.
+
+![Mid-run: the console filling line by line as `invokevirtual` resolves `PrintStream.println`](docs/screenshots/console.png)
 
 If the operand stack, the frame, the constant pool or a descriptor like `(I)I` is unfamiliar,
 [`docs/jvm-primer.md`](docs/jvm-primer.md) explains each of them from scratch, using this
@@ -264,7 +266,7 @@ opened the JVM specification.
 - [**ADR-0001 — Snapshot history instead of a live interpreter.**](docs/adr/0001-snapshot-history.md)
   Execute the whole program up front and return an immutable array of snapshots; the frontend
   replays it. Step-back and scrubbing become index arithmetic, and the interpreter stays a pure
-  function that can be tested like one.
+  function that can be tested like one. Amended by ADR-0006 for where the run happens.
 - [**ADR-0002 — MVP on `int` only, without a heap.**](docs/adr/0002-int-only-mvp-without-heap.md)
   A closed instruction set that can be implemented and tested completely, rather than a broad one
   that is right in patches. Amended by ADR-0005 for the heap.
@@ -277,6 +279,11 @@ opened the JVM specification.
 - [**ADR-0005 — A heap that holds `int` arrays and nothing else.**](docs/adr/0005-heap-of-int-arrays.md)
   Amends ADR-0002 along the exit path it named: arrays on an append-only heap, references as
   handles, and a kind tag per value so the machine refuses to read one as the other.
+- [**ADR-0006 — Execution in a worker, and the history streamed back in batches.**](docs/adr/0006-execution-in-a-worker.md)
+  A worker that posts a 500,000-step history as one message is six times _worse_ than no worker,
+  because deserialising it lands on the thread the worker was meant to free. Batching splits that
+  cost into tasks the browser can interleave: the longest main-thread stall drops from 403 ms to
+  ~120 ms.
 
 The boundary from ADR-0001 is enforced mechanically. `web/eslint.config.js` bans imports of React,
 the DOM and the application layer from `web/src/core/**`, and bans `window`, `document` and

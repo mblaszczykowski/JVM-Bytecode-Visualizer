@@ -46,6 +46,21 @@ describe('CompileEditor', () => {
     expect(onCompile).toHaveBeenCalledOnce();
   });
 
+  it('seeds a program the summary can read and the console panel can show', () => {
+    // Both are contracts with panels elsewhere: the run summary reports the local named
+    // `result`, and the console section joins the state column only once something is printed.
+    expect(SEED_SOURCE).toMatch(/\bint result\b/);
+    expect(SEED_SOURCE).toMatch(/\bSystem\.out\.println\(/);
+  });
+
+  it('states the boundary next to the button that submits the source', () => {
+    renderEditor();
+
+    expect(screen.getByText(/Static methods/)).toHaveTextContent(
+      'Static methods called from main — ints, int arrays, Math and System.out, nothing else.',
+    );
+  });
+
   it('keeps what was typed', () => {
     const { textarea } = renderEditor();
 

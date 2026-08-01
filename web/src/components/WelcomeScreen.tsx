@@ -38,7 +38,7 @@ const STEPS: readonly { readonly head: string; readonly body: string }[] = [
 
 /**
  * The recursion profile of the whole run in 32 bars — the same chart the scrubber carries,
- * shrunk to a thumbnail. It is the one thing that tells the four examples apart at a glance:
+ * shrunk to a thumbnail. It is the one thing that tells the examples apart at a glance:
  * a flat line is a loop, a staircase is recursion.
  */
 function DepthSparkline({ preview }: { readonly preview: RunPreview }) {
@@ -63,7 +63,7 @@ function DepthSparkline({ preview }: { readonly preview: RunPreview }) {
  * is composed rather than merely empty.
  *
  * It is anchored to the top of the grid instead of floating in the middle of a void: a
- * headline that says what happens here, the pipeline in three words, the four programs as a
+ * headline that says what happens here, the pipeline in three words, the bundled programs as a
  * full-width row of real targets, and the drop zone last, for the file someone brought along.
  */
 export function WelcomeScreen({

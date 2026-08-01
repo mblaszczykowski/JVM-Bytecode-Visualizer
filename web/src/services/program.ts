@@ -7,6 +7,10 @@
  * A run is a capability of a parsed class file, not a precondition for having one: every
  * method is listed whether or not the interpreter could enter it, and a class with nothing
  * runnable in it still produces a `LoadedProgram` — with `no-entry-point` as its outcome.
+ *
+ * Where the run itself happened is not this file's business. `buildProgram` will do it here
+ * if nobody else has, and `runProgram` hands it to a `ProgramRunner` — the worker, in a
+ * browser that has one — and assembles the same program around the answer.
  */
 
 import {
@@ -31,6 +35,7 @@ import {
 } from '../core/interpreter';
 
 import type { ExampleEntry } from './manifest';
+import type { LoadContext } from './program-runner';
 
 /** Why a run cannot start from a method. `undefined` on a `MethodListing` means it can. */
 export type NotRunnableReason = 'no-code' | 'instance-method' | 'needs-arguments' | 'descriptor';
@@ -117,6 +122,12 @@ export interface BuildProgramInput {
    * the class declares — a utility class runs its first helper rather than nothing at all.
    */
   readonly entryMethod?: string | undefined;
+  /**
+   * A run of this class file that already happened somewhere else — the worker. Absent, the
+   * run happens here, on whichever thread called: the fallback path, and the one the previews
+   * and the tests take.
+   */
+  readonly run?: ExecutionResult | undefined;
 }
 
 /** Shown instead of source code when a `.class` arrives without its `.java`. */
@@ -134,12 +145,14 @@ export function buildProgram({
   source,
   maxSteps = DEFAULT_MAX_STEPS,
   entryMethod,
+  run,
 }: BuildProgramInput): LoadedProgram {
   const entry = chooseEntry(classFile, entryMethod);
   // A class with nothing runnable in it is still a class: no run is attempted, and every
   // panel below reads from the parse rather than from the history.
   const result =
-    entry === undefined ? undefined : execute(classFile, { entryMethod: entry.name, maxSteps });
+    run ??
+    (entry === undefined ? undefined : execute(classFile, { entryMethod: entry.name, maxSteps }));
   const executed = executedOffsets(result?.snapshots ?? NO_SNAPSHOTS);
 
   const methods = classFile.methods.map<MethodListing>((method) => {
@@ -176,6 +189,36 @@ export function buildProgram({
     outcome: result === undefined ? NO_ENTRY_POINT : outcomeOf(result),
     maxSteps,
   };
+}
+
+/**
+ * The same program, with the run handed to `context.runner` instead of taken here.
+ *
+ * The entry method is still chosen on this side and named in the request: the runner is told
+ * what to execute and decides nothing, so a worker and this thread cannot disagree about
+ * which method a class "runs". A class with nothing runnable never reaches the runner at all.
+ *
+ * Rejects, rather than returning a program, when the reader abandoned the run — there is no
+ * `LoadedProgram` to describe a run that was stopped halfway.
+ */
+export async function runProgram(
+  input: BuildProgramInput,
+  context: LoadContext,
+): Promise<LoadedProgram> {
+  const entry = chooseEntry(input.classFile, input.entryMethod);
+  if (entry === undefined) {
+    return buildProgram(input);
+  }
+
+  const run = await context.runner.run(
+    {
+      classFile: input.classFile,
+      entryMethod: entry.name,
+      maxSteps: input.maxSteps ?? DEFAULT_MAX_STEPS,
+    },
+    context,
+  );
+  return buildProgram({ ...input, run });
 }
 
 const EMPTY_OFFSETS: ReadonlySet<number> = new Set<number>();

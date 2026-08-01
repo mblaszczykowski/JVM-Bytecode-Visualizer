@@ -2,19 +2,31 @@ import { useEffect, useRef } from 'react';
 
 import type { CompileDiagnostic, DiagnosticKind } from '../services/compile-client';
 
-/** Seed program: a loop over the int-only subset the interpreter supports. */
-export const SEED_SOURCE = `public class Loop {
+/**
+ * Seed program: the first thing a visitor compiles, so it spans the executable subset rather
+ * than sitting in a corner of it — a loop, a switch, string constants and printing. The last
+ * of those earns its place twice over: the console section joins the state column only for a
+ * run that printed, so a seed that stays silent is a seed that hides a panel.
+ *
+ * `result` is not incidental either: a run's summary reports the local of that name.
+ */
+export const SEED_SOURCE = `public class FizzBuzz {
 
     public static void main(String[] args) {
-        int result = sumTo(5);
-    }
-
-    static int sumTo(int n) {
-        int total = 0;
-        for (int i = 1; i <= n; i++) {
-            total = total + i;
+        int result = 0;
+        for (int n = 1; n <= 15; n++) {
+            // Dense labels, so javac reaches for tableswitch rather than lookupswitch.
+            switch (n % 15) {
+                case 0 -> System.out.println("FizzBuzz");
+                case 3, 6, 9, 12 -> System.out.println("Fizz");
+                case 5, 10 -> System.out.println("Buzz");
+                default -> {
+                    System.out.println(n);
+                    result = result + n;
+                }
+            }
         }
-        return total;
+        System.out.println(result);
     }
 }
 `;
@@ -36,8 +48,8 @@ const KIND_STYLE: Record<DiagnosticKind, string> = {
 };
 
 /**
- * Plain textarea rather than an embedded IDE: the class this compiles is twenty lines of
- * int arithmetic, and a code editor would cost more bytes than the rest of the application.
+ * Plain textarea rather than an embedded IDE: the class this compiles is twenty lines long,
+ * and a code editor would cost more bytes than the rest of the application.
  *
  * The transport keeps its keyboard shortcuts while this is open — they step aside for text
  * entry on their own, which is exactly the case the guard exists for.
@@ -136,8 +148,9 @@ export function CompileEditor({
             {isCompiling ? 'Compiling…' : 'Compile'}
           </button>
           <span className="text-[11.5px] text-white/55">
-            Static int methods called from <span className="font-mono">main</span> — no objects,
-            arrays or strings yet.
+            Static methods called from <span className="font-mono">main</span> — ints, int arrays,{' '}
+            <span className="font-mono">Math</span> and{' '}
+            <span className="font-mono">System.out</span>, nothing else.
           </span>
         </div>
       </div>

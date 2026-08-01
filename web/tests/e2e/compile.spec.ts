@@ -30,7 +30,7 @@ test('writes a class, compiles it and replays the run', async ({ page }) => {
   await page.getByRole('button', { name: 'Write Java…' }).click();
 
   const editor = page.getByLabel('Java source');
-  await expect(editor).toHaveValue(/class Loop/);
+  await expect(editor).toHaveValue(/class FizzBuzz/);
 
   await page.getByRole('button', { name: 'Compile' }).click();
 
@@ -39,12 +39,12 @@ test('writes a class, compiles it and replays the run', async ({ page }) => {
 
   // The source panel shows the .java that was compiled, not a placeholder.
   const source = page.getByRole('region', { name: 'Source' });
-  await expect(source).toContainText('Loop.java');
-  await expect(source).toContainText('static int sumTo(int n)');
+  await expect(source).toContainText('FizzBuzz.java');
+  await expect(source).toContainText('switch (n % 15)');
 
   await page.keyboard.press('ArrowRight');
   await expect(page.getByTestId('step-counter')).toHaveText(/^step 2 \/ \d+$/);
-  await expect(page.getByTestId('current-instruction')).toContainText('invokestatic');
+  await expect(page.getByTestId('current-instruction')).toContainText('istore_1');
 
   await page.getByRole('slider', { name: 'Execution history position' }).press('End');
   await page.getByRole('button', { name: 'Step back' }).click();

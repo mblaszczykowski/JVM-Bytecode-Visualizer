@@ -27,6 +27,7 @@ import { describeAppError } from './errors';
 import { exampleUrl } from './examples';
 import type { ExampleEntry, ExampleManifest } from './manifest';
 import { buildProgram } from './program';
+import { isRunCancelled, RunCancelled, type ProgramRunner } from './program-runner';
 
 function factorialEntry(): ExampleEntry {
   const entry = (readExampleManifest() as ExampleManifest).examples[0];
@@ -103,10 +104,10 @@ describe('upload', () => {
 });
 
 describe('compiled source', () => {
-  it('runs the class and keeps the source that produced it', () => {
+  it('runs the class and keeps the source that produced it', async () => {
     const source = 'public class Gcd {\n    // whatever the author wrote\n}\n';
 
-    const state = loadCompiledState({
+    const state = await loadCompiledState({
       className: 'Gcd',
       classBytes: readExampleBytes('Gcd.class'),
       source,
@@ -118,8 +119,8 @@ describe('compiled source', () => {
     expect(programOf(state)?.sourceLines).toEqual(source.split('\n'));
   });
 
-  it('reports bytes that are not a class file', () => {
-    const state = loadCompiledState({
+  it('reports bytes that are not a class file', async () => {
+    const state = await loadCompiledState({
       className: 'Broken',
       classBytes: new TextEncoder().encode('not bytecode').buffer,
       source: 'public class Broken { }',
@@ -131,7 +132,7 @@ describe('compiled source', () => {
     });
   });
 
-  it('re-runs with a higher limit without losing the source', () => {
+  it('re-runs with a higher limit without losing the source', async () => {
     const program = buildProgram({
       origin: { kind: 'compiled', className: 'Loop' },
       classFile: syntheticClass({
@@ -141,7 +142,9 @@ describe('compiled source', () => {
       maxSteps: 25,
     });
 
-    expect(programOf(rerunState(program, 125))?.sourceLines).toEqual(['public class Loop { }']);
+    expect(programOf(await rerunState(program, 125))?.sourceLines).toEqual([
+      'public class Loop { }',
+    ]);
   });
 });
 
@@ -211,28 +214,28 @@ describe('a class file with nothing to run', () => {
 });
 
 describe('running another method', () => {
-  it('re-runs the same class file from the method the picker names', () => {
+  it('re-runs the same class file from the method the picker names', async () => {
     const program = buildProgram({
       origin: { kind: 'upload', fileName: 'Counter.class' },
       classFile: parseClassFile(readFixtureBytes('Counter.class')),
     });
     expect(program.entry?.name).toBe('count');
 
-    const state = runFromState(program, 'count');
+    const state = await runFromState(program, 'count');
 
     expect(state.status).toBe('ready');
     expect(programOf(state)?.entry?.name).toBe('count');
     expect(programOf(state)?.snapshots).toHaveLength(program.snapshots.length);
   });
 
-  it('keeps the entry method when only the step limit changes', () => {
+  it('keeps the entry method when only the step limit changes', async () => {
     const program = buildProgram({
       origin: { kind: 'upload', fileName: 'Counter.class' },
       classFile: parseClassFile(readFixtureBytes('Counter.class')),
       maxSteps: 10,
     });
 
-    expect(programOf(rerunState(program, 200))?.entry?.name).toBe('count');
+    expect(programOf(await rerunState(program, 200))?.entry?.name).toBe('count');
   });
 });
 
@@ -247,7 +250,7 @@ describe('raising the step limit', () => {
     expect(raisedStepLimit(MAX_STEP_LIMIT)).toBeUndefined();
   });
 
-  it('re-runs the same program with the new limit', () => {
+  it('re-runs the same program with the new limit', async () => {
     const program = buildProgram({
       origin: { kind: 'upload', fileName: 'Loop.class' },
       classFile: syntheticClass({
@@ -256,13 +259,13 @@ describe('raising the step limit', () => {
       maxSteps: 25,
     });
 
-    const state = rerunState(program, 125);
+    const state = await rerunState(program, 125);
 
     expect(state).toMatchObject({ status: 'error', error: { kind: 'step-limit', limit: 125 } });
     expect(programOf(state)?.snapshots).toHaveLength(125);
   });
 
-  it('reports a re-run that throws instead of leaving the screen loading', () => {
+  it('reports a re-run that throws instead of leaving the screen loading', async () => {
     const program = buildProgram({
       origin: { kind: 'upload', fileName: 'Loop.class' },
       classFile: syntheticClass({
@@ -278,7 +281,7 @@ describe('raising the step limit', () => {
       },
     };
 
-    const state = rerunState({ ...program, classFile: unreadable }, 125);
+    const state = await rerunState({ ...program, classFile: unreadable }, 125);
 
     expect(state).toMatchObject({
       status: 'error',
@@ -295,11 +298,36 @@ describe('raising the step limit', () => {
     }
     vi.unstubAllGlobals();
 
-    const state = rerunState(program, 100);
+    const state = await rerunState(program, 100);
 
     expect(state.status).toBe('ready');
     expect(programOf(state)?.snapshots).toHaveLength(40);
     expect(programOf(state)?.sourceLines).toEqual(program.sourceLines);
+  });
+});
+
+describe('a run the reader abandoned', () => {
+  /** Every load path goes through the same funnel, so the upload one stands for all of them. */
+  it('is not turned into a banner, because there is no screen left for one', async () => {
+    const runner: ProgramRunner = {
+      cancellable: true,
+      run: () => Promise.reject(new RunCancelled()),
+    };
+    const file = uploadFile('Gcd.class', new Uint8Array(readExampleBytes('Gcd.class')));
+
+    await expect(loadUploadState(file, undefined, { runner })).rejects.toSatisfy(isRunCancelled);
+  });
+
+  it('never reaches the runner at all when the class has nothing to run', async () => {
+    const run = vi.fn();
+    const file = uploadFile('Library.class', new Uint8Array(readFixtureBytes('Library.class')));
+
+    const state = await loadUploadState(file, undefined, {
+      runner: { cancellable: true, run },
+    });
+
+    expect(run).not.toHaveBeenCalled();
+    expect(state).toMatchObject({ status: 'error', error: { kind: 'no-entry-point' } });
   });
 });
 

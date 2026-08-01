@@ -35,6 +35,16 @@ export const exampleEntrySchema = z
      * differential test. A JVM `int`, so it must fit the signed 32-bit range.
      */
     expectedResult: z.int().min(-2_147_483_648).max(2_147_483_647),
+    /**
+     * Everything a REAL JVM printed while running the example's `main`, line by line — the
+     * reference the console is held to, for an example whose point is its output rather than
+     * the number it ends up with.
+     *
+     * Absent for every example that prints nothing, which is most of them — an optional field
+     * rather than an empty array, so that "this example prints" is something the manifest
+     * says rather than something a reader has to infer from a length.
+     */
+    expectedOutput: z.array(z.string()).optional(),
   })
   .strict();
 
