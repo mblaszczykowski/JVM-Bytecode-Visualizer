@@ -1,9 +1,17 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { RunPreview } from '../services/program';
 
+import { GlossaryDialog } from './GlossaryDialog';
+import { closeGlossary } from './glossary-store';
 import { WelcomeScreen, type WelcomeExample } from './WelcomeScreen';
+
+afterEach(() => {
+  act(() => {
+    closeGlossary();
+  });
+});
 
 const PREVIEW: RunPreview = {
   steps: 118,
@@ -95,6 +103,30 @@ describe('WelcomeScreen', () => {
 
     expect(note).toHaveTextContent(/Runs the integer subset of the JVM/);
     expect(dropZone.compareDocumentPosition(note) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  /**
+   * The first screen is where a reader decides whether any of this is for them, and it is the
+   * only screen with no panel headers to ask from — so the invitation lives on the heading's
+   * own line, ahead of the cards and costing them no room.
+   */
+  it('offers the vocabulary without pushing the examples down', () => {
+    render(
+      <>
+        <WelcomeScreen examples={EXAMPLES} onExampleSelected={vi.fn()} onFileSelected={vi.fn()} />
+        <GlossaryDialog />
+      </>,
+    );
+
+    const pointer = screen.getByTestId('welcome-glossary');
+    const firstExample = screen.getAllByTestId('welcome-example')[0] ?? document.body;
+    expect(
+      pointer.compareDocumentPosition(firstExample) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    fireEvent.click(pointer);
+
+    expect(screen.getByRole('dialog', { name: 'Glossary' })).toBeInTheDocument();
   });
 
   it('keeps the examples ahead of the note, so the first frame is still the examples', () => {

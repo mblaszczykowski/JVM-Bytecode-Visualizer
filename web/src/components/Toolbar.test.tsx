@@ -1,8 +1,15 @@
-import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { act, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { exampleOptions } from './__fixtures__/factorial-run';
+import { closeGlossary } from './glossary-store';
 import { Toolbar, type CompilerStatus } from './Toolbar';
+
+afterEach(() => {
+  act(() => {
+    closeGlossary();
+  });
+});
 
 /** The four options App builds from the shipped manifest. */
 const examples = exampleOptions();
@@ -64,6 +71,16 @@ describe('Toolbar', () => {
     renderToolbar();
 
     expect(screen.queryByRole('button', { name: 'Write Java…' })).not.toBeInTheDocument();
+  });
+
+  it('carries the glossary in every state of the application', () => {
+    renderToolbar();
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('toolbar-glossary'));
+
+    expect(screen.getByRole('dialog', { name: 'Glossary' })).toBeInTheDocument();
   });
 
   it('opens the editor from the toolbar', () => {

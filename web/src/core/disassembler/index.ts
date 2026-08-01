@@ -6,7 +6,6 @@ export {
   arrayTypeName,
   isSupportedOpcode,
   lookupOpcode,
-  operandWidth,
   OPCODES,
   T_INT,
   type OpcodeInfo,

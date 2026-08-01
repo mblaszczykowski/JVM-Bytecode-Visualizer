@@ -2,7 +2,6 @@
  * Public API of the `.class` parsing layer.
  * The disassembler, interpreter and UI import from here only.
  */
-export { ByteReader } from './byte-reader';
 export {
   ClassFileError,
   formatClassFileError,

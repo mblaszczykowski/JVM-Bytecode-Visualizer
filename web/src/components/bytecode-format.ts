@@ -1,34 +1,6 @@
 import { lookupOpcode } from '../core/disassembler';
 import type { Instruction } from '../core/disassembler/types';
 
-/**
- * Mnemonics whose operand is a constant pool index. They are rendered as `#7` rather than as
- * a bare number, exactly like `javap -c` does, so the reference reads as a pool lookup.
- */
-export const CONSTANT_POOL_OPERAND_MNEMONICS: ReadonlySet<string> = new Set([
-  'invokestatic',
-  'invokevirtual',
-  'invokespecial',
-  'invokeinterface',
-  'invokedynamic',
-  'getstatic',
-  'putstatic',
-  'getfield',
-  'putfield',
-  'ldc',
-  'ldc_w',
-  'ldc2_w',
-  'new',
-  'anewarray',
-  'checkcast',
-  'instanceof',
-  'multianewarray',
-]);
-
-export function hasConstantPoolOperand(instruction: Instruction): boolean {
-  return CONSTANT_POOL_OPERAND_MNEMONICS.has(instruction.mnemonic);
-}
-
 /** Pool index this instruction names, if any — what a `#n` in its row leads to. */
 export function constantIndexOf(instruction: Instruction): number | undefined {
   return operandTokens(instruction).find((token) => token.constantIndex !== undefined)
@@ -68,14 +40,14 @@ export function operandTokens(instruction: Instruction): readonly OperandToken[]
   }
 
   // Every assigned opcode carries its operand roles, executable or not, so a `#n` is rendered
-  // from the table rather than from a guess about the mnemonic. The mnemonic set below is the
-  // fallback for a byte the table does not know at all.
+  // from the table rather than from a guess about the mnemonic. No fallback is needed: the
+  // decoder stops at a byte the table does not know, so an `Instruction` that exists at all
+  // has an entry here.
   const specs = lookupOpcode(instruction.opcode)?.operands;
-  const poolIndex = specs === undefined && hasConstantPoolOperand(instruction);
 
   return instruction.operands.map((operand, position) => {
     const role = specs?.[position]?.role;
-    if (role === 'constant-pool-index' || poolIndex) {
+    if (role === 'constant-pool-index') {
       return { text: `#${String(operand)}`, isReference: true, constantIndex: operand };
     }
     return { text: String(operand), isReference: role === 'branch-offset' };

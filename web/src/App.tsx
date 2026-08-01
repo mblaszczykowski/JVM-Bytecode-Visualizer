@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 
 import { AppShell } from './components/AppShell';
 import { BytecodePanel } from './components/BytecodePanel';
@@ -72,6 +72,14 @@ import {
   type ProgramRunner,
 } from './services/program-runner';
 
+/**
+ * The screen: everything below is derived from the reducer model and the transport position,
+ * and it is written as plain derivation. The React Compiler (see `vite.config.ts`) caches every
+ * value and every handler here, so a `useMemo` around one of them would only restate the build.
+ * The two exceptions are deliberate: the empty constants below, which the compiler cannot
+ * invent because an empty literal is written fresh each render, and the `useMemo` on `listing`.
+ */
+
 const APP_NAME = 'JVM Bytecode Visualizer';
 
 /** Stable empty history: a fresh array every render would keep rewinding the player. */
@@ -109,6 +117,21 @@ function structureVisibilityOf(
   shown: StructureView,
 ): string {
   return `${panel === selected ? '' : 'hidden'} ${panel === shown ? 'md:flex' : 'md:hidden'}`;
+}
+
+/**
+ * One explanation per mnemonic in the listing, not per row: a loop body that runs `iload` forty
+ * times asks the same question forty times, and the panel looks the answer up by mnemonic.
+ */
+function mnemonicHelpFor(listing: MethodListing | undefined): ReadonlyMap<string, string> {
+  const help = new Map<string, string>();
+  for (const instruction of listing?.instructions ?? []) {
+    const explanation = explainMnemonic(instruction.mnemonic);
+    if (explanation !== undefined) {
+      help.set(instruction.mnemonic, explanation);
+    }
+  }
+  return help;
 }
 
 /** The two faces of the left column: the `.java` it came from, and the `.class` itself. */
@@ -174,10 +197,10 @@ export function App({
   const [dismissed, setDismissed] = useState<string | undefined>(undefined);
 
   const tokenRef = useRef(0);
-  const issueToken = useCallback(() => {
+  const issueToken = (): number => {
     tokenRef.current += 1;
     return tokenRef.current;
-  }, []);
+  };
 
   useEffect(() => {
     let active = true;
@@ -229,79 +252,71 @@ export function App({
    * thing as a run it has stopped, and only a worker can do the second.
    */
   const running = useRef<AbortController | undefined>(undefined);
-  const startLoad = useCallback(
-    async (label: string, load: (context: LoadContext) => Promise<AppState>): Promise<void> => {
-      const token = issueToken();
-      // Whatever was still executing belongs to a screen the reader has already left.
-      running.current?.abort();
-      const controller = new AbortController();
-      running.current = controller;
+  const startLoad = async (
+    label: string,
+    load: (context: LoadContext) => Promise<AppState>,
+  ): Promise<void> => {
+    const token = issueToken();
+    // Whatever was still executing belongs to a screen the reader has already left.
+    running.current?.abort();
+    const controller = new AbortController();
+    running.current = controller;
 
-      dispatch({ kind: 'load-started', token, label, cancellable: programRunner.cancellable });
-      // Everywhere the reader had navigated to belongs to the program they are leaving.
-      setViewedMethodKey(undefined);
-      setSelectedConstant(undefined);
-      setStructureChoice(undefined);
+    dispatch({ kind: 'load-started', token, label, cancellable: programRunner.cancellable });
+    // Everywhere the reader had navigated to belongs to the program they are leaving.
+    setViewedMethodKey(undefined);
+    setSelectedConstant(undefined);
+    setStructureChoice(undefined);
 
-      const state = await settle(() =>
-        load({
-          runner: programRunner,
-          signal: controller.signal,
-          onProgress: (steps) => {
-            dispatch({ kind: 'load-progress', token, steps });
-          },
-        }),
-      );
-      if (state !== undefined) {
-        dispatch({ kind: 'load-settled', token, state });
-      }
-    },
-    [issueToken, programRunner],
-  );
+    const state = await settle(() =>
+      load({
+        runner: programRunner,
+        signal: controller.signal,
+        onProgress: (steps) => {
+          dispatch({ kind: 'load-progress', token, steps });
+        },
+      }),
+    );
+    if (state !== undefined) {
+      dispatch({ kind: 'load-settled', token, state });
+    }
+  };
 
   /** Ends the run and puts back whatever the load replaced — see `load-cancelled`. */
-  const cancelLoad = useCallback(() => {
+  const cancelLoad = () => {
     running.current?.abort();
     dispatch({ kind: 'load-cancelled', token: issueToken() });
-  }, [issueToken]);
+  };
 
   const examples = exampleEntriesOf(model.examples);
 
-  const selectExample = useCallback(
-    (id: string) => {
-      const entry = examples.find((example) => example.id === id);
-      if (entry === undefined) {
-        return;
-      }
-      void startLoad(`Loading ${entry.title}`, (context) =>
-        loadExampleState(entry, undefined, context),
-      );
-    },
-    [examples, startLoad],
-  );
+  const selectExample = (id: string) => {
+    const entry = examples.find((example) => example.id === id);
+    if (entry === undefined) {
+      return;
+    }
+    void startLoad(`Loading ${entry.title}`, (context) =>
+      loadExampleState(entry, undefined, context),
+    );
+  };
 
-  const selectFile = useCallback(
-    (file: File) => {
-      void startLoad(`Reading ${file.name}`, (context) =>
-        loadUploadState(file, undefined, context),
-      );
-    },
-    [startLoad],
-  );
+  const selectFile = (file: File) => {
+    void startLoad(`Reading ${file.name}`, (context) => loadUploadState(file, undefined, context));
+  };
 
   // Without this a file dropped anywhere but the small zone navigates the tab away from the
   // app, taking the loaded run with it.
   const isDropTarget = useFileDropGuard(selectFile);
 
-  const openEditor = useCallback(() => {
+  const openEditor = () => {
     dispatch({ kind: 'editor-opened' });
-  }, []);
+  };
 
-  const closeEditor = useCallback(() => {
+  const closeEditor = () => {
     dispatch({ kind: 'editor-closed', token: issueToken() });
-  }, [issueToken]);
+  };
 
-  const compileDraft = useCallback(async (): Promise<void> => {
+  const compileDraft = async (): Promise<void> => {
     if (compileApiUrl === undefined) {
       return;
     }
@@ -325,11 +340,11 @@ export function App({
         ),
       );
     }
-  }, [compileApiUrl, draft, issueToken, startLoad]);
+  };
 
-  const requestCompile = useCallback(() => {
+  const requestCompile = () => {
     void compileDraft();
-  }, [compileDraft]);
+  };
 
   const program = programOf(state);
   const snapshots = program?.snapshots ?? NO_SNAPSHOTS;
@@ -337,12 +352,12 @@ export function App({
   const { seekTo, stepCount } = player;
   const snapshot = snapshots[player.stepIndex];
 
-  const seekToStart = useCallback(() => {
+  const seekToStart = () => {
     seekTo(0);
-  }, [seekTo]);
-  const seekToEnd = useCallback(() => {
+  };
+  const seekToEnd = () => {
     seekTo(stepCount - 1);
-  }, [seekTo, stepCount]);
+  };
 
   useTransportShortcuts({
     enabled: snapshots.length > 0,
@@ -355,137 +370,106 @@ export function App({
 
   const previews = useExamplePreviews(examples);
 
-  const exampleOptions: readonly ExampleOption[] = useMemo(
-    () =>
-      examples.map((entry) => ({
-        id: entry.id,
-        name: shortTitleOf(entry),
-        tagline: entry.tagline,
-        description: entry.description,
-      })),
-    [examples],
-  );
-  const welcomeExamples: readonly WelcomeExample[] = useMemo(
-    () =>
-      examples.map((entry) => ({
-        id: entry.id,
-        title: entry.title,
-        tagline: entry.tagline,
-        preview: previews.get(entry.id),
-      })),
-    [examples, previews],
-  );
+  const exampleOptions: readonly ExampleOption[] = examples.map((entry) => ({
+    id: entry.id,
+    name: shortTitleOf(entry),
+    tagline: entry.tagline,
+    description: entry.description,
+  }));
+  const welcomeExamples: readonly WelcomeExample[] = examples.map((entry) => ({
+    id: entry.id,
+    title: entry.title,
+    tagline: entry.tagline,
+    preview: previews.get(entry.id),
+  }));
 
   const topFrame = topFrameOf(snapshot);
   /**
    * The listing on screen: the method the reader opened in the picker, or — until they open
    * one — whichever method the run is standing in. A class with no run still has a listing,
    * so this is where browsing takes over from replaying.
+   *
+   * The one hand-written memo here, and not for its own cost — `listingToShow` is a lookup.
+   * Half the derivations below take `listing`, and handing it out from an unmemoised call
+   * leaves the React Compiler unable to bound when it may change, so it caches none of them —
+   * including `firstStepByOffset`, which walks the whole history and would walk it again on
+   * every frame of playback. Memoised here, the compiler caches the lot.
    */
-  const listing =
-    program === undefined ? undefined : listingToShow(program, snapshot, viewedMethodKey);
-  /**
-   * Whether the step and the listing are talking about the same method (see the service).
-   * Memoised not for the cost — it is two string comparisons — but because handing `listing`
-   * to a function outside a memo block would tell the React Compiler the value may change
-   * underneath every derivation below that depends on it.
-   */
-  const isLive = useMemo(() => isCurrentListing(listing, topFrame), [listing, topFrame]);
+  const listing = useMemo(
+    () => (program === undefined ? undefined : listingToShow(program, snapshot, viewedMethodKey)),
+    [program, snapshot, viewedMethodKey],
+  );
+  /** Whether the step and the listing are talking about the same method (see the service). */
+  const isLive = isCurrentListing(listing, topFrame);
 
   // Dimming every row of a method the run never entered would report the whole listing as
   // dead code, when the truth is that this run never had an opinion about it.
-  const deadOffsets = useMemo(
-    () =>
-      listing === undefined || listing.executedOffsets.size === 0
-        ? undefined
-        : deadOffsetsOf(listing),
-    [listing],
-  );
-  const comments = useMemo(
-    () =>
-      listing === undefined || program === undefined
-        ? undefined
-        : constantPoolComments(listing, program.classFile),
-    [listing, program],
-  );
-  const depths = useMemo(() => depthsOf(snapshots), [snapshots]);
+  const deadOffsets =
+    listing === undefined || listing.executedOffsets.size === 0
+      ? undefined
+      : deadOffsetsOf(listing);
+  const comments =
+    listing === undefined || program === undefined
+      ? undefined
+      : constantPoolComments(listing, program.classFile);
+  const depths = depthsOf(snapshots);
 
   const sourceLine = snapshot?.sourceLine;
-  const pcRange = useMemo(
-    () =>
-      listing === undefined || sourceLine === undefined || !isLive
-        ? undefined
-        : offsetsForLine(listing, sourceLine),
-    [listing, sourceLine, isLive],
-  );
+  const pcRange =
+    listing === undefined || sourceLine === undefined || !isLive
+      ? undefined
+      : offsetsForLine(listing, sourceLine);
   const mappingNote =
     listing === undefined || topFrame === undefined || !isLive
       ? undefined
       : lineMappingNote(listing, topFrame.pc);
   // The "Next" card and the operand roles read the current instruction against the listing;
   // pointed at another method they would describe an instruction that is not about to run.
-  const next = useMemo(
-    () =>
-      snapshot === undefined || program === undefined || !isLive
-        ? undefined
-        : describeNextInstruction(snapshot, listing, program.classFile),
-    [snapshot, listing, program, isLive],
-  );
-  const operandRoles = useMemo(
-    () =>
-      snapshot === undefined || program === undefined
-        ? undefined
-        : describeOperandRoles(snapshot, isLive ? listing : undefined, program.classFile),
-    [snapshot, listing, program, isLive],
-  );
+  const next =
+    snapshot === undefined || program === undefined || !isLive
+      ? undefined
+      : describeNextInstruction(snapshot, listing, program.classFile);
+  const operandRoles =
+    snapshot === undefined || program === undefined
+      ? undefined
+      : describeOperandRoles(snapshot, isLive ? listing : undefined, program.classFile);
 
-  // Click-to-seek: both code panels know their rows by offset and by line, so the run only
-  // has to be indexed the same way once per program.
-  const stepForOffset = useMemo(() => firstStepByOffset(snapshots, listing), [snapshots, listing]);
-  const stepForLine = useMemo(() => firstStepByLine(snapshots), [snapshots]);
-  const mnemonicHelp = useMemo(() => {
-    const help = new Map<string, string>();
-    for (const instruction of listing?.instructions ?? []) {
-      const explanation = explainMnemonic(instruction.mnemonic);
-      if (explanation !== undefined) {
-        help.set(instruction.mnemonic, explanation);
-      }
-    }
-    return help;
-  }, [listing]);
+  // Click-to-seek: both code panels know their rows by offset and by line, so the run is
+  // indexed both ways.
+  const stepForOffset = firstStepByOffset(snapshots, listing);
+  const stepForLine = firstStepByLine(snapshots);
+  const mnemonicHelp = mnemonicHelpFor(listing);
 
   const summary = program === undefined ? undefined : runSummaryOf(program);
-  const lastLive = useMemo(() => lastLiveSnapshot(snapshots), [snapshots]);
+  const lastLive = lastLiveSnapshot(snapshots);
 
   // The Console section joins the column for a run that printed, and stays for the rest of
   // it — the same rule the heap follows. A build whose interpreter has no console yet simply
-  // never satisfies it.
-  const printed = useMemo(() => runPrintedOutput(snapshots), [snapshots]);
+  // never satisfies it. Kept a step apart from the lines themselves, which change every step:
+  // folded into one expression, this scan of the whole history would run again each of them.
+  const printed = runPrintedOutput(snapshots);
   const consoleLines = printed ? consoleLinesOf(snapshot) : undefined;
 
-  const selectPanel = useCallback((panel: PanelName) => {
+  const selectPanel = (panel: PanelName) => {
     setVisiblePanel(panel);
     if (panel === 'source' || panel === 'class') {
       setStructureChoice(panel);
     }
-  }, []);
+  };
 
-  const selectMethod = useCallback((method: MethodListing) => {
+  const selectMethod = (method: MethodListing) => {
     setViewedMethodKey(methodKeyOf(method));
     setVisiblePanel('bytecode');
-  }, []);
+  };
 
-  const runMethod = useCallback(
-    (method: MethodListing) => {
-      if (program === undefined) {
-        return;
-      }
-      void startLoad(`Running ${method.name}`, (context) =>
-        runFromState(program, method.name, context),
-      );
-    },
-    [program, startLoad],
-  );
+  const runMethod = (method: MethodListing) => {
+    if (program === undefined) {
+      return;
+    }
+    void startLoad(`Running ${method.name}`, (context) =>
+      runFromState(program, method.name, context),
+    );
+  };
 
   /**
    * Following a `#n` out of the listing opens the pool at that entry — on a phone that means
@@ -493,13 +477,10 @@ export function App({
    * other direction needs no such move: a pool row marks its instructions where they already
    * are, and on a phone the toolbar switch is one tap away.
    */
-  const followConstantFromListing = useCallback(
-    (index: number) => {
-      setSelectedConstant(index);
-      selectPanel('class');
-    },
-    [selectPanel],
-  );
+  const followConstantFromListing = (index: number) => {
+    setSelectedConstant(index);
+    selectPanel('class');
+  };
 
   const failure = state.status === 'error' ? describeAppError(state.error) : undefined;
   const examplesError = examplesErrorOf(model.examples);
@@ -534,9 +515,9 @@ export function App({
   // A message stays dismissed until a different one takes its place — no effect needed, the
   // text of the current notice is the identity of the current notice.
   const notice = raised?.message === dismissed ? undefined : raised;
-  const dismissNotice = useCallback(() => {
+  const dismissNotice = () => {
     setDismissed(raised?.message);
-  }, [raised]);
+  };
 
   /**
    * The left column's own header is the switch between its two panels — the tab strip has no
@@ -560,21 +541,18 @@ export function App({
     </SegmentedControl>
   );
 
-  const raiseLimit = useMemo(
-    () =>
-      compileNotice !== undefined || nextStepLimit === undefined || program === undefined
-        ? undefined
-        : {
-            label: 'Raise the limit',
-            onAction: () => {
-              void startLoad(
-                `Re-running with ${nextStepLimit.toLocaleString('en-US')} steps`,
-                (context) => rerunState(program, nextStepLimit, context),
-              );
-            },
+  const raiseLimit =
+    compileNotice !== undefined || nextStepLimit === undefined || program === undefined
+      ? undefined
+      : {
+          label: 'Raise the limit',
+          onAction: () => {
+            void startLoad(
+              `Re-running with ${nextStepLimit.toLocaleString('en-US')} steps`,
+              (context) => rerunState(program, nextStepLimit, context),
+            );
           },
-    [compileNotice, nextStepLimit, program, startLoad],
-  );
+        };
 
   /**
    * A failed upload belongs next to the drop zone that caused it, not 500px away at the foot

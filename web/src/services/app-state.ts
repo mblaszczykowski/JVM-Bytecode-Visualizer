@@ -284,8 +284,8 @@ export type ExamplesStatus =
 const NO_DIAGNOSTICS: readonly CompileDiagnostic[] = [];
 const NO_ENTRIES: readonly ExampleEntry[] = [];
 
-export const CLOSED_EDITOR: EditorView = { kind: 'closed' };
-export const EDITING: EditorView = { kind: 'editing', diagnostics: NO_DIAGNOSTICS };
+const CLOSED_EDITOR: EditorView = { kind: 'closed' };
+const EDITING: EditorView = { kind: 'editing', diagnostics: NO_DIAGNOSTICS };
 
 export interface AppModel {
   readonly load: AppState;

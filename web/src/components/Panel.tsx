@@ -1,5 +1,9 @@
 import type { ReactNode, RefObject } from 'react';
 
+import { glossaryTermForPanel } from '../services/glossary';
+
+import { GlossaryButton } from './GlossaryTrigger';
+
 export type PanelVariant = 'code' | 'state';
 
 interface PanelProps {
@@ -78,6 +82,11 @@ export function Panel({
   const body = scrolls
     ? `focus-ring scroll-visible overflow-auto ${BODY_FILL[bodyFill]}`
     : 'shrink-0';
+  /**
+   * The moment someone asks what the operand stack is, they are looking at the panel headed
+   * "Operand stack" — so the way to the explanation is in that header, not only in a menu.
+   */
+  const term = glossaryTermForPanel(title);
 
   return (
     <section
@@ -91,11 +100,14 @@ export function Panel({
         }`}
       >
         <h2 className="sr-only">{title}</h2>
-        {titleControl ?? (
-          <span aria-hidden="true" className={`text-[11.5px] font-semibold ${TITLE[variant]}`}>
-            {title}
-          </span>
-        )}
+        <span className="flex min-w-0 items-center gap-[6px]">
+          {titleControl ?? (
+            <span aria-hidden="true" className={`text-[11.5px] font-semibold ${TITLE[variant]}`}>
+              {title}
+            </span>
+          )}
+          {term === undefined ? null : <GlossaryButton term={term} />}
+        </span>
         <span className="truncate font-mono text-[11px] text-white/32">{meta}</span>
       </header>
 

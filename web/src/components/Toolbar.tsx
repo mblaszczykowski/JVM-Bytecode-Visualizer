@@ -1,5 +1,7 @@
 import { type ExampleOption, ExamplePicker } from './ExamplePicker';
 import { FileUpload } from './FileUpload';
+import { GlossaryDialog } from './GlossaryDialog';
+import { openGlossary } from './glossary-store';
 import { Segment, SegmentedControl } from './ui/SegmentedControl';
 
 /** `hidden` until a compile backend is configured and reachable. */
@@ -84,6 +86,17 @@ export function Toolbar({
       />
 
       <div className="ml-auto flex items-center gap-3">
+        {/* The way in that does not depend on which panel is on screen. */}
+        <button
+          type="button"
+          data-testid="toolbar-glossary"
+          onClick={() => {
+            openGlossary();
+          }}
+          className="focus-ring shrink-0 rounded-full bg-white/6 px-[10px] py-[5px] text-[11px] text-white/55 transition-colors hover:bg-white/12 hover:text-white/85"
+        >
+          Glossary
+        </button>
         {onWriteJava === undefined ? null : (
           <button
             type="button"
@@ -118,6 +131,10 @@ export function Toolbar({
           </SegmentedControl>
         </div>
       )}
+
+      {/* Mounted here because the toolbar is on screen in every state of the application; it
+          renders nothing until something asks for a term. */}
+      <GlossaryDialog />
     </header>
   );
 }

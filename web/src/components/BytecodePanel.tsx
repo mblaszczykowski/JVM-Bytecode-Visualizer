@@ -10,6 +10,7 @@ import {
   type OperandToken,
 } from './bytecode-format';
 import { CurrentRowHighlight } from './CurrentRowHighlight';
+import { GlossaryLink } from './GlossaryTrigger';
 import { NextInstructionCard, type NextInstructionCardProps } from './NextInstructionCard';
 import { Panel } from './Panel';
 import { CODE_ROW } from './rhythm';
@@ -157,7 +158,17 @@ export function BytecodePanel({
   const contentRef = useScrollFollow(currentIndex < 0 ? followedIndex : currentIndex);
   const rows = useRowNavigation(instructions.length, currentIndex < 0 ? undefined : currentIndex);
 
-  const meta = `${methodName}${methodDescriptor} · max ${String(maxStack)}/${String(maxLocals)}`;
+  /**
+   * `(I)I` is the header's most cryptic three characters and the reader meets the notation
+   * here first, so the notation itself is the way to the explanation of it.
+   */
+  const meta = (
+    <>
+      {methodName}
+      <GlossaryLink term="descriptor" text={methodDescriptor} />
+      {` · max ${String(maxStack)}/${String(maxLocals)}`}
+    </>
+  );
   const currentOperands = current === undefined ? '' : formatOperands(current);
 
   return (

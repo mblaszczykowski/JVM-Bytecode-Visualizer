@@ -3,6 +3,7 @@ import type { RunPreview } from '../services/program';
 import { CapabilityNote } from './CapabilityNote';
 import { ErrorBanner, type BannerSeverity } from './ErrorBanner';
 import { FileUpload } from './FileUpload';
+import { openGlossary } from './glossary-store';
 
 export interface WelcomeExample {
   readonly id: string;
@@ -115,7 +116,20 @@ export function WelcomeScreen({
         </ul>
 
         <section aria-label="Example programs">
-          <h3 className="text-[11.5px] font-semibold text-white/50">Start with an example</h3>
+          {/* On the heading's own line, so the invitation costs the cards no vertical room. */}
+          <div className="flex items-baseline justify-between gap-3">
+            <h3 className="text-[11.5px] font-semibold text-white/50">Start with an example</h3>
+            <button
+              type="button"
+              data-testid="welcome-glossary"
+              onClick={() => {
+                openGlossary();
+              }}
+              className="focus-ring shrink-0 rounded-full bg-white/6 px-[10px] py-[4px] text-[11px] text-white/55 transition-colors hover:bg-white/12 hover:text-white/85"
+            >
+              New to the JVM? What these words mean
+            </button>
+          </div>
           <ul className="mt-[10px] grid gap-[12px] sm:grid-cols-2 xl:grid-cols-4">
             {examples.map((example) => (
               <li key={example.id} className="flex">

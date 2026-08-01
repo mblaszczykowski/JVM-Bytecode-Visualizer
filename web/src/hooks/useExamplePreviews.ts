@@ -11,7 +11,7 @@ const NONE: ReadonlyMap<string, RunPreview> = new Map();
  * Runs each bundled example far enough to know how long it is and how deep it goes, so the
  * welcome cards can say "40 steps, five frames deep" instead of leaving that to be discovered
  * by clicking. The programs are a few hundred instructions each, so this costs a few
- * milliseconds and four requests for files the reader is about to ask for anyway.
+ * milliseconds and one request per example — for files the reader is about to ask for anyway.
  *
  * A preview that fails is simply absent: a card without a sparkline still opens its example.
  */

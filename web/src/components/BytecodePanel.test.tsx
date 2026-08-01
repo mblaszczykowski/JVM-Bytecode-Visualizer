@@ -1,11 +1,19 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { MethodListing } from '../services/program';
 
 import { commentsOf, constructorListing, factorialListing } from './__fixtures__/factorial-run';
 import { BytecodePanel } from './BytecodePanel';
+import { GlossaryDialog } from './GlossaryDialog';
+import { closeGlossary } from './glossary-store';
 import { ROW_HEIGHT } from './rhythm';
+
+afterEach(() => {
+  act(() => {
+    closeGlossary();
+  });
+});
 
 /** The real disassembly of a method of the committed `Factorial.class`. */
 const factorial = factorialListing();
@@ -37,7 +45,9 @@ describe('BytecodePanel', () => {
 
     expect(screen.getByRole('region', { name: 'Bytecode' })).toBeInTheDocument();
     // stack=3, locals=1 in the Code attribute javap prints for factorial(int).
-    expect(screen.getByText('factorial(I)I · max 3/1')).toBeInTheDocument();
+    // The descriptor inside it is a way into the glossary, so the line is no longer one node.
+    const descriptor = screen.getByRole('button', { name: '(I)I — What is a descriptor?' });
+    expect(descriptor.parentElement).toHaveTextContent('factorial(I)I · max 3/1');
     expect(screen.getAllByRole('listitem')).toHaveLength(factorial.instructions.length);
   });
 
@@ -140,11 +150,32 @@ describe('BytecodePanel', () => {
     renderListing(factorial, 0, { stepForOffset: new Map([[11, 9]]), onSeek });
 
     // Only the offsets the run reached are seekable; the rest are read-only rows.
-    const targets = screen.getAllByRole('button');
+    const targets = within(screen.getByRole('list')).getAllByRole('button');
     expect(targets).toHaveLength(1);
 
     fireEvent.click(screen.getByRole('button', { name: 'Go to pc 11, invokestatic' }));
     expect(onSeek).toHaveBeenCalledWith(9);
+  });
+
+  /** `(I)I` is where a reader first meets the notation, so it is where the notation is explained. */
+  it('explains the method descriptor from the descriptor itself', () => {
+    render(
+      <>
+        <BytecodePanel
+          methodName={factorial.name}
+          methodDescriptor={factorial.descriptor}
+          maxStack={factorial.maxStack}
+          maxLocals={factorial.maxLocals}
+          instructions={factorial.instructions}
+          currentOffset={undefined}
+        />
+        <GlossaryDialog />
+      </>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '(I)I — What is a descriptor?' }));
+
+    expect(screen.getByTestId('glossary-entry')).toHaveAttribute('data-term', 'descriptor');
   });
 
   it('explains any mnemonic on hover, including the rows this run never reached', () => {

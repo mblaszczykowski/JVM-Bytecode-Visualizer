@@ -100,7 +100,8 @@ describe('SourcePanel', () => {
     );
 
     // Only lines the run actually reached are seekable — the javadoc above them is not.
-    const targets = screen.getAllByRole('button');
+    // Scoped to the listing: the panel header carries a button of its own.
+    const targets = within(screen.getByRole('list')).getAllByRole('button');
     expect(targets.map((target) => target.getAttribute('aria-label'))).toEqual([
       'Go to line 26',
       'Go to line 27',

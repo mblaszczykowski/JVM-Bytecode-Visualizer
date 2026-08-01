@@ -54,6 +54,17 @@ test('the explorer has no serious accessibility violations', async ({ page }) =>
   expect(await seriousViolations(page)).toEqual([]);
 });
 
+test('the glossary has no serious accessibility violations', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('radio', { name: 'Factorial', exact: true }).click();
+  await expect(page.getByTestId('step-counter')).toBeVisible();
+
+  await page.getByRole('region', { name: 'Operand stack' }).getByTestId('glossary-trigger').click();
+  await expect(page.getByRole('dialog', { name: 'Glossary' })).toBeVisible();
+
+  expect(await seriousViolations(page)).toEqual([]);
+});
+
 test('tabbing runs toolbar, then panels, then transport', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('radio', { name: 'Factorial', exact: true }).click();
