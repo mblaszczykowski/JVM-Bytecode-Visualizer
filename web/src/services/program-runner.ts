@@ -92,6 +92,20 @@ export const inlineRunner: ProgramRunner = {
  */
 const STEPS_PER_REPORT = 25_000;
 
+/**
+ * How long a worker may go without saying anything before it is presumed dead.
+ *
+ * A worker the browser kills outright — reclaiming memory is the usual reason — fires no
+ * event at all: `onerror` reports a script that failed to run, not a thread that stopped
+ * existing. Nothing else in the protocol would ever settle that run, so the loading panel
+ * would spin for the rest of the session.
+ *
+ * The interpreter reaches the 500,000-step ceiling in well under a second, and the handover
+ * that follows sends a batch at a time, so a minute of complete silence is not a slow run:
+ * it is a thread that is no longer there.
+ */
+const WORKER_SILENCE_LIMIT_MS = 60_000;
+
 /** The slice of `Worker` a run uses — small enough for a test to stand in for it. */
 export interface RunWorker {
   onmessage: ((event: MessageEvent<RunEvent>) => void) | null;
@@ -111,6 +125,7 @@ export interface RunWorker {
 export function workerRunner(
   spawn: () => RunWorker,
   fallback: ProgramRunner = inlineRunner,
+  silenceLimitMs: number = WORKER_SILENCE_LIMIT_MS,
 ): ProgramRunner {
   let usable = true;
 
@@ -139,12 +154,44 @@ export function workerRunner(
         const snapshots: Snapshot[] = [];
         let reported = 0;
 
+        let watchdog: ReturnType<typeof setTimeout> | undefined;
+
+        const stopWatchdog = (): void => {
+          if (watchdog !== undefined) {
+            clearTimeout(watchdog);
+            watchdog = undefined;
+          }
+        };
+
         const release = (): void => {
+          stopWatchdog();
           worker.onmessage = null;
           worker.onerror = null;
           options?.signal?.removeEventListener('abort', abandon);
           // The history dies with the worker, which is most of the point of having one.
           worker.terminate();
+        };
+
+        /**
+         * Restarted by every message, so the deadline is on silence rather than on the run:
+         * a long handover keeps resetting it, and a thread that has stopped existing does not.
+         *
+         * This run ends here rather than being handed to `fallback`. Whatever was heavy
+         * enough to cost the worker its life would be run again on the thread that paints,
+         * and that is the one failure this application cannot report at all.
+         */
+        const armWatchdog = (): void => {
+          stopWatchdog();
+          watchdog = setTimeout(() => {
+            usable = false;
+            release();
+            reject(
+              new Error(
+                'the run stopped answering and was abandoned — the program was probably too ' +
+                  'large for this browser to record',
+              ),
+            );
+          }, silenceLimitMs);
         };
 
         function abandon(): void {
@@ -153,6 +200,7 @@ export function workerRunner(
         }
 
         worker.onmessage = ({ data }): void => {
+          armWatchdog();
           switch (data.kind) {
             case 'snapshots':
               for (const snapshot of data.snapshots) {
@@ -184,6 +232,7 @@ export function workerRunner(
 
         options?.signal?.addEventListener('abort', abandon, { once: true });
         worker.postMessage(command);
+        armWatchdog();
       });
     },
   };

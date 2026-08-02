@@ -129,6 +129,51 @@ describe('running in a worker', () => {
     expect(worker.terminations).toBe(1);
   });
 
+  /**
+   * The failure with no event behind it: a worker the browser reclaims stops existing without
+   * firing `onerror`, so only the passage of time distinguishes it from a run still going.
+   */
+  it('gives up on a worker that has gone silent, instead of waiting forever', async () => {
+    vi.useFakeTimers();
+    try {
+      const worker = new FakeWorker();
+      const runner = workerRunner(() => worker, inlineRunner, 1_000);
+
+      const pending = runner.run(commandFor(gcd()));
+      const settled = expect(pending).rejects.toThrow('stopped answering');
+      await vi.advanceTimersByTimeAsync(1_000);
+      await settled;
+
+      expect(worker.terminations).toBe(1);
+      // A worker that died once is not asked to hold the next run either.
+      expect(runner.cancellable).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps waiting as long as the worker is still streaming', async () => {
+    vi.useFakeTimers();
+    try {
+      const worker = new FakeWorker();
+      const runner = workerRunner(() => worker, inlineRunner, 1_000);
+
+      const pending = runner.run(commandFor(gcd()));
+      // Three quiet spells, each shorter than the limit, separated by a batch: the deadline
+      // is on silence, not on how long the handover takes.
+      for (let batch = 0; batch < 3; batch += 1) {
+        await vi.advanceTimersByTimeAsync(900);
+        worker.emit({ kind: 'snapshots', snapshots: fakeHistory(10) });
+      }
+      worker.emit({ kind: 'done', result: { kind: 'completed' } });
+
+      expect((await pending).snapshots).toHaveLength(30);
+      expect(runner.cancellable).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('reports an interpreter that threw as a failure of this run', async () => {
     const worker = new FakeWorker();
     const runner = workerRunner(() => worker);

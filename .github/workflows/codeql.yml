@@ -1,0 +1,65 @@
+name: codeql
+
+# Both languages in one workflow, on the same schedule. The weekly run matters as much as the
+# per-push one: most new findings come from updated queries rather than from changed code.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '0 6 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: analyze / ${{ matrix.language }}
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      actions: read
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: javascript-typescript
+          - language: java-kotlin
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # The Java analysis needs a JDK to build against; the JS one needs nothing.
+      - name: Setup JDK
+        if: matrix.language == 'java-kotlin'
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+          cache: 'maven'
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          language: ${{ matrix.language }}
+
+      # The frontend needs no build for CodeQL; the server is built the way CI builds it.
+      - name: Build the compile service
+        if: matrix.language == 'java-kotlin'
+        working-directory: server
+        run: ./mvnw -B -ntp -DskipTests compile
+
+      - name: Autobuild
+        if: matrix.language != 'java-kotlin'
+        uses: github/codeql-action/autobuild@v3
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: /language:${{ matrix.language }}

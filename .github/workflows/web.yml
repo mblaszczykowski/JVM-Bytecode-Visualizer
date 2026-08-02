@@ -39,6 +39,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # The repository is formatted by Prettier and .prettierrc is committed; without this the
+      # only thing enforcing it is whether the author happened to have format-on-save enabled.
+      - name: Check formatting
+        run: npm run format:check
+
       - name: Lint
         run: npm run lint
 

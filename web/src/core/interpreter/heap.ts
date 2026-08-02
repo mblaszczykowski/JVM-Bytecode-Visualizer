@@ -15,6 +15,36 @@ import type { ArrayObject } from './types';
 /** JVMS §2.4: `null` is a reference value of its own, and no array ever lives at this handle. */
 export const NULL_REFERENCE = -1;
 
+/**
+ * Elements this heap will hold at once, across every array on it.
+ *
+ * A real JVM answers an impossible `newarray` with OutOfMemoryError; without a bound here the
+ * allocation is handed straight to `new Array(n).fill(0)`, and `new int[Integer.MAX_VALUE]` —
+ * a class file javac compiles without complaint — takes the whole process down with a V8
+ * fatal error, which is not an exception and cannot be caught. The bound has to sit in front
+ * of the allocation rather than around it.
+ *
+ * Eight million is ~64 MB of live elements: far past any array worth stepping through by hand,
+ * and far short of what a tab can be asked to hold.
+ */
+export const MAX_HEAP_ELEMENTS = 8_000_000;
+
+/**
+ * Elements this heap will copy into the history over a whole run.
+ *
+ * The subtler of the two limits, and the one that actually bites. `freeze()` keeps one
+ * immutable copy of every array a step changed (ADR-0001), so the history costs
+ * `array length × mutating steps` — not `array length`. Measured: a 10,000-element array
+ * written 1,817 times costs 148 MB, and the same program at the 500,000-step ceiling would
+ * ask for roughly 3.7 GB. The live-heap bound above never sees it, because no single array is
+ * large.
+ *
+ * Twenty-four million elements is ~192 MB of recorded arrays, which keeps an array-heavy run
+ * inside the same order of magnitude as the ~275 MB `workers/run-protocol` already documents
+ * as the worst case for a run at that ceiling.
+ */
+export const MAX_RECORDED_ELEMENTS = 24_000_000;
+
 interface HeapCell {
   readonly elements: number[];
   /** Bumped by every element write, so `freeze()` re-copies only the arrays that changed. */
@@ -32,6 +62,10 @@ export class Heap {
   private readonly cells: HeapCell[] = [];
   /** Bumped by every allocation and every store; an untouched heap reuses its frozen view. */
   private revision = 0;
+  /** Elements across every array, against `MAX_HEAP_ELEMENTS`. Arrays are never freed. */
+  private liveElements = 0;
+  /** Elements copied into the history so far, against `MAX_RECORDED_ELEMENTS`. */
+  private recordedElements = 0;
   private readonly frozenCells: FrozenCell[] = [];
   /** Revision the view below was taken at; revision 0 is the empty heap of an int-only run. */
   private frozenRevision = 0;
@@ -42,7 +76,14 @@ export class Heap {
     if (length < 0) {
       throw new VmFault({ kind: 'negative-array-size', size: length });
     }
+    // Checked before allocating, not after: `new Array(n).fill(0)` for a large enough `n` ends
+    // the process rather than throwing, so there is nothing to recover from afterwards.
+    const held = this.liveElements + length;
+    if (held > MAX_HEAP_ELEMENTS) {
+      throw outOfMemory('heap', held, MAX_HEAP_ELEMENTS);
+    }
     this.cells.push({ elements: new Array<number>(length).fill(0), version: 0 });
+    this.liveElements = held;
     this.revision += 1;
     return this.cells.length - 1;
   }
@@ -99,6 +140,14 @@ export class Heap {
       return previous.object;
     }
 
+    // A copy is about to be made and kept for as long as the history is: this is the one
+    // place that knows what recording this run has really cost so far.
+    const recorded = this.recordedElements + cell.elements.length;
+    if (recorded > MAX_RECORDED_ELEMENTS) {
+      throw outOfMemory('history', recorded, MAX_RECORDED_ELEMENTS);
+    }
+    this.recordedElements = recorded;
+
     const object: ArrayObject = Object.freeze({
       kind: 'int-array',
       length: cell.elements.length,
@@ -120,4 +169,8 @@ export class Heap {
 
 function outOfBounds(index: number, length: number): VmFault {
   return new VmFault({ kind: 'array-index-out-of-bounds', index, length });
+}
+
+function outOfMemory(resource: 'heap' | 'history', requested: number, limit: number): VmFault {
+  return new VmFault({ kind: 'out-of-memory', resource, requested, limit });
 }

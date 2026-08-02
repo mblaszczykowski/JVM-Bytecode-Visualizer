@@ -11,6 +11,12 @@
  */
 import { expect, test } from '@playwright/test';
 
+/**
+ * The toolbar's button, not the welcome screen's — both open the editor, and both are on
+ * screen before a program is loaded. `exact` picks the toolbar one, whose accessible name is
+ * the label alone, and it is the one that is there in every state.
+ */
+
 test.skip(
   () => process.env.PLAYWRIGHT_COMPILE_API_URL === undefined,
   'needs a compile service: set PLAYWRIGHT_COMPILE_API_URL and VITE_COMPILE_API_URL',
@@ -27,7 +33,7 @@ test('writes a class, compiles it and replays the run', async ({ page }) => {
   await page.goto('/');
 
   await expect(page.getByTestId('compiler-health')).toHaveAttribute('data-status', 'online');
-  await page.getByRole('button', { name: 'Write Java…' }).click();
+  await page.getByRole('button', { name: 'Write Java…', exact: true }).click();
 
   const editor = page.getByLabel('Java source');
   await expect(editor).toHaveValue(/class FizzBuzz/);
@@ -54,7 +60,7 @@ test('writes a class, compiles it and replays the run', async ({ page }) => {
 test('points at the offending line when the source does not compile', async ({ page }) => {
   await page.goto('/');
 
-  await page.getByRole('button', { name: 'Write Java…' }).click();
+  await page.getByRole('button', { name: 'Write Java…', exact: true }).click();
   await page.getByLabel('Java source').fill(BROKEN_SOURCE);
   await page.getByRole('button', { name: 'Compile' }).click();
 

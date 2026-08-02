@@ -166,6 +166,14 @@ function describeVmError(error: VmError): string {
       return `NullPointerException: the reference is null ${at}. There is no array behind it to read, write or measure.`;
     case 'unsupported-array-type':
       return `Unsupported array type: ${error.typeName} ${at}. This interpreter only allocates int arrays.`;
+    case 'out-of-memory':
+      return (
+        `OutOfMemoryError ${at}. ` +
+        (error.resource === 'heap'
+          ? `The program asked for ${error.requested.toLocaleString('en-US')} array elements at once, and this machine holds at most ${error.limit.toLocaleString('en-US')}.`
+          : `Recording the arrays this run writes to would have cost ${error.requested.toLocaleString('en-US')} copied elements, and the budget is ${error.limit.toLocaleString('en-US')} — every step that writes to an array keeps its own copy, so a large array written in a loop costs far more than the array itself.`) +
+        ` ${historyStands}`
+      );
     case 'unsupported-field':
       return `Unsupported field: ${error.target} ${at}. This interpreter models a short list of external members — System.out among them — and no instance state at all, so there is no object here to read the field from. ${historyStands}`;
     case 'unsupported-constant':

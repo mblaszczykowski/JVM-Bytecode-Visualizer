@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { parseClassFile, type ClassFile, type MethodInfo } from '../core/classfile';
+import { DEFAULT_MAX_STEPS } from '../core/interpreter';
 import { syntheticClass } from '../core/interpreter/__fixtures__/synthetic-class';
 
 import {
@@ -11,6 +12,7 @@ import {
 import { exampleRoutes, statusResponse, stubFetch } from './__fixtures__/fake-fetch';
 import { uploadFile } from './__fixtures__/upload-file';
 import {
+  affordableStepLimit,
   IDLE,
   loadCompiledState,
   loadExampleState,
@@ -248,6 +250,73 @@ describe('raising the step limit', () => {
 
   it('stops offering the action at the ceiling', () => {
     expect(raisedStepLimit(MAX_STEP_LIMIT)).toBeUndefined();
+  });
+
+  /**
+   * The ceiling was picked against a laptop. A phone that says it has a gigabyte cannot hold
+   * the history that limit produces, and a run that dies for want of memory leaves nothing on
+   * screen — so the button has to stop lower there rather than fail later.
+   */
+  describe('on a device that reports how much memory it has', () => {
+    function withDeviceMemory(gigabytes: number | undefined, assert: () => void): void {
+      const original = Object.getOwnPropertyDescriptor(navigator, 'deviceMemory');
+      Object.defineProperty(navigator, 'deviceMemory', {
+        value: gigabytes,
+        configurable: true,
+      });
+      try {
+        assert();
+      } finally {
+        if (original === undefined) {
+          delete (navigator as { deviceMemory?: number }).deviceMemory;
+        } else {
+          Object.defineProperty(navigator, 'deviceMemory', original);
+        }
+      }
+    }
+
+    it('keeps the full ceiling where there is memory for it', () => {
+      withDeviceMemory(8, () => {
+        expect(affordableStepLimit()).toBe(MAX_STEP_LIMIT);
+        expect(raisedStepLimit(100_000)).toBe(MAX_STEP_LIMIT);
+      });
+    });
+
+    it('lowers the ceiling on a small device, and stops the action there', () => {
+      withDeviceMemory(1, () => {
+        const ceiling = affordableStepLimit();
+
+        expect(ceiling).toBeLessThan(MAX_STEP_LIMIT);
+        expect(ceiling).toBeGreaterThan(DEFAULT_MAX_STEPS);
+        // The first raise is the usual five-fold one; it is the second that the lower
+        // ceiling catches, and where the action then stops.
+        expect(raisedStepLimit(20_000)).toBe(100_000);
+        expect(raisedStepLimit(100_000)).toBe(ceiling);
+        expect(raisedStepLimit(ceiling)).toBeUndefined();
+      });
+    });
+
+    it('leaves every rung of the reported ladder able to replay an ordinary run', () => {
+      // The Device Memory API reports one of these and nothing else.
+      for (const gigabytes of [0.25, 0.5, 1, 2, 4, 8]) {
+        withDeviceMemory(gigabytes, () => {
+          expect(affordableStepLimit()).toBeGreaterThanOrEqual(DEFAULT_MAX_STEPS);
+        });
+      }
+    });
+
+    it('never falls below one ordinary run, whatever it is told', () => {
+      // Below anything the API reports; the floor is a guard, not a working range.
+      withDeviceMemory(0.05, () => {
+        expect(affordableStepLimit()).toBe(DEFAULT_MAX_STEPS);
+      });
+    });
+
+    it('keeps the full ceiling where the browser does not report memory at all', () => {
+      withDeviceMemory(undefined, () => {
+        expect(affordableStepLimit()).toBe(MAX_STEP_LIMIT);
+      });
+    });
   });
 
   it('re-runs the same program with the new limit', async () => {

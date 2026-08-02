@@ -22,6 +22,24 @@ export default defineConfig({
    * `services/program-runner` answers that by running the program on this thread.
    */
   worker: { format: 'es' },
+  /**
+   * Three chunks rather than one. Undivided, the build is a single ~550 kB file — past the
+   * size Vite warns about — in which the dependencies that change once a quarter sit next to
+   * the application code that changes every deploy, so a one-line fix re-downloads React.
+   *
+   * Split by how often each part actually changes, which is also what makes the immutable
+   * caching in `vercel.json` worth anything.
+   */
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          react: ['react', 'react-dom'],
+          motion: ['framer-motion'],
+        },
+      },
+    },
+  },
   test: {
     // Two projects mirror the ADR-0001 boundary: `core/` is plain TypeScript and has to pass
     // its tests without a DOM anywhere in sight.

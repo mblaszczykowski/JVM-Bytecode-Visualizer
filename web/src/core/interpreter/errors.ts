@@ -18,6 +18,12 @@ export type VmFaultDetail =
   | { readonly kind: 'negative-array-size'; readonly size: number }
   | { readonly kind: 'null-reference' }
   | { readonly kind: 'unsupported-array-type'; readonly typeName: string }
+  | {
+      readonly kind: 'out-of-memory';
+      readonly resource: 'heap' | 'history';
+      readonly requested: number;
+      readonly limit: number;
+    }
   | { readonly kind: 'unsupported-field'; readonly target: string }
   | { readonly kind: 'unsupported-constant'; readonly target: string };
 
@@ -82,6 +88,12 @@ function describeFault(detail: VmFaultDetail): string {
       return 'NullPointerException: the reference is null';
     case 'unsupported-array-type':
       return `Unsupported array type: ${detail.typeName} — only int arrays can be allocated`;
+    case 'out-of-memory':
+      // Wording taken from the error a real JVM throws here (java.lang.OutOfMemoryError).
+      return (
+        `OutOfMemoryError: the ${detail.resource} would hold ${String(detail.requested)} ` +
+        `array elements, and the limit is ${String(detail.limit)}`
+      );
     case 'unsupported-field':
       return `Unsupported field: ${detail.target} — this interpreter has no objects to hold fields, and java/lang/System.out is the only one it recognises`;
     case 'unsupported-constant':

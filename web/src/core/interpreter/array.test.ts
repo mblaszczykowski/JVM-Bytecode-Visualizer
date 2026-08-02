@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { expectCompleted } from './__fixtures__/expect-execution';
-import { syntheticClass } from './__fixtures__/synthetic-class';
+import { expectCompleted, expectVmError } from './__fixtures__/expect-execution';
+import { ConstantPoolBuilder, syntheticClass } from './__fixtures__/synthetic-class';
+import { MAX_HEAP_ELEMENTS, MAX_RECORDED_ELEMENTS } from './heap';
 import { execute } from './interpreter';
-import type { ArrayObject, Snapshot, ValueKind } from './types';
+import type { ArrayObject, ExecutionResult, Snapshot, ValueKind } from './types';
 
 /**
  * The int-array subset: allocation, element access, the reference kind that tells a handle
@@ -467,5 +468,115 @@ describe('execute — heap snapshots', () => {
     expect(snapshots.every((snapshot) => heapOf(snapshot).length === 0)).toBe(true);
     // Nothing changes, so every snapshot shares the one empty array.
     expect(new Set(snapshots.map(heapOf)).size).toBe(1);
+  });
+});
+
+/**
+ * The two memory bounds. Both exist because the failure they prevent is not an exception:
+ * `new Array(n).fill(0)` past a certain `n` ends the process with a V8 fatal error, and a
+ * history that outgrows the tab takes it down with no error at all.
+ */
+describe('execute — the limits on heap memory', () => {
+  /** `ldc #1; newarray int; return`, with #1 holding `length`. */
+  function allocate(length: number): ExecutionResult {
+    const pool = new ConstantPoolBuilder();
+    const index = pool.integer(length);
+    return execute(
+      syntheticClass({
+        pool,
+        methods: [{ name: 'main', descriptor: '()V', code: [0x12, index, 0xbc, T_INT, 0xb1] }],
+      }),
+    );
+  }
+
+  it('refuses an array larger than the whole heap instead of dying trying', () => {
+    // The allocation a real `new int[Integer.MAX_VALUE]` compiles to. Reaching
+    // `new Array(...).fill(0)` with it is an unrecoverable V8 abort, not a thrown error.
+    const error = expectVmError(allocate(2_147_483_647));
+
+    expect(error).toMatchObject({
+      kind: 'out-of-memory',
+      resource: 'heap',
+      requested: 2_147_483_647,
+      limit: MAX_HEAP_ELEMENTS,
+      methodName: 'main',
+    });
+  });
+
+  it('allocates right up to the limit', () => {
+    expect(expectCompleted(allocate(MAX_HEAP_ELEMENTS)).kind).toBe('completed');
+  });
+
+  it('counts every array on the heap, not each one on its own', () => {
+    // Two allocations of two thirds of the limit: neither is too large by itself.
+    const two = Math.ceil((MAX_HEAP_ELEMENTS * 2) / 3);
+    const pool = new ConstantPoolBuilder();
+    const index = pool.integer(two);
+    const error = expectVmError(
+      execute(
+        syntheticClass({
+          pool,
+          methods: [
+            {
+              name: 'main',
+              descriptor: '()V',
+              // ldc #1; newarray int; astore_0; ldc #1; newarray int; return
+              code: [0x12, index, 0xbc, T_INT, 0x4b, 0x12, index, 0xbc, T_INT, 0xb1],
+            },
+          ],
+        }),
+      ),
+    );
+
+    expect(error).toMatchObject({ kind: 'out-of-memory', resource: 'heap' });
+    expect((error as { requested: number }).requested).toBe(two * 2);
+  });
+
+  it('stops a run whose array writes outgrow the recording budget', () => {
+    // A modest array written in a loop: no single allocation is large, but the history keeps
+    // one copy of the array per write, so the cost is length x writes.
+    const length = 100_000;
+    const pool = new ConstantPoolBuilder();
+    const index = pool.integer(length);
+    const result = execute(
+      syntheticClass({
+        pool,
+        methods: [
+          {
+            name: 'main',
+            descriptor: '()V',
+            code: assemble([
+              0x12,
+              index,
+              0xbc,
+              T_INT,
+              0x4b, // a = new int[100000]
+              label('loop'),
+              0x2a,
+              0x03,
+              0x03,
+              0x4f, // a[0] = 0
+              branch(0xa7, 'loop'), // goto loop
+            ]),
+          },
+        ],
+      }),
+      { maxSteps: 20_000 },
+    );
+
+    const error = expectVmError(result);
+    expect(error).toMatchObject({
+      kind: 'out-of-memory',
+      resource: 'history',
+      limit: MAX_RECORDED_ELEMENTS,
+    });
+    // It stopped on the budget, long before it stopped on the step limit.
+    expect(result.snapshots.length).toBeLessThan(20_000);
+  });
+
+  it('leaves a run that never allocates untouched by either budget', () => {
+    const snapshots = run([0x04, 0x3b, 0xb1]); // iconst_1; istore_0; return
+
+    expect(snapshots).not.toHaveLength(0);
   });
 });

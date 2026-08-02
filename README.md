@@ -1,17 +1,9 @@
-<!-- update OWNER/REPO after publishing -->
-
-[![web](https://github.com/OWNER/REPO/actions/workflows/web.yml/badge.svg)](https://github.com/OWNER/REPO/actions/workflows/web.yml)
-[![server](https://github.com/OWNER/REPO/actions/workflows/server.yml/badge.svg)](https://github.com/OWNER/REPO/actions/workflows/server.yml)
-[![e2e](https://github.com/OWNER/REPO/actions/workflows/e2e.yml/badge.svg)](https://github.com/OWNER/REPO/actions/workflows/e2e.yml)
-
 # JVM Bytecode Visualizer
 
 A browser-based JVM bytecode visualizer: load a `.class` file or write Java, then watch the virtual
 machine execute it one instruction at a time.
 
 ![Four frames deep into a recursive factorial, with the branch arcs and the depth chart](docs/screenshots/app-ready.png)
-
-> Live demo: _coming soon_
 
 ## What it does
 
@@ -172,7 +164,14 @@ The parts that hold regardless of which file is loaded:
   local variable in `main` instead.
 - **A step limit of 20,000** (raisable from the UI) stops runaway loops. The history collected up to
   that point stays playable, and so does the history up to a division by zero or an unsupported
-  instruction.
+  instruction. How far the limit may be raised depends on the device: a browser that reports how
+  much memory it has gets a ceiling it can actually hold, rather than one chosen on a laptop.
+- **Two bounds on memory, both reported as `OutOfMemoryError`** — the same answer a real JVM gives.
+  One is the heap itself, so that `new int[Integer.MAX_VALUE]` stops at the allocation instead of
+  taking the tab with it. The other is the recording: every step that writes to an array keeps its
+  own immutable copy of that array, so a large array written in a loop costs far more history than
+  the array does, and that is what the second bound meters. Both leave the run playable up to the
+  point they stopped it.
 
 The bundled examples exist because of this table, not in spite of it: they are the shape of program
 that fits, and [`docs/jvm-primer.md`](docs/jvm-primer.md) explains the machine they run on.

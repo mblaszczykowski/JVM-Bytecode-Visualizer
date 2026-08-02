@@ -58,6 +58,52 @@ export const MAX_STEP_LIMIT = 500_000;
 
 const STEP_LIMIT_FACTOR = 5;
 
+/**
+ * Roughly what one recorded step costs, from the ~275 MB a run at `MAX_STEP_LIMIT` holds
+ * (see `workers/run-protocol`).
+ */
+const BYTES_PER_STEP = 550;
+
+/**
+ * Share of the device's memory the history may claim. The page still has to paint, and the
+ * browser is not the only thing running, so a fraction rather than a majority.
+ */
+const MEMORY_SHARE = 1 / 8;
+
+/**
+ * The recording exists twice at its peak: the worker holds it while it streams, and this side
+ * is assembling its own copy. The share above has to cover both.
+ */
+const CONCURRENT_COPIES = 2;
+
+/**
+ * The ceiling as this device can afford it.
+ *
+ * `MAX_STEP_LIMIT` was chosen against a laptop. On a 1 GB phone the same button raises the
+ * limit to a history the tab cannot hold, and the run dies somewhere with no result — the
+ * worst of the outcomes, because nothing is left on screen to read. `deviceMemory` is
+ * Chromium-only and deliberately coarse; where it is missing the full ceiling stands, which
+ * is the behaviour this application always had.
+ */
+export function affordableStepLimit(): number {
+  const gigabytes = reportedDeviceMemory();
+  if (gigabytes === undefined) {
+    return MAX_STEP_LIMIT;
+  }
+  const affordable = (gigabytes * 1024 ** 3 * MEMORY_SHARE) / (BYTES_PER_STEP * CONCURRENT_COPIES);
+  // Never below the default: a device that cannot replay one ordinary example is not a
+  // device this application can do anything useful on anyway.
+  return Math.max(DEFAULT_MAX_STEPS, Math.min(MAX_STEP_LIMIT, Math.floor(affordable)));
+}
+
+function reportedDeviceMemory(): number | undefined {
+  // Not in lib.dom: the Device Memory API ships in Chromium only.
+  const reported = (navigator as Navigator & { deviceMemory?: number }).deviceMemory;
+  return typeof reported === 'number' && Number.isFinite(reported) && reported > 0
+    ? reported
+    : undefined;
+}
+
 export const IDLE: AppState = { status: 'idle' };
 
 export function failedState(error: AppError): AppState {
@@ -82,10 +128,11 @@ export function programOf(state: AppState): LoadedProgram | undefined {
 
 /** Next step limit for the banner action, or `undefined` once the ceiling is reached. */
 export function raisedStepLimit(current: number): number | undefined {
-  if (current >= MAX_STEP_LIMIT) {
+  const ceiling = affordableStepLimit();
+  if (current >= ceiling) {
     return undefined;
   }
-  return Math.min(current * STEP_LIMIT_FACTOR, MAX_STEP_LIMIT);
+  return Math.min(current * STEP_LIMIT_FACTOR, ceiling);
 }
 
 /**

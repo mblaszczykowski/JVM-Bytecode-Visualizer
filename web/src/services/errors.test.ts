@@ -185,6 +185,45 @@ const CASES: readonly {
       'Unsupported array type: long[] (pc 3, method main). This interpreter only allocates int arrays.',
   },
   {
+    name: 'an array larger than the whole heap',
+    error: {
+      kind: 'vm',
+      error: {
+        kind: 'out-of-memory',
+        resource: 'heap',
+        requested: 2_147_483_647,
+        limit: 8_000_000,
+        offset: 2,
+        methodName: 'main',
+      },
+    },
+    severity: 'error',
+    message:
+      'OutOfMemoryError (pc 2, method main). The program asked for 2,147,483,647 array ' +
+      'elements at once, and this machine holds at most 8,000,000. ' +
+      'The history up to this point is still playable.',
+  },
+  {
+    name: 'a run whose array writes outgrow the recording budget',
+    error: {
+      kind: 'vm',
+      error: {
+        kind: 'out-of-memory',
+        resource: 'history',
+        requested: 24_010_000,
+        limit: 24_000_000,
+        offset: 31,
+        methodName: 'sort',
+      },
+    },
+    severity: 'error',
+    message:
+      'OutOfMemoryError (pc 31, method sort). Recording the arrays this run writes to would ' +
+      'have cost 24,010,000 copied elements, and the budget is 24,000,000 — every step that ' +
+      'writes to an array keeps its own copy, so a large array written in a loop costs far ' +
+      'more than the array itself. The history up to this point is still playable.',
+  },
+  {
     name: 'a field this machine has no object behind',
     error: {
       kind: 'vm',
@@ -290,6 +329,7 @@ describe('error messages', () => {
       'negative-array-size',
       'null-reference',
       'unsupported-array-type',
+      'out-of-memory',
       'unsupported-field',
       'unsupported-constant',
     ];

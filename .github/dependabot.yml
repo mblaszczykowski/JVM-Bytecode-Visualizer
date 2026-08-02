@@ -1,0 +1,41 @@
+# Dependency updates for the three ecosystems this repository actually has: the npm workspace,
+# the Maven module, and the actions the workflows pin.
+#
+# Grouped and monthly on purpose. Ungrouped weekly updates on a project this size produce more
+# pull requests than there is reason to review, and the answer to that is usually to stop
+# reading them — which is worse than not having the bot at all.
+version: 2
+
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 5
+    groups:
+      # One PR for the toolchain, which moves together and is covered by lint/typecheck/test.
+      dev-dependencies:
+        dependency-type: development
+        update-types: ['minor', 'patch']
+      production-patches:
+        dependency-type: production
+        update-types: ['minor', 'patch']
+
+  - package-ecosystem: maven
+    directory: /server
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 5
+    groups:
+      spring:
+        patterns: ['org.springframework.boot:*', 'org.springframework:*']
+      maven-minor-and-patch:
+        update-types: ['minor', 'patch']
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ['*']

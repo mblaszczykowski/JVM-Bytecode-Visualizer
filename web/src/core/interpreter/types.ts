@@ -153,6 +153,22 @@ export type VmError =
     }
   | {
       /**
+       * The run asked for more memory than this machine will spend on it — what a real JVM
+       * answers with OutOfMemoryError. Two different resources reach the same end:
+       * `heap` is the arrays themselves, `history` is the recording of them (ADR-0001 keeps
+       * one immutable copy of every array a step changed, so writes cost far more than the
+       * array does).
+       */
+      readonly kind: 'out-of-memory';
+      readonly resource: 'heap' | 'history';
+      /** Elements the run would have held past the limit, and the limit itself. */
+      readonly requested: number;
+      readonly limit: number;
+      readonly offset: number;
+      readonly methodName: string;
+    }
+  | {
+      /**
        * A field access the machine has no object for. It models a fixed list of external
        * members (`System.out`) and no instance state at all, so everything else stops here.
        */
