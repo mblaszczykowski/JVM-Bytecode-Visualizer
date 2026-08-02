@@ -25,7 +25,18 @@ export type VmFaultDetail =
       readonly limit: number;
     }
   | { readonly kind: 'unsupported-field'; readonly target: string }
-  | { readonly kind: 'unsupported-constant'; readonly target: string };
+  | { readonly kind: 'unsupported-constant'; readonly target: string }
+  /**
+   * An exception the *program* threw with `athrow`, rather than one the machine raised. It
+   * carries the object's handle, because that object is already in the externals pool and has
+   * to reach the handler as the very same one the reader was watching.
+   */
+  | {
+      readonly kind: 'thrown';
+      readonly handle: number;
+      readonly className: string;
+      readonly label: string;
+    };
 
 /** Where a fault happened, when that is not the instruction currently being executed. */
 export interface FaultLocation {
@@ -54,12 +65,56 @@ export function isVmFault(error: unknown): error is VmFault {
 }
 
 export function toVmError(detail: VmFaultDetail, offset: number, methodName: string): VmError {
+  if (detail.kind === 'thrown') {
+    // `thrown` is how an exception travels while handlers are still being looked for; by the
+    // time it is reported, the search has failed and what happened is that nothing caught it.
+    const { className, label } = detail;
+    return { kind: 'uncaught-exception', className, label, offset, methodName };
+  }
   return { ...detail, offset, methodName };
 }
 
+/**
+ * The Java exception a fault corresponds to, or `undefined` for a fault that is not one.
+ *
+ * The line between them is what a real JVM lets a program catch *and carry on from*.
+ * `stack-overflow` and `out-of-memory` are deliberately on the other side of it: a real JVM
+ * does allow catching both, but here they are the visualizer's own resource limits, and a
+ * handler that swallowed one would put the run straight back into the loop that reached it.
+ *
+ * The messages already read as `SimpleName: detail`, because they were written to match what
+ * a real JVM prints — so the fault's own description is the exception's label.
+ */
+export function thrownBy(detail: VmFaultDetail): ThrownException | undefined {
+  if (detail.kind === 'thrown') {
+    return { className: detail.className, label: detail.label, handle: detail.handle };
+  }
+  const className = THROWN_AS.get(detail.kind);
+  return className === undefined
+    ? undefined
+    : { className, label: describeFault(detail), handle: undefined };
+}
+
+export interface ThrownException {
+  readonly className: string;
+  readonly label: string;
+  /** Set only for a re-thrown object, which already has a place in the externals pool. */
+  readonly handle: number | undefined;
+}
+
+const THROWN_AS: ReadonlyMap<VmFaultDetail['kind'], string> = new Map([
+  ['division-by-zero', 'java/lang/ArithmeticException'],
+  ['array-index-out-of-bounds', 'java/lang/ArrayIndexOutOfBoundsException'],
+  ['null-reference', 'java/lang/NullPointerException'],
+  ['negative-array-size', 'java/lang/NegativeArraySizeException'],
+]);
+
 /** Message ready to be shown to the user. */
 export function formatVmError(error: VmError): string {
-  return `${describeFault(error)} — offset ${String(error.offset)} in ${error.methodName}().`;
+  // `uncaught-exception` is the one VmError with no fault behind it — the fault was `thrown`,
+  // and by now it has travelled the whole stack. Its label is the message.
+  const described = error.kind === 'uncaught-exception' ? error.label : describeFault(error);
+  return `${described} — offset ${String(error.offset)} in ${error.methodName}().`;
 }
 
 function describeFault(detail: VmFaultDetail): string {
@@ -98,5 +153,7 @@ function describeFault(detail: VmFaultDetail): string {
       return `Unsupported field: ${detail.target} — this interpreter has no objects to hold fields, and java/lang/System.out is the only one it recognises`;
     case 'unsupported-constant':
       return `Unsupported constant: ${detail.target} — ldc can push an int or a String constant, and nothing else`;
+    case 'thrown':
+      return detail.label;
   }
 }

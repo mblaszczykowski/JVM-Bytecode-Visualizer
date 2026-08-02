@@ -108,6 +108,11 @@ const PROGRAMS_UNDER_TEST: readonly DifferentialProgram[] = [
   { name: 'Switches', directory: PROGRAMS, covers: 'tableswitch and lookupswitch' },
   { name: 'MathOps', directory: PROGRAMS, covers: 'the java.lang.Math intrinsics' },
   { name: 'Console', directory: PROGRAMS, covers: 'every println and print overload' },
+  {
+    name: 'Exceptions',
+    directory: PROGRAMS,
+    covers: 'the exception table, handler matching, unwinding, finally and athrow',
+  },
   { name: 'WideOps', directory: DISASSEMBLER_FIXTURES, covers: 'the wide prefix' },
 ];
 

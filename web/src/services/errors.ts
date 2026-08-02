@@ -178,6 +178,12 @@ function describeVmError(error: VmError): string {
       return `Unsupported field: ${error.target} ${at}. This interpreter models a short list of external members — System.out among them — and no instance state at all, so there is no object here to read the field from. ${historyStands}`;
     case 'unsupported-constant':
       return `Unsupported constant: ${error.target} ${at}. ldc pushes the int and String entries of the constant pool here; the other constant kinds have no value this machine can hold. ${historyStands}`;
+    case 'uncaught-exception':
+      return (
+        `${error.label} ${at}. It was thrown and nothing on the call stack caught it, so the ` +
+        `run ended the way a real JVM ends one: every frame unwound. Scrub back to watch the ` +
+        `stack come apart. ${historyStands}`
+      );
   }
 }
 

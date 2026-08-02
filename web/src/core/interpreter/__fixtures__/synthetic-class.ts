@@ -4,6 +4,7 @@ import {
   type ClassFile,
   type ConstantPool,
   type ConstantPoolEntry,
+  type ExceptionTableEntry,
   type LineNumberEntry,
   type LocalVariableEntry,
   type MethodInfo,
@@ -85,6 +86,8 @@ export interface SyntheticMethod {
   readonly maxLocals?: number;
   readonly lineNumberTable?: readonly LineNumberEntry[];
   readonly localVariableTable?: readonly LocalVariableEntry[];
+  /** Handlers, in the order the language would have written the `catch` clauses. */
+  readonly exceptionTable?: readonly ExceptionTableEntry[];
 }
 
 export interface SyntheticClass {
@@ -131,6 +134,7 @@ function toMethodInfo(method: SyntheticMethod): MethodInfo {
       ...(method.localVariableTable === undefined
         ? {}
         : { localVariableTable: method.localVariableTable }),
+      ...(method.exceptionTable === undefined ? {} : { exceptionTable: method.exceptionTable }),
     },
   };
 }

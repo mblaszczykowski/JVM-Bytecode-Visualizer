@@ -179,6 +179,20 @@ export type VmError =
       readonly methodName: string;
     }
   | {
+      /**
+       * An exception left the entry method with no handler anywhere on the call stack — what
+       * a real JVM prints as `Exception in thread "main" …` before the run ends.
+       */
+      readonly kind: 'uncaught-exception';
+      /** Internal name, e.g. `java/lang/ArithmeticException`. */
+      readonly className: string;
+      /** How it reads: `ArithmeticException: / by zero`. */
+      readonly label: string;
+      /** Offset of the `athrow`, or of the instruction that raised it. */
+      readonly offset: number;
+      readonly methodName: string;
+    }
+  | {
       /** `ldc` of a constant pool entry outside the `int` and `String` values it can push. */
       readonly kind: 'unsupported-constant';
       /** What the entry is, e.g. `a Double constant` or `constant pool entry #9`. */

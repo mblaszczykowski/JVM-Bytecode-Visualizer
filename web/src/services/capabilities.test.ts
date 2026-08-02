@@ -24,11 +24,11 @@ function executableMnemonics(): readonly string[] {
  * stand-in for the work landing next door, and the only way to prove the lists are derived
  * rather than merely correct today.
  */
-async function capabilitiesWith(opcode: number): Promise<typeof Capabilities> {
+async function capabilitiesWith(...opcodes: readonly number[]): Promise<typeof Capabilities> {
   const actual = await vi.importActual<typeof Interpreter>('../core/interpreter');
   vi.doMock('../core/interpreter', () => ({
     ...actual,
-    EXECUTABLE_OPCODES: new Set([...actual.EXECUTABLE_OPCODES, opcode]),
+    EXECUTABLE_OPCODES: new Set([...actual.EXECUTABLE_OPCODES, ...opcodes]),
   }));
   return import('./capabilities');
 }
@@ -108,13 +108,25 @@ describe('feature gaps', () => {
   });
 
   it('drops a feature once every instruction behind it runs', async () => {
-    const athrow = 0xbf;
-    const widened = await capabilitiesWith(athrow);
+    const [newObject, invokespecial] = [0xbb, 0xb7];
+    const widened = await capabilitiesWith(newObject, invokespecial);
+    const title = 'Objects, constructors and instance methods';
 
-    expect(featureGaps().map((gap) => gap.title)).toContain('Exceptions, throw and try/catch');
-    expect(widened.featureGaps().map((gap) => gap.title)).not.toContain(
-      'Exceptions, throw and try/catch',
-    );
+    expect(featureGaps().map((gap) => gap.title)).toContain(title);
+    expect(widened.featureGaps().map((gap) => gap.title)).not.toContain(title);
+  });
+
+  /**
+   * `athrow` runs and the exception table is read, so `try`/`catch` is no longer a gap — but
+   * the machine still cannot build the object a `throw` of your own needs, and the list has to
+   * keep saying so rather than falling silent about exceptions altogether.
+   */
+  it('reports what is left of exceptions, now that catching them works', () => {
+    const titles = featureGaps().map((gap) => gap.title);
+
+    expect(isExecutableMnemonic('athrow')).toBe(true);
+    expect(titles).not.toContain('Exceptions, throw and try/catch');
+    expect(titles).toContain('Throwing an exception you constructed yourself');
   });
 });
 

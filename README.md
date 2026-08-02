@@ -132,7 +132,7 @@ way, and a run that stops midway keeps the history it recorded up to that point.
 | ----------------------------------------------------------------------------------- | ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
 | `new`, instance methods, instance and static fields                                 | `new`, `invokespecial`, `getfield`, `putfield` | Stops at the allocation or the field access.                                                                                       |
 | `long`, `float`, `double`                                                           | `ladd`, `fmul`, `dload`, two-slot locals       | Stops at the first such instruction; a method whose parameters are not all `int` cannot be called.                                 |
-| `try`/`catch`, `throw`                                                              | `athrow` and the `exception_table`             | Stops at the throw. The `exception_table` is skipped while `Code` is read, so nothing is caught.                                   |
+| `throw new SomeException(...)`                                                      | `new`, `invokespecial`, then `athrow`          | Stops at the `new`. Catching works (below); it is _building_ the exception that needs objects.                                     |
 | Lambdas, method references, `"a" + b`                                               | `invokedynamic`                                | Stops at the call site. String concatenation compiles to `invokedynamic` on Java 9 and later.                                      |
 | Arrays of anything but `int`                                                        | `anewarray`, `multianewarray`, `baload`, …     | Stops at the allocation. The heap holds `int` arrays only.                                                                         |
 | Standard library calls beyond `Math` and `System.out`                               | `invokestatic`/`invokevirtual` on another type | Stops with `unsupported-call`. The recognised members are a table in `web/src/core/interpreter/externals.ts`; adding one is a row. |
@@ -142,12 +142,12 @@ The parts that hold regardless of which file is loaded:
 
 - **An `int`-scale machine.** `int` values, `int` arrays on a small heap, and opaque tokens for the
   few external members it recognises. No `long`/`float`/`double`, no user-defined classes, no
-  instance or static fields, no exceptions, no threads, no lambdas, no bytecode verification.
+  instance or static fields, no threads, no lambdas, no bytecode verification.
 - **The executable subset** is integer computation and control flow — constants, load/store, `iinc`,
   stack manipulation, integer arithmetic, shifts and bitwise operations, narrowing conversions, the
   `if<cond>`/`if_icmp<cond>` families, `goto`, `tableswitch`/`lookupswitch`, `wide`, `int` array
-  access, and `invokestatic`/`ireturn`/`return`, with `invokestatic` resolving within the class being
-  executed plus the `java/lang/Math` methods on the externals table. The definitive list is
+  access, `athrow`, and `invokestatic`/`ireturn`/`return`, with `invokestatic` resolving within the
+  class being executed plus the `java/lang/Math` methods on the externals table. The definitive list is
   `STACK_EFFECTS` in `web/src/core/disassembler/opcodes.ts`, and the welcome screen states it at
   runtime rather than from a hand-written list, so it cannot drift.
 - **Decoding is wider than execution, on purpose.** Every assigned opcode below `0xca` is fully
@@ -157,6 +157,14 @@ The parts that hold regardless of which file is loaded:
 - **The parser is wider still.** It reads the whole class file format — every constant pool tag,
   unknown attributes skipped by length — because a modern `javac` emits attributes a narrow parser
   would choke on.
+- **`try`/`catch` catches what the machine raises.** The `exception_table` is read, `athrow` runs,
+  and a thrown exception walks the call stack looking for a handler, unwinding the frames that have
+  none — visibly, in the call stack panel, one step at a time. What it catches are the exceptions
+  this machine can raise: `ArithmeticException`, `ArrayIndexOutOfBoundsException`,
+  `NullPointerException`, `NegativeArraySizeException`. Handler matching follows the class
+  hierarchy, so `catch (Exception e)` catches all of them, and `finally` works because javac
+  compiles it to a catch-all row. An exception of your own still needs `new` to build it
+  ([ADR-0007](docs/adr/0007-exceptions-without-an-object-model.md)).
 - **A stopped run is still a run.** Whatever was recorded before the failure stays loaded and
   scrubbable, and the banner names the instruction and the offset that stopped it.
 - **The bundled examples do not print.** `System.out.println` works, but a printed line is a worse
@@ -283,6 +291,10 @@ opened the JVM specification.
   because deserialising it lands on the thread the worker was meant to free. Batching splits that
   cost into tasks the browser can interleave: the longest main-thread stall drops from 403 ms to
   ~120 ms.
+- [**ADR-0007 — Exceptions the machine raises, caught without an object model.**](docs/adr/0007-exceptions-without-an-object-model.md)
+  `try`/`catch` looked blocked behind `new`, until the observation that the exceptions a learner
+  actually meets are never constructed by their code — the JVM raises them. Catching is the half
+  that needs no constructor, and it is the half where the stack unwinding is worth watching.
 
 The boundary from ADR-0001 is enforced mechanically. `web/eslint.config.js` bans imports of React,
 the DOM and the application layer from `web/src/core/**`, and bans `window`, `document` and
@@ -316,11 +328,11 @@ build in.
    rather than offered. `notRunnableReasonOf` in `web/src/services/program.ts` is the one place that
    has to change.
 2. **Objects and `invokevirtual`** — instance fields, `new`, `invokespecial`, and dynamic dispatch
-   shown as it resolves.
-3. **Exceptions** — `athrow` and the `exception_table`, with the stack unwinding on screen.
-4. **Shareable links** — a program and a step index encoded in the URL, so a run can be linked to
+   shown as it resolves. It is also the other half of exceptions: catching them works, and
+   constructing one to throw is what `new` unlocks.
+3. **Shareable links** — a program and a step index encoded in the URL, so a run can be linked to
    mid-execution.
-5. **Other JVM languages** — Kotlin and Scala compile to the same bytecode; the constraint is the
+4. **Other JVM languages** — Kotlin and Scala compile to the same bytecode; the constraint is the
    instruction set, not the source language.
 
 Three earlier items are done and are described above rather than here: arrays on a small heap

@@ -483,6 +483,10 @@ const STACK_EFFECTS = new Map<number, StackEffect>([
   [0xb2, VARIES], // getstatic
   [0xb6, VARIES], // invokevirtual
   [0xb8, VARIES], // invokestatic
+
+  // `athrow` empties the operand stack and leaves the exception alone on it (JVMS §2.10) —
+  // or the frame does not survive to have one, and the effect belongs to a frame further down.
+  [0xbf, VARIES], // athrow
 ]);
 
 function toOpcodeInfo([opcode, mnemonic, operands]: OpcodeRow): OpcodeInfo {

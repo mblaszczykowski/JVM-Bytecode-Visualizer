@@ -7,13 +7,14 @@ import {
   type CodeAttribute,
   type ConstantPool,
   type ConstantPoolEntry,
+  type ExceptionTableEntry,
   type JvmReturnType,
   type MethodDescriptor,
   type MethodInfo,
 } from '../classfile';
 import { arrayTypeName, lookupOpcode, T_INT, type Instruction } from '../disassembler';
 import { ConsoleOutput } from './console';
-import { isVmFault, toVmError, VmFault } from './errors';
+import { isVmFault, thrownBy, toVmError, VmFault, type VmFaultDetail } from './errors';
 import {
   EXTERNAL_FIELDS,
   EXTERNAL_METHODS,
@@ -24,6 +25,7 @@ import {
   type ExternalMethod,
 } from './externals';
 import {
+  clearOperandStack,
   createFrame,
   loadLocal,
   loadReference,
@@ -63,6 +65,7 @@ import {
   sourceLineAt,
   type MachineState,
 } from './snapshot';
+import { catches, isThrowableClass } from './throwable';
 import {
   DEFAULT_MAX_CALL_DEPTH,
   DEFAULT_MAX_STEPS,
@@ -147,9 +150,19 @@ export function execute(classFile: ClassFile, options: ExecuteOptions = {}): Exe
       );
       // Advance before dispatching: a call pushed by this instruction must leave the caller
       // pointing at its continuation, which is where the frame resumes after the callee returns.
+      frame.currentPc = offset;
       setPc(frame, fetched.nextOffset);
       step(machine, frame, fetched.instruction);
     } catch (error) {
+      // A fault that names a Java exception is not the end of the run until the whole call
+      // stack has been asked whether it wants it (JVMS §2.10).
+      if (
+        isVmFault(error) &&
+        error.location === undefined &&
+        dispatchThrow(machine, error.detail)
+      ) {
+        continue;
+      }
       return failedRun(error, snapshots, offset, frame.method.name);
     }
   }
@@ -163,6 +176,57 @@ export function execute(classFile: ClassFile, options: ExecuteOptions = {}): Exe
 }
 
 export const DEFAULT_ENTRY_METHOD = 'main';
+
+/**
+ * Hands an exception to the first handler on the call stack that wants it, unwinding frames
+ * that have none (JVMS §2.10). `true` when the machine may carry on, `false` when the stack
+ * ran out and the exception is uncaught — at which point the call stack has been emptied,
+ * which is precisely what a real JVM does before the run ends.
+ *
+ * The frames popped on the way are gone from the next snapshot, so the reader watches the
+ * stack unwind rather than being told that it did.
+ */
+function dispatchThrow(machine: Machine, detail: VmFaultDetail): boolean {
+  const thrown = thrownBy(detail);
+  if (thrown === undefined) {
+    return false;
+  }
+  // Interned once and carried by handle, so a rethrow, a handler's local slot and the panel
+  // all name the same object.
+  const handle =
+    thrown.handle ?? machine.externals.intern({ className: thrown.className, label: thrown.label });
+
+  for (
+    let frame = machine.callStack.at(-1);
+    frame !== undefined;
+    frame = machine.callStack.at(-1)
+  ) {
+    const handler = handlerFor(frame, thrown.className);
+    if (handler !== undefined) {
+      clearOperandStack(frame);
+      push(frame, handle, 'external');
+      setPc(frame, handler.handlerPc);
+      frame.currentPc = handler.handlerPc;
+      return true;
+    }
+    machine.callStack.pop();
+  }
+  return false;
+}
+
+/**
+ * The first row of this frame's exception table that covers the offset being executed and
+ * catches the class thrown. Row order is the source order of the `catch` clauses, so the
+ * first match is the one Java picks.
+ */
+function handlerFor(frame: Frame, thrownClass: string): ExceptionTableEntry | undefined {
+  return frame.method.code.exceptionTable?.find(
+    (entry) =>
+      frame.currentPc >= entry.startPc &&
+      frame.currentPc < entry.endPc &&
+      catches(entry.catchType, thrownClass),
+  );
+}
 
 /**
  * A stopped run, with the history collected so far. Anything that is not a `VmFault` is a bug
@@ -282,6 +346,7 @@ const Op = {
   invokestatic: 0xb8,
   newarray: 0xbc,
   arraylength: 0xbe,
+  athrow: 0xbf,
 } as const;
 
 type Op = (typeof Op)[keyof typeof Op];
@@ -617,6 +682,9 @@ function step(machine: Machine, frame: Frame, instruction: Instruction): void {
     case Op.invokestatic:
       invokeStatic(machine, frame, operand(instruction, 0));
       break;
+    case Op.athrow:
+      throwFromStack(machine, frame);
+      break;
     case Op.ireturn:
       returnFromFrame(machine, pop(frame, 'int'));
       break;
@@ -741,6 +809,24 @@ function switchTargetOf(instruction: Instruction, key: number): number {
     });
   }
   return arms.find((arm) => arm.match === key)?.target ?? fallback.target;
+}
+
+/**
+ * JVMS §6.5 athrow: `…, objectref → objectref`, and then the handler search takes over. The
+ * object has to be one this machine already holds — which, since nothing here can construct an
+ * exception, means one it threw earlier and a handler caught. Throwing a `String` constant is
+ * a state the verifier rejects, and it is reported as one rather than unwound.
+ */
+function throwFromStack(machine: Machine, frame: Frame): void {
+  const handle = pop(frame, 'external');
+  const value = machine.externals.at(handle);
+  if (value === undefined || !isThrowableClass(value.className)) {
+    throw new VmFault({
+      kind: 'invalid-state',
+      message: `athrow needs a throwable on the operand stack, found ${value?.label ?? 'an unknown object'}`,
+    });
+  }
+  throw new VmFault({ kind: 'thrown', handle, className: value.className, label: value.label });
 }
 
 function returnFromFrame(machine: Machine, value: number | undefined): void {

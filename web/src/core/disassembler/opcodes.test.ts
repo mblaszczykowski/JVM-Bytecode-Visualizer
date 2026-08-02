@@ -97,6 +97,7 @@ const EXECUTABLE_OPCODES: readonly (readonly [opcode: number, mnemonic: string])
   [0xb8, 'invokestatic'],
   [0xbc, 'newarray'],
   [0xbe, 'arraylength'],
+  [0xbf, 'athrow'],
 ];
 
 const HIGHEST_ASSIGNED_OPCODE = 0xca; // breakpoint (reserved) closes the contiguous range
@@ -173,7 +174,7 @@ describe('opcode classification', () => {
       .sort((a, b) => a[0] - b[0]);
 
     expect(supported).toEqual(EXECUTABLE_OPCODES);
-    expect(supported).toHaveLength(80);
+    expect(supported).toHaveLength(81);
   });
 
   it('leaves `wide` alone as a prefix rather than an instruction of its own', () => {

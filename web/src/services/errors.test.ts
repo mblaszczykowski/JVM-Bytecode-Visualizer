@@ -224,6 +224,25 @@ const CASES: readonly {
       'more than the array itself. The history up to this point is still playable.',
   },
   {
+    name: 'an exception nothing on the call stack caught',
+    error: {
+      kind: 'vm',
+      error: {
+        kind: 'uncaught-exception',
+        className: 'java/lang/ArithmeticException',
+        label: 'ArithmeticException: / by zero',
+        offset: 12,
+        methodName: 'divide',
+      },
+    },
+    severity: 'error',
+    message:
+      'ArithmeticException: / by zero (pc 12, method divide). It was thrown and nothing on ' +
+      'the call stack caught it, so the run ended the way a real JVM ends one: every frame ' +
+      'unwound. Scrub back to watch the stack come apart. ' +
+      'The history up to this point is still playable.',
+  },
+  {
     name: 'a field this machine has no object behind',
     error: {
       kind: 'vm',
@@ -330,6 +349,7 @@ describe('error messages', () => {
       'null-reference',
       'unsupported-array-type',
       'out-of-memory',
+      'uncaught-exception',
       'unsupported-field',
       'unsupported-constant',
     ];

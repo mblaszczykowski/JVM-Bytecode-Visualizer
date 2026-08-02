@@ -6,6 +6,7 @@ import {
   ConstantTag,
   type ConstantPool,
   type ConstantPoolEntry,
+  type ExceptionTableEntry,
   type FieldInfo,
   type LineNumberEntry,
   type LocalVariableEntry,
@@ -400,11 +401,7 @@ function readCodeAttribute(body: ByteReader, pool: ConstantPool): CodeAttribute 
   }
   const code = body.readBytes(codeLength, 'Code.code');
 
-  // Exception table: skipped over, exceptions are out of MVP scope.
-  const exceptionTableLength = body.readU2('Code.exception_table_length');
-  for (let i = 0; i < exceptionTableLength; i += 1) {
-    body.skip(8, `Code.exception_table[${String(i)}]`);
-  }
+  const exceptionTable = readExceptionTable(body, pool);
 
   const lineNumberTable: LineNumberEntry[] = [];
   const localVariableTable: LocalVariableEntry[] = [];
@@ -424,7 +421,41 @@ function readCodeAttribute(body: ByteReader, pool: ConstantPool): CodeAttribute 
     code,
     ...(lineNumberTable.length > 0 ? { lineNumberTable } : {}),
     ...(localVariableTable.length > 0 ? { localVariableTable } : {}),
+    ...(exceptionTable.length > 0 ? { exceptionTable } : {}),
   };
+}
+
+/**
+ * JVMS §4.7.3 exception_table. `catch_type` = 0 means the handler catches everything, which is
+ * how javac compiles `finally` and how it compiles `catch (Throwable)`; any other value is a
+ * Class entry, resolved here so nothing downstream has to carry the pool around to read a row.
+ */
+function readExceptionTable(body: ByteReader, pool: ConstantPool): readonly ExceptionTableEntry[] {
+  const count = body.readU2('Code.exception_table_length');
+  const entries: ExceptionTableEntry[] = [];
+
+  for (let i = 0; i < count; i += 1) {
+    const owner = `Code.exception_table[${String(i)}]`;
+    const startPc = body.readU2(`${owner}.start_pc`);
+    const endPc = body.readU2(`${owner}.end_pc`);
+    const handlerPc = body.readU2(`${owner}.handler_pc`);
+    const catchTypeAt = body.offset;
+    const catchTypeIndex = body.readU2(`${owner}.catch_type`);
+
+    entries.push({
+      startPc,
+      endPc,
+      handlerPc,
+      catchTypeIndex,
+      ...(catchTypeIndex === 0
+        ? {}
+        : {
+            catchType: resolveClassName(pool, catchTypeIndex, catchTypeAt, `${owner}.catch_type`),
+          }),
+    });
+  }
+
+  return entries;
 }
 
 function readLineNumberTable(body: ByteReader): readonly LineNumberEntry[] {

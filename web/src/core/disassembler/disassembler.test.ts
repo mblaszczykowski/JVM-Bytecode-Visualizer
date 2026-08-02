@@ -435,12 +435,13 @@ describe('disassemble — instructions outside the executable subset', () => {
   });
 
   it('marks only out-of-subset opcodes as unsupported', () => {
-    // athrow and monitorenter are decodable and will never be runnable here.
+    // `monitorenter` is decodable and out of the subset; `athrow` was too, until the exception
+    // table gave it somewhere to go.
     const result = disassemble(bytes(0x04, 0xbf, 0xc2, 0x60));
 
     expect(result.instructions.map((instruction) => instruction.unsupported)).toEqual([
       undefined,
-      true,
+      undefined,
       true,
       undefined,
     ]);

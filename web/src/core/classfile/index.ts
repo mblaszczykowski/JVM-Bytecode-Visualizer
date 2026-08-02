@@ -31,6 +31,7 @@ export {
   type CodeAttribute,
   type ConstantPool,
   type ConstantPoolEntry,
+  type ExceptionTableEntry,
   type FieldInfo,
   type FieldrefConstant,
   type IntegerConstant,

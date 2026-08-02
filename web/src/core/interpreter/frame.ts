@@ -34,6 +34,16 @@ export interface Frame {
   readonly method: PreparedMethod;
   /** Offset of the next instruction this frame will execute; written through `setPc`. */
   pc: number;
+  /**
+   * Offset of the instruction this frame is *in the middle of*, which is not `pc` — the run
+   * loop advances `pc` before dispatching, so that a call returns to the right place.
+   *
+   * Only the exception table needs the difference, and it needs it badly: a handler covers a
+   * range of offsets, and for a frame that is waiting on a callee the offset that has to fall
+   * inside that range is the call's, not the one after it. Kept per frame, so unwinding reads
+   * the right offset at every level without reconstructing it from instruction lengths.
+   */
+  currentPc: number;
   readonly operandStack: number[];
   /** Kind of each cell of `operandStack`, pushed and popped with it. */
   readonly operandKinds: ValueKind[];
@@ -81,7 +91,27 @@ export function createFrame(method: PreparedMethod, args: readonly number[]): Fr
     locals[slot] = args[slot];
     localKinds[slot] = 'int';
   }
-  return { method, pc: 0, operandStack: [], operandKinds: [], locals, localKinds, version: 0 };
+  return {
+    method,
+    pc: 0,
+    currentPc: 0,
+    operandStack: [],
+    operandKinds: [],
+    locals,
+    localKinds,
+    version: 0,
+  };
+}
+
+/**
+ * Drops everything on the operand stack, which is what entering a handler does (JVMS §2.10):
+ * the handler starts from a stack holding the exception and nothing else, whatever the
+ * instruction that threw had half-finished building.
+ */
+export function clearOperandStack(frame: Frame): void {
+  frame.operandStack.length = 0;
+  frame.operandKinds.length = 0;
+  frame.version += 1;
 }
 
 export function setPc(frame: Frame, pc: number): void {

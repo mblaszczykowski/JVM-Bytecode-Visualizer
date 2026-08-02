@@ -115,6 +115,25 @@ export interface LocalVariableEntry {
   readonly index: number;
 }
 
+/**
+ * One row of the exception table (JVMS §4.7.3): a handler, the range of code it covers and
+ * the class it catches.
+ *
+ * The rows are ordered, and that order is the language's: `catch (ArithmeticException e)`
+ * before `catch (Exception e)` is two rows, and the first one that matches wins. A `finally`
+ * block and a `catch (Throwable)` both compile to a row that catches everything.
+ */
+export interface ExceptionTableEntry {
+  readonly startPc: number;
+  /** Exclusive — the handler covers `[startPc, endPc)`. */
+  readonly endPc: number;
+  readonly handlerPc: number;
+  /** Pool index of the caught class, or 0 for "any throwable". */
+  readonly catchTypeIndex: number;
+  /** Internal name of the caught class, e.g. `java/lang/ArithmeticException`; absent when 0. */
+  readonly catchType?: string;
+}
+
 export interface CodeAttribute {
   readonly maxStack: number;
   readonly maxLocals: number;
@@ -123,6 +142,8 @@ export interface CodeAttribute {
   readonly lineNumberTable?: readonly LineNumberEntry[];
   /** Present only with `javac -g` — without it the UI has no local variable names. */
   readonly localVariableTable?: readonly LocalVariableEntry[];
+  /** Absent for a method with no `try` in it, which is most of them. */
+  readonly exceptionTable?: readonly ExceptionTableEntry[];
 }
 
 export interface FieldInfo {

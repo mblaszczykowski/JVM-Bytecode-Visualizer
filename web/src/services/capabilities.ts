@@ -127,7 +127,10 @@ const FEATURES: readonly FeatureSpec[] = [
   { title: 'Objects, constructors and instance methods', requires: ['new', 'invokespecial'] },
   { title: 'String literals and other pooled constants', requires: ['ldc'] },
   { title: 'long, float and double values', requires: ['ladd', 'fadd', 'dadd'] },
-  { title: 'Exceptions, throw and try/catch', requires: ['athrow'] },
+  // `try`/`catch` runs: `athrow` and the exception table are implemented, and the machine
+  // raises the exceptions a beginner meets. What is still missing is the other half — an
+  // exception of your own has to be constructed before it can be thrown.
+  { title: 'Throwing an exception you constructed yourself', requires: ['new', 'invokespecial'] },
   { title: 'switch statements', requires: ['tableswitch', 'lookupswitch'] },
   { title: 'Bitwise operators and shifts', requires: ['iand', 'ior', 'ixor', 'ishl', 'ishr'] },
   {

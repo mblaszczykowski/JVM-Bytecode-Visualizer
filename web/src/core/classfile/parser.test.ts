@@ -423,6 +423,69 @@ describe('parseClassFile — methods without Code and Code without debug tables'
     expect(method?.code?.maxStack).toBe(1);
     expect(method?.code?.lineNumberTable).toBeUndefined();
     expect(method?.code?.localVariableTable).toBeUndefined();
+    // A method with no `try` in it has no rows, and carries no empty array either.
+    expect(method?.code?.exceptionTable).toBeUndefined();
+  });
+});
+
+describe('parseClassFile — the exception table (JVMS §4.7.3)', () => {
+  const ARITHMETIC = 'java/lang/ArithmeticException';
+
+  /** Two handlers over the same one-byte method: one typed, one the catch-all `finally` row. */
+  const buffer = buildClassFile({
+    constantPoolCount: 8,
+    constantPool: [
+      utf8Entry('Synth'), // #1
+      classEntry(1), // #2
+      utf8Entry('guarded'), // #3
+      utf8Entry('()V'), // #4
+      utf8Entry('Code'), // #5
+      utf8Entry(ARITHMETIC), // #6
+      classEntry(6), // #7
+    ],
+    thisClass: 2,
+    superClass: 0,
+    methods: [
+      member(0x0008, 3, 4, [
+        attribute(5, [
+          ...u2(1), // max_stack
+          ...u2(1), // max_locals
+          ...u4(1), // code_length
+          0xb1, // return
+          ...u2(2), // exception_table_length
+          ...u2(0), // [0].start_pc
+          ...u2(1), // [0].end_pc
+          ...u2(1), // [0].handler_pc
+          ...u2(7), // [0].catch_type -> Class #7
+          ...u2(0), // [1].start_pc
+          ...u2(1), // [1].end_pc
+          ...u2(1), // [1].handler_pc
+          ...u2(0), // [1].catch_type = 0, catches everything
+          ...u2(0), // attributes_count
+        ]),
+      ]),
+    ],
+  });
+
+  it('reads every row and resolves the class each one catches', () => {
+    expect(parseClassFile(buffer).methods[0]?.code?.exceptionTable).toEqual([
+      { startPc: 0, endPc: 1, handlerPc: 1, catchTypeIndex: 7, catchType: ARITHMETIC },
+      { startPc: 0, endPc: 1, handlerPc: 1, catchTypeIndex: 0 },
+    ]);
+  });
+
+  it('leaves catchType off the catch-all row rather than inventing a class for it', () => {
+    const rows = parseClassFile(buffer).methods[0]?.code?.exceptionTable ?? [];
+
+    expect(rows[1] && 'catchType' in rows[1]).toBe(false);
+  });
+
+  it('keeps the rows in the order the class file wrote them', () => {
+    // The order is the order of the `catch` clauses, and the first match wins — so a parser
+    // that sorted or deduplicated them would change which handler runs.
+    const rows = parseClassFile(buffer).methods[0]?.code?.exceptionTable ?? [];
+
+    expect(rows.map((row) => row.catchTypeIndex)).toEqual([7, 0]);
   });
 });
 
