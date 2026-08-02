@@ -22,7 +22,7 @@ export function GlossaryButton({ term }: { readonly term: GlossaryTermId }) {
       onClick={() => {
         openGlossary(term);
       }}
-      className="focus-ring flex h-4 w-4 shrink-0 items-center justify-center self-center rounded-full bg-white/6 text-[10px] leading-none text-white/45 transition-colors hover:bg-white/15 hover:text-white/85"
+      className="focus-ring flex h-4 w-4 shrink-0 items-center justify-center self-center rounded-full bg-white/6 text-micro leading-none text-white/45 transition-colors hover:bg-white/15 hover:text-white/85"
     >
       <span aria-hidden="true">?</span>
       <span className="sr-only">{question}</span>

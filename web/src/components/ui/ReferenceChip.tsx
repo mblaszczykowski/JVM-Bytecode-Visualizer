@@ -18,7 +18,7 @@ export function ReferenceChip({ heap, handle, onAccent = false }: ReferenceChipP
   return (
     <span
       data-testid="ref-chip"
-      className={`shrink-0 rounded-full px-[7px] py-[2px] font-mono text-[12px] leading-[16px] ${
+      className={`shrink-0 rounded-full px-[7px] py-[2px] font-mono text-label leading-[16px] ${
         onAccent ? 'bg-white/15 text-accent-text' : 'bg-white/8 text-white/75'
       }`}
     >

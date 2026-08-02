@@ -6,6 +6,8 @@ export interface TransportShortcuts {
   readonly onTogglePlay: () => void;
   readonly onStepForward: () => void;
   readonly onStepBack: () => void;
+  readonly onStepOver: () => void;
+  readonly onStepOut: () => void;
   readonly onSeekToStart: () => void;
   readonly onSeekToEnd: () => void;
 }
@@ -37,7 +39,12 @@ export function handlesKeyItself(target: EventTarget | null, key: string): boole
 }
 
 /**
- * Space plays and pauses, arrows step, Home/End jump to the ends of the history.
+ * Space plays and pauses, ←/→ step, ↓/↑ step over and out, Home/End jump to the ends of the
+ * history. The vertical pair reads as the call stack: down goes past the callee, up leaves the
+ * frame. F10/F11 would be the debugger convention, but both are claimed by the browser.
+ *
+ * A list that navigates with the arrow keys itself — the roving tabindex of the code rows —
+ * calls `preventDefault`, and the guard below leaves those presses alone.
  *
  * The callbacks are read through a ref rather than listed as dependencies: every one of them
  * changes identity on every step, and at 8× that would tear down and re-register the window
@@ -75,6 +82,12 @@ export function useTransportShortcuts(shortcuts: TransportShortcuts): void {
           break;
         case 'ArrowLeft':
           transport.onStepBack();
+          break;
+        case 'ArrowDown':
+          transport.onStepOver();
+          break;
+        case 'ArrowUp':
+          transport.onStepOut();
           break;
         case 'Home':
           transport.onSeekToStart();

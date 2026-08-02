@@ -27,6 +27,15 @@ function sourceLineAt(index: number): HTMLElement {
   return row;
 }
 
+/** By line number rather than by position, so the current row does not shift the count. */
+function lineRow(lineNumber: number): HTMLElement {
+  const row = screen.getAllByTestId(/source-line/)[lineNumber - 1];
+  if (row === undefined) {
+    throw new Error(`No source line rendered for line ${String(lineNumber)}`);
+  }
+  return row;
+}
+
 describe('SourcePanel', () => {
   it('renders every line with its number', () => {
     render(<SourcePanel fileName={fileName} lines={lines} currentLine={undefined} />);
@@ -121,6 +130,56 @@ describe('SourcePanel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Go to line 26' }));
     // `if (n <= 1)` is the first thing factorial does, two steps into the run.
     expect(onSeek).toHaveBeenCalledWith(2);
+  });
+
+  it('reports the line under the pointer, and the one the keyboard reaches', () => {
+    const onLinkedLineChange = vi.fn();
+    render(
+      <SourcePanel
+        fileName={fileName}
+        lines={lines}
+        currentLine={undefined}
+        stepForLine={stepForLine()}
+        onSeek={vi.fn()}
+        onLinkedLineChange={onLinkedLineChange}
+      />,
+    );
+
+    fireEvent.mouseOver(lineRow(RECURSION_LINE));
+    expect(onLinkedLineChange).toHaveBeenLastCalledWith(RECURSION_LINE);
+
+    const target = screen.getByRole('button', { name: `Go to line ${String(CONDITION_LINE)}` });
+    fireEvent.focus(target);
+    expect(onLinkedLineChange).toHaveBeenLastCalledWith(CONDITION_LINE);
+
+    fireEvent.blur(target);
+    expect(onLinkedLineChange).toHaveBeenLastCalledWith(undefined);
+  });
+
+  it('marks the linked line without claiming it is the current step', () => {
+    render(
+      <SourcePanel
+        fileName={fileName}
+        lines={lines}
+        currentLine={CONDITION_LINE}
+        linkedLine={RECURSION_LINE}
+      />,
+    );
+
+    expect(lineRow(RECURSION_LINE)).toHaveAttribute('data-linked', 'true');
+    expect(screen.getByTestId('current-source-line')).not.toHaveAttribute('data-linked');
+  });
+
+  /**
+   * A code row never wraps, so at 1024px a javadoc paragraph ends mid-word behind the fade.
+   * The row carries its own text, which is the one affordance that works at every width.
+   */
+  it('carries the full text of every line it may be cutting off', () => {
+    render(<SourcePanel fileName={fileName} lines={lines} currentLine={undefined} />);
+
+    expect(lineRow(RECURSION_LINE)).toHaveAttribute('title', 'return n * factorial(n - 1);');
+    // A blank line has nothing to reveal, so it gets no tooltip.
+    expect(lineRow(18)).not.toHaveAttribute('title');
   });
 
   it('moves the focus between rows with the arrow keys', () => {

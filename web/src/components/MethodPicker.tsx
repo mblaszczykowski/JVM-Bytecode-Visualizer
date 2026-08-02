@@ -33,7 +33,7 @@ function signatureOf(method: MethodListing): string {
 export function MethodPicker({ methods, selected, onSelect, onRun, entry }: MethodPickerProps) {
   if (methods.length === 0) {
     return (
-      <p className="px-[23px] py-2 text-[12px] text-white/55">This class declares no methods.</p>
+      <p className="px-[23px] py-2 text-label text-white/55">This class declares no methods.</p>
     );
   }
 
@@ -60,7 +60,7 @@ export function MethodPicker({ methods, selected, onSelect, onRun, entry }: Meth
             title={
               reason === undefined ? undefined : `Listing only — ${describeNotRunnable(reason)}`
             }
-            className={`flex items-center gap-2 rounded-row px-[13px] py-[8px] text-[12px] ${
+            className={`flex items-center gap-2 rounded-row px-[13px] py-[8px] text-label ${
               isSelected ? 'bg-accent/[0.22] text-accent-text shadow-current' : 'bg-white/5'
             }`}
           >
@@ -77,7 +77,7 @@ export function MethodPicker({ methods, selected, onSelect, onRun, entry }: Meth
                 {method.name}
               </span>
               <span
-                className={`min-w-0 grow truncate font-mono text-[11px] ${
+                className={`min-w-0 grow truncate font-mono text-meta ${
                   isSelected ? 'text-accent-soft' : 'text-white/55'
                 }`}
               >
@@ -85,7 +85,7 @@ export function MethodPicker({ methods, selected, onSelect, onRun, entry }: Meth
               </span>
               {modifiers === '' ? null : (
                 <span
-                  className={`shrink-0 font-mono text-[11px] ${
+                  className={`shrink-0 font-mono text-meta ${
                     isSelected ? 'text-accent-soft' : 'text-white/55'
                   }`}
                 >
@@ -93,7 +93,7 @@ export function MethodPicker({ methods, selected, onSelect, onRun, entry }: Meth
                 </span>
               )}
               {count === 0 ? null : (
-                <span className="shrink-0 font-mono text-[11px] text-white/32">
+                <span className="shrink-0 font-mono text-meta text-white/32">
                   {count === 1 ? '1 instruction' : `${String(count)} instructions`}
                 </span>
               )}
@@ -119,7 +119,7 @@ export function MethodPicker({ methods, selected, onSelect, onRun, entry }: Meth
                   onClick={() => {
                     onRun(method);
                   }}
-                  className="focus-ring shrink-0 rounded-full bg-white/9 px-[10px] py-[3px] text-[11px] text-white/85 shadow-control-raised hover:bg-white/[0.14]"
+                  className="focus-ring shrink-0 rounded-full bg-white/9 px-[10px] py-[3px] text-meta text-white/85 shadow-control-raised hover:bg-white/[0.14]"
                 >
                   Run
                 </button>

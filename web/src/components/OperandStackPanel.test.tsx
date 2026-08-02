@@ -81,13 +81,16 @@ describe('OperandStackPanel', () => {
 
     expect(screen.queryByTestId('operand-cell')).not.toBeInTheDocument();
     expect(screen.getByText('empty')).toBeInTheDocument();
+    // Step 0 is a frame people screenshot: it says what would put something here.
+    expect(screen.getByText(/instructions push them/)).toBeInTheDocument();
     expect(screen.getByText('BASE')).toBeInTheDocument();
   });
 
   it('shows the missing frame of the terminal snapshot', () => {
     render(<OperandStackPanel frame={undefined} />);
 
-    expect(screen.getByText('No active frame.')).toBeInTheDocument();
+    expect(screen.getByText('no active frame')).toBeInTheDocument();
+    expect(screen.getByText(/belongs to a frame/)).toBeInTheDocument();
   });
 
   it('names the array a reference cell points at instead of showing its handle', () => {

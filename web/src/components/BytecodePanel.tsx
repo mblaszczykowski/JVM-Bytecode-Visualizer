@@ -1,13 +1,17 @@
 import { Fragment, useState } from 'react';
 
+import type { ConstantPool } from '../core/classfile';
 import type { Instruction } from '../core/disassembler/types';
 
 import { BranchGutter } from './BranchGutter';
 import {
   constantIndexOf,
+  describeStackEffect,
   formatOperands,
   operandTokens,
+  stackEffectOf,
   type OperandToken,
+  type StackEffect,
 } from './bytecode-format';
 import { CurrentRowHighlight } from './CurrentRowHighlight';
 import { GlossaryLink } from './GlossaryTrigger';
@@ -29,6 +33,11 @@ interface BytecodePanelProps {
    * `undefined` when the call stack is empty (terminal snapshot).
    */
   readonly currentOffset: number | undefined;
+  /**
+   * Constant pool of the class the listing came from. Needed to resolve the descriptor behind
+   * an `invokestatic`; without it the stack column has nothing to say and is left off.
+   */
+  readonly constantPool?: ConstantPool | undefined;
   /** javap-style trailing comments, keyed by instruction offset. */
   readonly comments?: ReadonlyMap<number, string> | undefined;
   /** Offsets never reached in this run — dimmed, because they did not shape the result. */
@@ -51,6 +60,18 @@ interface BytecodePanelProps {
   readonly selectedConstant?: number | undefined;
   /** Follow a `#n` operand into the constant pool table; omitted, the operands stay text. */
   readonly onSelectConstant?: ((index: number) => void) | undefined;
+  /**
+   * 1-based source line each offset compiled from (JVMS §4.7.12), so a row can say which line
+   * it belongs to. Absent for an uploaded class with no LineNumberTable.
+   */
+  readonly sourceLineForOffset?: ReadonlyMap<number, number> | undefined;
+  /**
+   * Source line the reader is pointing at, from either code panel. Every instruction that
+   * compiled from it is marked — deliberately weaker than the accent, which means "current".
+   */
+  readonly linkedLine?: number | undefined;
+  /** Pointer or focus moved onto a row, or off the listing entirely (`undefined`). */
+  readonly onLinkedLineChange?: ((line: number | undefined) => void) | undefined;
   /** Slide the highlight between instructions; switched off above 4× playback. */
   readonly animateHighlight?: boolean;
   /** Silences the live region during playback — one announcement per tick is unusable. */
@@ -112,6 +133,45 @@ function ConstantLink({
   );
 }
 
+interface StackEffectCellProps {
+  readonly effect: StackEffect | 'varies' | undefined;
+  readonly isCurrent: boolean;
+}
+
+/**
+ * Right-hand column of the listing: what the instruction takes off the operand stack and what
+ * it leaves behind. Two fixed-width cells rather than free text, so the signs line up into a
+ * column; grey and one step down the type scale, because blue means "current" and the
+ * disassembly itself has to keep reading as one block (design §12).
+ *
+ * `aria-hidden`, and not out of laziness: four hundred rows of "minus two plus one" is
+ * unusable. The panel's live region carries the effect of the instruction that matters.
+ */
+function StackEffectCell({ effect, isCurrent }: StackEffectCellProps) {
+  return (
+    <span
+      aria-hidden="true"
+      data-testid="stack-effect"
+      className={`flex shrink-0 gap-[4px] text-micro select-none ${
+        isCurrent ? 'opacity-60' : 'text-white/26'
+      }`}
+    >
+      {effect === 'varies' ? (
+        <span className="w-[44px] text-right">varies</span>
+      ) : (
+        <>
+          <span className="w-[20px] text-right">
+            {effect === undefined || effect.pops === 0 ? '' : `−${String(effect.pops)}`}
+          </span>
+          <span className="w-[20px] text-right">
+            {effect === undefined || effect.pushes === 0 ? '' : `+${String(effect.pushes)}`}
+          </span>
+        </>
+      )}
+    </span>
+  );
+}
+
 export function BytecodePanel({
   methodName,
   methodDescriptor,
@@ -119,6 +179,7 @@ export function BytecodePanel({
   maxLocals,
   instructions,
   currentOffset,
+  constantPool,
   comments,
   deadOffsets,
   truncatedAtOffset,
@@ -128,11 +189,28 @@ export function BytecodePanel({
   onSeek,
   selectedConstant,
   onSelectConstant,
+  sourceLineForOffset,
+  linkedLine,
+  onLinkedLineChange,
   animateHighlight = false,
   isPlaying = false,
   className = '',
 }: BytecodePanelProps) {
   const [activeIndex, setActiveIndex] = useState<number | undefined>(undefined);
+
+  /**
+   * Pointer or focus on a row, which drives two things at once: the branch arcs that touch it
+   * and the source line it compiled from. Keeping them on one call is what makes the link
+   * work from the keyboard as well as from the mouse.
+   */
+  const pointAt = (index: number | undefined) => {
+    setActiveIndex(index);
+    if (onLinkedLineChange === undefined) {
+      return;
+    }
+    const offset = index === undefined ? undefined : instructions[index]?.offset;
+    onLinkedLineChange(offset === undefined ? undefined : sourceLineForOffset?.get(offset));
+  };
 
   const currentIndex = instructions.findIndex(
     (instruction) => instruction.offset === currentOffset,
@@ -170,6 +248,10 @@ export function BytecodePanel({
     </>
   );
   const currentOperands = current === undefined ? '' : formatOperands(current);
+  const currentEffect =
+    current === undefined || constantPool === undefined
+      ? undefined
+      : describeStackEffect(stackEffectOf(current, constantPool));
 
   return (
     <Panel
@@ -183,13 +265,13 @@ export function BytecodePanel({
       <p className="sr-only" aria-live={isPlaying ? 'off' : 'polite'}>
         {current === undefined
           ? 'No active instruction.'
-          : `pc ${String(current.offset)} · ${current.mnemonic}${currentOperands === '' ? '' : ` ${currentOperands}`}`}
+          : `pc ${String(current.offset)} · ${current.mnemonic}${currentOperands === '' ? '' : ` ${currentOperands}`}${currentEffect === undefined ? '' : ` · ${currentEffect}`}`}
       </p>
 
       <div
         className="relative px-[10px]"
         onMouseLeave={() => {
-          setActiveIndex(undefined);
+          pointAt(undefined);
         }}
       >
         {/* Arcs follow the pointer and the keyboard alike, so they are not a mouse-only story. */}
@@ -208,6 +290,12 @@ export function BytecodePanel({
             const comment = comments?.get(instruction.offset);
             const explanation = help?.get(instruction.mnemonic);
             const step = stepForOffset?.get(instruction.offset);
+            // Hover and focus mark the whole group an instruction belongs to, not the one row
+            // under the pointer: "line 29 compiled to these five" is the relationship on show.
+            const isLinked =
+              !isCurrent &&
+              linkedLine !== undefined &&
+              sourceLineForOffset?.get(instruction.offset) === linkedLine;
 
             return (
               <li
@@ -215,20 +303,25 @@ export function BytecodePanel({
                 aria-current={isCurrent ? 'step' : undefined}
                 data-testid={isCurrent ? 'current-instruction' : 'instruction'}
                 data-offset={instruction.offset}
+                data-linked={isLinked ? 'true' : undefined}
                 title={explanation}
                 onMouseEnter={() => {
-                  setActiveIndex(index);
+                  pointAt(index);
                 }}
-                className={`${CODE_ROW} ${isCurrent ? 'text-accent-text' : 'text-white/60'} ${
-                  isUnsupported ? 'opacity-75' : isDead ? 'opacity-45' : ''
-                }`}
+                className={`${CODE_ROW} ${
+                  isCurrent
+                    ? 'text-accent-text'
+                    : isLinked
+                      ? 'bg-white/[0.055] text-white/80'
+                      : 'text-white/60'
+                } ${isUnsupported ? 'opacity-75' : isDead ? 'opacity-50' : ''}`}
               >
                 {isCurrent ? (
                   <CurrentRowHighlight layoutId="pc-highlight" animate={animateHighlight} />
                 ) : null}
                 <span
                   className={`w-7 shrink-0 text-right select-none ${
-                    isCurrent ? 'text-accent-dim' : 'text-white/24'
+                    isCurrent ? 'text-accent-dim' : isLinked ? 'text-white/45' : 'text-white/24'
                   }`}
                 >
                   {instruction.offset}
@@ -277,6 +370,14 @@ export function BytecodePanel({
                 )}
                 <span className="grow" />
                 {isUnsupported ? <Pill tone="error">unsupported</Pill> : null}
+                {/* Always rendered once there is a pool, empty cells included — a column that
+                    moves from row to row is not a column. */}
+                {constantPool === undefined ? null : (
+                  <StackEffectCell
+                    effect={stackEffectOf(instruction, constantPool)}
+                    isCurrent={isCurrent}
+                  />
+                )}
 
                 {step === undefined || onSeek === undefined ? null : (
                   <button
@@ -292,10 +393,10 @@ export function BytecodePanel({
                       rows.onKeyDown(event, index);
                     }}
                     onFocus={() => {
-                      setActiveIndex(index);
+                      pointAt(index);
                     }}
                     onBlur={() => {
-                      setActiveIndex(undefined);
+                      pointAt(undefined);
                     }}
                     // The row is already drawn; this only has to be the target you can hit.
                     className="focus-ring absolute inset-0 rounded-code"

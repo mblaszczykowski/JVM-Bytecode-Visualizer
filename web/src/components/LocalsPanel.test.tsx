@@ -84,6 +84,16 @@ describe('LocalsPanel', () => {
     render(<LocalsPanel frame={undefined} />);
 
     expect(screen.queryByTestId('local-slot')).not.toBeInTheDocument();
-    expect(screen.getByText('No active frame.')).toBeInTheDocument();
+    expect(screen.getByText('no active frame')).toBeInTheDocument();
+    // The state people screenshot at step 0 says why it is empty, not only that it is.
+    expect(screen.getByText(/Local variables belong to a frame/)).toBeInTheDocument();
+  });
+
+  it('explains a method that keeps nothing in a local slot', () => {
+    render(<LocalsPanel frame={{ ...frameWithoutNames, locals: [] }} />);
+
+    expect(screen.queryByTestId('local-slot')).not.toBeInTheDocument();
+    expect(screen.getByText('no local slots')).toBeInTheDocument();
+    expect(screen.getByText(/works entirely on the operand stack/)).toBeInTheDocument();
   });
 });

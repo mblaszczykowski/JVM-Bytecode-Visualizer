@@ -1,8 +1,20 @@
 import { type ChangeEvent, useMemo } from 'react';
 
+import {
+  bucketEvents,
+  eventAt,
+  stepBucketsOf,
+  TIMELINE_EVENT_LABELS,
+  type StepBucket,
+  type TimelineEvent,
+  type TimelineEventKind,
+} from '../services/timeline';
+
 interface DepthTrackProps {
   /** Call stack depth for every step of the run. */
   readonly depths: readonly number[];
+  /** Ascending by step; empty leaves the marker lane out of the layout entirely. */
+  readonly events?: readonly TimelineEvent[];
   readonly stepIndex: number;
   readonly onSeek: (index: number) => void;
   readonly label: string;
@@ -15,28 +27,34 @@ interface DepthTrackProps {
  */
 const MAX_BARS = 120;
 
-interface Bar {
+const NO_EVENTS: readonly TimelineEvent[] = [];
+
+interface Bar extends StepBucket {
   readonly depth: number;
-  readonly firstStep: number;
-  readonly lastStep: number;
 }
 
-function bucketDepths(depths: readonly number[]): readonly Bar[] {
-  const count = Math.min(MAX_BARS, Math.max(depths.length, 1));
-  const bars: Bar[] = [];
-
-  for (let bar = 0; bar < count; bar++) {
-    const firstStep = Math.floor((bar * depths.length) / count);
-    const lastStep = Math.max(firstStep, Math.floor(((bar + 1) * depths.length) / count) - 1);
+function bucketDepths(depths: readonly number[], buckets: readonly StepBucket[]): readonly Bar[] {
+  return buckets.map((bucket) => {
     let depth = 0;
-    for (let step = firstStep; step <= lastStep; step++) {
+    for (let step = bucket.firstStep; step <= bucket.lastStep; step++) {
       depth = Math.max(depth, depths[step] ?? 0);
     }
-    bars.push({ depth, firstStep, lastStep });
-  }
-
-  return bars;
+    return { ...bucket, depth };
+  });
 }
+
+/**
+ * Neutral marks, never a second accent: the chart is read by shape and the accent is reserved
+ * for "you are here". Weight is the only thing that separates the kinds — a write the program
+ * can observe sits above the control flow the bars already draw.
+ */
+const MARK_STYLES: Readonly<Record<TimelineEventKind, string>> = {
+  print: 'h-[5px] bg-white/55',
+  'heap-write': 'h-[5px] bg-white/42',
+  call: 'h-[3px] bg-white/30',
+  return: 'h-[3px] bg-white/30',
+  branch: 'h-[3px] bg-white/20',
+};
 
 interface FrameSpans {
   /** First step of the frame on top at step i. */
@@ -91,12 +109,22 @@ function popTo(stack: number[], depths: readonly number[], step: number): number
 }
 
 /**
- * Scrubber for the whole run: call stack depth as a bar chart with the position track along
- * its bottom edge. The chart itself is the control — a transparent range input covers it, so
- * clicking or dragging anywhere seeks, and keyboard and screen readers get the native slider.
+ * Scrubber for the whole run: call stack depth as a bar chart, a lane of event marks above it
+ * and the position track along its bottom edge. The chart itself is the control — a
+ * transparent range input covers it, so clicking or dragging anywhere seeks, and keyboard and
+ * screen readers get the native slider, which is also where the marks are put into words.
  */
-export function DepthTrack({ depths, stepIndex, onSeek, label, className = '' }: DepthTrackProps) {
-  const bars = useMemo(() => bucketDepths(depths), [depths]);
+export function DepthTrack({
+  depths,
+  events = NO_EVENTS,
+  stepIndex,
+  onSeek,
+  label,
+  className = '',
+}: DepthTrackProps) {
+  const buckets = useMemo(() => stepBucketsOf(depths.length, MAX_BARS), [depths.length]);
+  const bars = useMemo(() => bucketDepths(depths, buckets), [depths, buckets]);
+  const marks = useMemo(() => bucketEvents(events, buckets), [events, buckets]);
   const maxDepth = useMemo(
     () => depths.reduce((high, value) => Math.max(high, value), 1),
     [depths],
@@ -113,6 +141,9 @@ export function DepthTrack({ depths, stepIndex, onSeek, label, className = '' }:
 
   const lastIndex = Math.max(depths.length - 1, 0);
   const progress = lastIndex === 0 ? 0 : (stepIndex / lastIndex) * 100;
+  const hasMarks = marks.some((mark) => mark !== undefined);
+  const currentEvent = eventAt(events, stepIndex);
+  const position = `step ${String(stepIndex + 1)} of ${String(depths.length)}`;
 
   function handleChange(event: ChangeEvent<HTMLInputElement>): void {
     onSeek(Number(event.target.value));
@@ -121,10 +152,31 @@ export function DepthTrack({ depths, stepIndex, onSeek, label, className = '' }:
   return (
     // The input that carries the focus is transparent, so the ring has to sit on the chart.
     <div className={`focus-ring-within relative h-11 grow rounded-md md:h-[34px] ${className}`}>
+      {/*
+        One cell per bar, cut on the same buckets, so a mark always sits over the steps it
+        belongs to. Cells without an event stay in the row at zero height to hold the column.
+      */}
+      {hasMarks ? (
+        <div
+          aria-hidden="true"
+          className="absolute inset-x-0 top-0 flex h-[5px] items-start gap-px"
+        >
+          {marks.map((mark, bucket) => (
+            <span
+              key={bars[bucket]?.firstStep ?? bucket}
+              {...(mark === undefined ? {} : { 'data-testid': 'timeline-mark', 'data-kind': mark })}
+              className={`flex-1 rounded-[1px] ${mark === undefined ? '' : MARK_STYLES[mark]}`}
+            />
+          ))}
+        </div>
+      ) : null}
+
       {/* Loud enough to read the shape of the recursion through the glass, still not chrome. */}
       <div
         aria-hidden="true"
-        className="absolute inset-x-0 top-0 bottom-[6px] flex items-end gap-px opacity-70"
+        className={`absolute inset-x-0 bottom-[6px] flex items-end gap-px opacity-70 ${
+          hasMarks ? 'top-[7px]' : 'top-0'
+        }`}
       >
         {bars.map((bar) => {
           const inCurrentFrame =
@@ -169,7 +221,13 @@ export function DepthTrack({ depths, stepIndex, onSeek, label, className = '' }:
         value={stepIndex}
         onChange={handleChange}
         aria-label={label}
-        aria-valuetext={`step ${String(stepIndex + 1)} of ${String(depths.length)}`}
+        // The marks are decoration a screen reader never reaches; the slider is where the
+        // event at the current step gets said out loud.
+        aria-valuetext={
+          currentEvent === undefined
+            ? position
+            : `${position}, ${TIMELINE_EVENT_LABELS[currentEvent]}`
+        }
         className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
       />
     </div>

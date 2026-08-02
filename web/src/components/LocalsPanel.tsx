@@ -3,7 +3,7 @@ import { useState } from 'react';
 
 import type { ArrayObject, StackFrame } from '../core/interpreter/types';
 
-import { Panel } from './Panel';
+import { EmptyState, Panel } from './Panel';
 import { ReferenceChip } from './ui/ReferenceChip';
 
 interface LocalsPanelProps {
@@ -71,8 +71,11 @@ export function LocalsPanel({ frame, frameIndex = 0, caption, heap = NO_HEAP }: 
 
   if (frame === undefined) {
     return (
-      <Panel title="Locals" meta="—" variant="state" bodyFill="capped">
-        <p className="px-[18px] py-3 text-[12px] text-white/55">No active frame.</p>
+      <Panel title="Locals" meta="—" variant="state" className="grow">
+        <EmptyState
+          status="no active frame"
+          detail="Local variables belong to a frame, and the run has none left."
+        />
       </Panel>
     );
   }
@@ -84,10 +87,13 @@ export function LocalsPanel({ frame, frameIndex = 0, caption, heap = NO_HEAP }: 
       title="Locals"
       meta={caption ?? `${String(locals.length)} slots`}
       variant="state"
-      bodyFill="capped"
+      className="grow"
     >
       {locals.length === 0 ? (
-        <p className="px-[23px] py-2 text-[12px] text-white/55">no local slots</p>
+        <EmptyState
+          status="no local slots"
+          detail="This method declares no variables — it works entirely on the operand stack."
+        />
       ) : (
         <ul className="flex flex-col gap-[5px] px-[10px] pb-[2px]">
           {locals.map((value, slot) => {
@@ -103,8 +109,8 @@ export function LocalsPanel({ frame, frameIndex = 0, caption, heap = NO_HEAP }: 
                 key={slot}
                 data-testid="local-slot"
                 data-slot={slot}
-                className={`relative isolate flex items-center gap-2 rounded-row px-[13px] py-[8px] text-[12px] ${
-                  isInitialised ? 'bg-white/5' : 'shadow-[inset_0_0_0_1px_rgb(255_255_255/0.08)]'
+                className={`relative isolate flex items-center gap-2 rounded-row px-[13px] py-[8px] text-label ${
+                  isInitialised ? 'bg-white/5' : 'shadow-row-outline'
                 }`}
               >
                 {/*
@@ -122,11 +128,11 @@ export function LocalsPanel({ frame, frameIndex = 0, caption, heap = NO_HEAP }: 
                     className="pointer-events-none absolute inset-0 -z-10 rounded-row bg-accent/[0.22]"
                   />
                 )}
-                <span className="w-3 shrink-0 font-mono text-[10px] text-white/32">{slot}</span>
+                <span className="w-3 shrink-0 font-mono text-micro text-white/32">{slot}</span>
                 <span className={isInitialised ? 'text-white/75' : 'text-white/30'}>{name}</span>
                 {/* The subset models two kinds of slot: an int, and a reference to an int array. */}
                 {isInitialised ? (
-                  <span className="font-mono text-[11px] text-white/55">
+                  <span className="font-mono text-meta text-white/55">
                     {isReference ? ': int[]' : ': I'}
                   </span>
                 ) : null}
@@ -135,7 +141,7 @@ export function LocalsPanel({ frame, frameIndex = 0, caption, heap = NO_HEAP }: 
                   <ReferenceChip heap={heap} handle={value} />
                 ) : (
                   <span
-                    className={`font-mono text-[14px] ${
+                    className={`font-mono text-body ${
                       isInitialised ? 'text-white/90' : 'text-white/30'
                     }`}
                   >

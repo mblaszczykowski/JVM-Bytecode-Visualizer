@@ -1,5 +1,7 @@
+import type { ConstantPool } from '../core/classfile';
 import { lookupOpcode } from '../core/disassembler';
 import type { Instruction } from '../core/disassembler/types';
+import { stackDeltaOf } from '../services/derivations';
 
 /** Pool index this instruction names, if any — what a `#n` in its row leads to. */
 export function constantIndexOf(instruction: Instruction): number | undefined {
@@ -12,6 +14,46 @@ export function formatOperands(instruction: Instruction): string {
   return operandTokens(instruction)
     .map((token) => token.text)
     .join(', ');
+}
+
+export interface StackEffect {
+  readonly pops: number;
+  readonly pushes: number;
+}
+
+/**
+ * What the listing may claim one instruction does to the operand stack.
+ *
+ * `'varies'` is the JVMS word (§6.5): `getstatic`, `invokevirtual` and an `invokestatic`
+ * whose descriptor does not resolve have an effect that depends on something the listing
+ * cannot see, and a number there would be a guess. `undefined` is an opcode the interpreter
+ * does not run at all — past it the stack shape is unknown and the row says so with its pill.
+ */
+export function stackEffectOf(
+  instruction: Instruction,
+  pool: ConstantPool,
+): StackEffect | 'varies' | undefined {
+  if (lookupOpcode(instruction.opcode)?.kind !== 'supported') {
+    return undefined;
+  }
+  return stackDeltaOf(instruction, pool) ?? 'varies';
+}
+
+/** The stack column in words, for the listing's live region. */
+export function describeStackEffect(
+  effect: StackEffect | 'varies' | undefined,
+): string | undefined {
+  if (effect === undefined) {
+    return undefined;
+  }
+  if (effect === 'varies') {
+    return 'stack: varies with the descriptor';
+  }
+  const parts = [
+    ...(effect.pops === 0 ? [] : [`pops ${String(effect.pops)}`]),
+    ...(effect.pushes === 0 ? [] : [`pushes ${String(effect.pushes)}`]),
+  ];
+  return parts.length === 0 ? 'stack: unchanged' : `stack: ${parts.join(', ')}`;
 }
 
 export interface OperandToken {

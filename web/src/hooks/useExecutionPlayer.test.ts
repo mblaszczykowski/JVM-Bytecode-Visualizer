@@ -1,12 +1,29 @@
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { Snapshot } from '../core/interpreter/types';
+import type { Snapshot, StackFrame } from '../core/interpreter/types';
 import { BASE_STEP_INTERVAL_MS, useExecutionPlayer } from './useExecutionPlayer';
 
 /** The player never looks inside a snapshot, so the bare shape is enough. */
 function historyOf(steps: number): readonly Snapshot[] {
   return Array.from({ length: steps }, (_, step) => ({ step, callStack: [] }));
+}
+
+const FRAME: StackFrame = {
+  methodName: 'f',
+  methodDescriptor: '()V',
+  pc: 0,
+  operandStack: [],
+  locals: [],
+  localNames: [],
+};
+
+/** Call stack depth is the only thing step over and step out read out of a snapshot. */
+function historyOfDepths(depths: readonly number[]): readonly Snapshot[] {
+  return depths.map((depth, step) => ({
+    step,
+    callStack: Array.from({ length: depth }, () => FRAME),
+  }));
 }
 
 function renderPlayer(snapshots: readonly Snapshot[]) {
@@ -185,6 +202,80 @@ describe('useExecutionPlayer', () => {
     expect(result.current.stepIndex).toBe(1);
   });
 
+  // main at depth 1 calls a method at step 2, which itself calls one; both return by step 8.
+  const NESTED = [1, 1, 1, 2, 2, 3, 3, 2, 1, 0];
+
+  it('steps over a call, past the whole callee', () => {
+    const { result } = renderPlayer(historyOfDepths(NESTED));
+
+    act(() => {
+      result.current.seekTo(2);
+    });
+    act(() => {
+      result.current.stepOver();
+    });
+
+    expect(result.current.stepIndex).toBe(8);
+    expect(result.current.canStepOver).toBe(true);
+  });
+
+  it('steps forward when the current instruction opens no frame', () => {
+    const { result } = renderPlayer(historyOfDepths(NESTED));
+
+    act(() => {
+      result.current.stepOver();
+    });
+
+    expect(result.current.stepIndex).toBe(1);
+  });
+
+  it('steps out to where the frame on top has returned', () => {
+    const { result } = renderPlayer(historyOfDepths(NESTED));
+
+    act(() => {
+      result.current.seekTo(5);
+    });
+    act(() => {
+      result.current.stepOut();
+    });
+
+    expect(result.current.stepIndex).toBe(7);
+  });
+
+  it('has nothing to step out of on a step with no frame', () => {
+    const { result } = renderPlayer(historyOfDepths(NESTED));
+
+    act(() => {
+      result.current.seekTo(9);
+    });
+
+    expect(result.current.canStepOut).toBe(false);
+    expect(result.current.canStepOver).toBe(false);
+
+    act(() => {
+      result.current.stepOut();
+    });
+    expect(result.current.stepIndex).toBe(9);
+  });
+
+  it('stays put rather than jumping when the history ends inside the callee', () => {
+    // A run cut short by the step limit never comes back down to the caller's depth.
+    const { result } = renderPlayer(historyOfDepths([1, 2, 3, 4]));
+
+    act(() => {
+      result.current.seekTo(1);
+    });
+
+    expect(result.current.canStepOver).toBe(false);
+    expect(result.current.canStepOut).toBe(false);
+
+    act(() => {
+      result.current.stepOver();
+      result.current.stepOut();
+    });
+    expect(result.current.stepIndex).toBe(1);
+  });
+
   it('clamps a seek below zero or past the last step', () => {
     const { result } = renderPlayer(historyOf(5));
 
@@ -302,11 +393,15 @@ describe('useExecutionPlayer', () => {
     expect(result.current.stepCount).toBe(0);
     expect(result.current.atStart).toBe(true);
     expect(result.current.atEnd).toBe(true);
+    expect(result.current.canStepOver).toBe(false);
+    expect(result.current.canStepOut).toBe(false);
 
     act(() => {
       result.current.play();
       result.current.stepForward();
       result.current.stepBack();
+      result.current.stepOver();
+      result.current.stepOut();
       result.current.seekTo(7);
     });
 

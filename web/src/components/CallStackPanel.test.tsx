@@ -92,7 +92,8 @@ describe('CallStackPanel', () => {
     render(<CallStackPanel frames={[]} />);
 
     expect(screen.queryByTestId('call-frame')).not.toBeInTheDocument();
-    expect(screen.getByText(/No active frame/)).toBeInTheDocument();
+    expect(screen.getByText('no active frame')).toBeInTheDocument();
+    expect(screen.getByText(/popped the last frame/)).toBeInTheDocument();
     expect(screen.getByText('depth 0')).toBeInTheDocument();
   });
 });

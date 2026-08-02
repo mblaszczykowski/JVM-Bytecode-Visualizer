@@ -67,6 +67,19 @@ describe('ErrorBanner', () => {
     expect(screen.queryByRole('button', { name: 'Dismiss this message' })).not.toBeInTheDocument();
   });
 
+  /**
+   * §12: hierarchy inside the glass comes from background opacity and hairlines. A banner that
+   * shouted with a saturated fill would be the one place on the screen breaking that rule.
+   */
+  it('carries its severity in the hairline, on the same frame the panels use', () => {
+    render(<ErrorBanner severity="error" message="Not a .class file." />);
+
+    const banner = screen.getByTestId('error-banner');
+
+    expect(banner.className).toContain('rounded-panel');
+    expect(banner.className).toMatch(/shadow-\[inset_0_0_0_1px_rgb\(255_69_58/);
+  });
+
   it('renders the informational variant', () => {
     render(<ErrorBanner severity="info" message="Demo data." />);
 

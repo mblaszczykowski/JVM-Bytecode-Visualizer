@@ -10,6 +10,7 @@ import type { ExampleOption } from './components/ExamplePicker';
 import { LoadingPanels } from './components/LoadingPanels';
 import { SourcePanel } from './components/SourcePanel';
 import { StateColumn } from './components/StateColumn';
+import type { ShortcutGroup } from './components/KeyboardHelp';
 import { Toolbar, type CompilerStatus, type PanelName } from './components/Toolbar';
 import { TransportControls } from './components/TransportControls';
 import { Segment, SegmentedControl } from './components/ui/SegmentedControl';
@@ -46,6 +47,7 @@ import {
   describeOperandRoles,
   explainMnemonic,
 } from './services/derivations';
+import { parseDeepLink, writeDeepLink } from './services/deep-link';
 import { describeAppError, describeCompileFailure, toAppError } from './services/errors';
 import { fetchExampleManifest, shortTitleOf } from './services/examples';
 import {
@@ -56,6 +58,7 @@ import {
   firstStepByOffset,
   isCurrentListing,
   lastLiveSnapshot,
+  lineForOffset,
   lineMappingNote,
   listingToShow,
   methodKeyOf,
@@ -71,6 +74,7 @@ import {
   type LoadContext,
   type ProgramRunner,
 } from './services/program-runner';
+import { timelineEventsOf } from './services/timeline';
 
 /**
  * The screen: everything below is derived from the reducer model and the transport position,
@@ -100,6 +104,34 @@ const SMOOTH_HIGHLIGHT_UP_TO = 4;
 const NO_RUN_NOTE =
   'Nothing was executed, so there is no frame, no operand stack and no locals to describe. ' +
   'The class file is on the left and its listings are in the middle.';
+
+/**
+ * Written here rather than inside the sheet, so the list is next to the `useTransportShortcuts`
+ * call that installs it and cannot quietly describe handlers that are no longer bound.
+ */
+const SHORTCUTS: readonly ShortcutGroup[] = [
+  {
+    title: 'Replay',
+    shortcuts: [
+      { keys: ['Space'], label: 'Play or pause' },
+      { keys: ['←'], label: 'Step back' },
+      { keys: ['→'], label: 'Step forward' },
+      { keys: ['↓'], label: 'Step over the call' },
+      { keys: ['↑'], label: 'Step out of the frame' },
+      { keys: ['Home'], label: 'First step' },
+      { keys: ['End'], label: 'Last step' },
+    ],
+  },
+  {
+    title: 'Panels',
+    shortcuts: [
+      { keys: ['↑', '↓'], label: 'Move between code rows' },
+      { keys: ['Enter'], label: 'Run to the focused row' },
+      { keys: ['?'], label: 'This sheet' },
+      { keys: ['Esc'], label: 'Close a dialog' },
+    ],
+  },
+];
 
 /** Below 768px the grid holds one panel; everywhere else all three columns are on screen. */
 function visibilityOf(panel: PanelName, selected: PanelName): string {
@@ -193,6 +225,12 @@ export function App({
   const [viewedMethodKey, setViewedMethodKey] = useState<string | undefined>(undefined);
   /** Constant pool entry the reader is following, from either side of the cross-link. */
   const [selectedConstant, setSelectedConstant] = useState<number | undefined>(undefined);
+  /**
+   * Source line the pointer or the keyboard is resting on, from either panel. One value drives
+   * both directions: the listing translates a row to its line before reporting it, so hovering
+   * an instruction marks every instruction of that line and the line itself.
+   */
+  const [linkedLine, setLinkedLine] = useState<number | undefined>(undefined);
   /** Message of the banner the reader closed, so the same one does not come straight back. */
   const [dismissed, setDismissed] = useState<string | undefined>(undefined);
 
@@ -201,6 +239,15 @@ export function App({
     tokenRef.current += 1;
     return tokenRef.current;
   };
+
+  /**
+   * The hash as it was when the page opened. Read once: from here on the hash is something this
+   * component writes, and re-reading it would fight the transport for the position.
+   */
+  const [openedAt] = useState(() => parseDeepLink(window.location.hash));
+  /** Both halves of the link are honoured once — the example, then the step inside its run. */
+  const pendingExample = useRef(openedAt?.exampleId);
+  const pendingStep = useRef(openedAt?.stepIndex);
 
   useEffect(() => {
     let active = true;
@@ -266,6 +313,7 @@ export function App({
     // Everywhere the reader had navigated to belongs to the program they are leaving.
     setViewedMethodKey(undefined);
     setSelectedConstant(undefined);
+    setLinkedLine(undefined);
     setStructureChoice(undefined);
 
     const state = await settle(() =>
@@ -299,6 +347,22 @@ export function App({
       loadExampleState(entry, undefined, context),
     );
   };
+
+  /**
+   * A link opens on the program it names instead of on the welcome screen. It waits for the
+   * manifest, because until then there is no entry to load; an id the manifest does not carry
+   * is simply dropped, and the reader gets the ordinary first screen.
+   */
+  useEffect(() => {
+    const id = pendingExample.current;
+    if (id === undefined || examples.length === 0) {
+      return;
+    }
+    pendingExample.current = undefined;
+    selectExample(id);
+    // `selectExample` closes over the freshly loaded `examples`, which is what gates this.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [examples]);
 
   const selectFile = (file: File) => {
     void startLoad(`Reading ${file.name}`, (context) => loadUploadState(file, undefined, context));
@@ -359,11 +423,43 @@ export function App({
     seekTo(stepCount - 1);
   };
 
+  /**
+   * Only a bundled example can be addressed: an uploaded `.class` never leaves the tab, so a
+   * link to one would open an empty screen for whoever followed it.
+   */
+  const loadedExampleId = program?.origin.kind === 'example' ? program.origin.entry.id : undefined;
+
+  /**
+   * A shared link names a step of a run that does not exist until the class file has been
+   * fetched, parsed and executed, so the position is applied once — when the history it points
+   * into is finally there. A step past the end of that history is dropped rather than clamped:
+   * the link is about a specific moment, and the last step is not it.
+   */
+  useEffect(() => {
+    const step = pendingStep.current;
+    if (step === undefined || stepCount === 0) {
+      return;
+    }
+    pendingStep.current = undefined;
+    // The reader may have picked something else while the linked example was still loading.
+    if (loadedExampleId === openedAt?.exampleId && step < stepCount) {
+      seekTo(step);
+    }
+  }, [loadedExampleId, openedAt, stepCount, seekTo]);
+
+  useEffect(() => {
+    if (loadedExampleId !== undefined) {
+      writeDeepLink(loadedExampleId, stepCount === 0 ? undefined : player.stepIndex);
+    }
+  }, [loadedExampleId, player.stepIndex, stepCount]);
+
   useTransportShortcuts({
     enabled: snapshots.length > 0,
     onTogglePlay: player.togglePlay,
     onStepForward: player.stepForward,
     onStepBack: player.stepBack,
+    onStepOver: player.stepOver,
+    onStepOut: player.stepOut,
     onSeekToStart: seekToStart,
     onSeekToEnd: seekToEnd,
   });
@@ -413,6 +509,20 @@ export function App({
       ? undefined
       : constantPoolComments(listing, program.classFile);
   const depths = depthsOf(snapshots);
+  const timelineEvents = timelineEventsOf(snapshots);
+  /**
+   * The listing's half of the source link: the line each instruction was compiled from, so the
+   * bytecode panel can report a hovered row as a line without App having to map anything back.
+   */
+  const sourceLineForOffset =
+    listing === undefined
+      ? undefined
+      : new Map(
+          listing.instructions.flatMap((instruction) => {
+            const line = lineForOffset(listing, instruction.offset);
+            return line === undefined ? [] : [[instruction.offset, line] as const];
+          }),
+        );
 
   const sourceLine = snapshot?.sourceLine;
   const pcRange =
@@ -459,6 +569,8 @@ export function App({
 
   const selectMethod = (method: MethodListing) => {
     setViewedMethodKey(methodKeyOf(method));
+    // A line number belongs to the listing it was read from; the next one numbers its own.
+    setLinkedLine(undefined);
     setVisiblePanel('bytecode');
   };
 
@@ -533,7 +645,7 @@ export function App({
           onClick={() => {
             selectPanel(id);
           }}
-          className="px-[9px] py-[2px] text-[11.5px]"
+          className="px-[9px] py-[2px] text-label"
         >
           {label}
         </Segment>
@@ -580,6 +692,7 @@ export function App({
           compilerStatus={compilerStatus}
           onWriteJava={writeJava}
           panelSwitch={canExplore ? { selected: visiblePanel, onSelect: selectPanel } : undefined}
+          shortcuts={SHORTCUTS}
         />
       }
       isDropTarget={isDropTarget}
@@ -602,10 +715,15 @@ export function App({
               isPlaying={player.isPlaying}
               speed={player.speed}
               depths={depths}
+              events={timelineEvents}
               onSeek={seekTo}
               onTogglePlay={player.togglePlay}
               onStepForward={player.stepForward}
               onStepBack={player.stepBack}
+              onStepOver={player.stepOver}
+              onStepOut={player.stepOut}
+              canStepOver={player.canStepOver}
+              canStepOut={player.canStepOut}
               onSpeedChange={player.setSpeed}
             />
           ) : null}
@@ -647,6 +765,8 @@ export function App({
             lineMappingNote={mappingNote}
             stepForLine={stepForLine}
             onSeek={seekTo}
+            linkedLine={linkedLine}
+            onLinkedLineChange={setLinkedLine}
             animateHighlight={smoothHighlight}
             titleControl={structureTabs}
             className={structureVisibilityOf('source', visiblePanel, structureView)}
@@ -677,6 +797,10 @@ export function App({
             help={mnemonicHelp}
             stepForOffset={stepForOffset}
             onSeek={seekTo}
+            constantPool={program.classFile.constantPool}
+            sourceLineForOffset={sourceLineForOffset}
+            linkedLine={linkedLine}
+            onLinkedLineChange={setLinkedLine}
             selectedConstant={selectedConstant}
             onSelectConstant={followConstantFromListing}
             animateHighlight={smoothHighlight}

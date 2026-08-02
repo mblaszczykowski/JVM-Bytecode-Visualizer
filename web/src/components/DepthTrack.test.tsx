@@ -1,6 +1,8 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
+import type { TimelineEvent } from '../services/timeline';
+
 import { depths } from './__fixtures__/factorial-run';
 import { DepthTrack } from './DepthTrack';
 
@@ -61,6 +63,79 @@ describe('DepthTrack', () => {
     rerender(<DepthTrack depths={depths} stepIndex={4} onSeek={vi.fn()} label={LABEL} />);
 
     expect(accentBars()).toBe(1);
+  });
+
+  it('leaves the marker lane out when the run has no events', () => {
+    render(<DepthTrack depths={runDepths} stepIndex={0} onSeek={vi.fn()} label={LABEL} />);
+
+    expect(screen.queryAllByTestId('timeline-mark')).toHaveLength(0);
+  });
+
+  it('marks each event over the bar covering its step', () => {
+    const events: readonly TimelineEvent[] = [
+      { step: 1, kind: 'call' },
+      { step: 12, kind: 'heap-write' },
+      { step: 30, kind: 'return' },
+    ];
+    render(
+      <DepthTrack
+        depths={runDepths}
+        events={events}
+        stepIndex={0}
+        onSeek={vi.fn()}
+        label={LABEL}
+      />,
+    );
+
+    // One bar per step at this length, so a mark sits in the column of its own step.
+    expect(screen.getAllByTestId('timeline-mark').map((mark) => mark.dataset.kind)).toEqual([
+      'call',
+      'heap-write',
+      'return',
+    ]);
+  });
+
+  it('collapses events down to the resolution of the track', () => {
+    const long = Array.from({ length: 5000 }, () => 1);
+    const events: readonly TimelineEvent[] = long.map((_, step) => ({ step, kind: 'branch' }));
+    render(
+      <DepthTrack depths={long} events={events} stepIndex={0} onSeek={vi.fn()} label={LABEL} />,
+    );
+
+    expect(screen.getAllByTestId('timeline-mark')).toHaveLength(120);
+  });
+
+  it('names the event at the current step on the slider', () => {
+    const events: readonly TimelineEvent[] = [{ step: 7, kind: 'print' }];
+    const { rerender } = render(
+      <DepthTrack
+        depths={runDepths}
+        events={events}
+        stepIndex={7}
+        onSeek={vi.fn()}
+        label={LABEL}
+      />,
+    );
+
+    expect(screen.getByRole('slider', { name: LABEL })).toHaveAttribute(
+      'aria-valuetext',
+      `step 8 of ${String(runDepths.length)}, console output`,
+    );
+
+    rerender(
+      <DepthTrack
+        depths={runDepths}
+        events={events}
+        stepIndex={8}
+        onSeek={vi.fn()}
+        label={LABEL}
+      />,
+    );
+
+    expect(screen.getByRole('slider', { name: LABEL })).toHaveAttribute(
+      'aria-valuetext',
+      `step 9 of ${String(runDepths.length)}`,
+    );
   });
 
   it('highlights the steps the current frame is alive for', () => {

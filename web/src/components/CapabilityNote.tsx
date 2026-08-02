@@ -19,7 +19,7 @@ export function CapabilityNote() {
       data-testid="welcome-capabilities"
       className="group rounded-panel bg-white/[0.03] shadow-panel"
     >
-      <summary className="focus-ring flex cursor-pointer list-none items-baseline gap-3 rounded-panel px-[16px] py-[12px] text-[11.5px] leading-[18px] text-white/55 transition-colors hover:text-white/75 [&::-webkit-details-marker]:hidden">
+      <summary className="focus-ring flex cursor-pointer list-none items-baseline gap-3 rounded-panel px-[16px] py-[12px] text-label text-white/55 transition-colors hover:text-white/75 [&::-webkit-details-marker]:hidden">
         <span className="grow">
           Runs the integer subset of the JVM —{' '}
           <span className="font-mono text-white/75 tabular-nums">{executable}</span> of{' '}
@@ -28,48 +28,42 @@ export function CapabilityNote() {
           instruction this machine does not implement.
         </span>
         {/* Two spans rather than state: the disclosure already knows whether it is open. */}
-        <span aria-hidden="true" className="shrink-0 text-[11px] text-white/45 group-open:hidden">
+        <span aria-hidden="true" className="shrink-0 text-meta text-white/45 group-open:hidden">
           What runs
         </span>
         <span
           aria-hidden="true"
-          className="hidden shrink-0 text-[11px] text-white/45 group-open:inline"
+          className="hidden shrink-0 text-meta text-white/45 group-open:inline"
         >
           Hide
         </span>
       </summary>
 
-      <div className="grid gap-[16px] px-[16px] pt-[2px] pb-[14px] md:grid-cols-2">
+      {/* A hairline rather than a second surface: the breakdown is the same note continued, and
+          §12 rules out reaching for a shadow to say so. */}
+      <div className="grid gap-x-[24px] gap-y-[18px] border-t border-white/[0.06] px-[16px] pt-[14px] pb-[16px] md:grid-cols-2">
         <section>
-          <h4 className="text-[11.5px] font-semibold text-white/50">Executable instructions</h4>
-          <dl className="mt-[8px] flex flex-col gap-[5px]">
+          <h4 className="text-label font-semibold text-white/60">Executable instructions</h4>
+          <dl className="mt-[10px] flex flex-col gap-[6px]">
             {families.map((family) => (
               <div key={family.name} data-testid="capability-family" className="flex gap-[10px]">
-                <dt className="w-[112px] shrink-0 text-[11px] leading-[16px] text-white/55">
-                  {family.name}
-                </dt>
-                <dd className="font-mono text-[11px] leading-[16px] text-white/60">
-                  {family.mnemonics.join(' ')}
-                </dd>
+                <dt className="w-[136px] shrink-0 text-meta text-white/50">{family.name}</dt>
+                <dd className="font-mono text-meta text-white/65">{family.mnemonics.join(' ')}</dd>
               </div>
             ))}
           </dl>
         </section>
 
         <section>
-          <h4 className="text-[11.5px] font-semibold text-white/50">Not implemented yet</h4>
-          <ul className="mt-[8px] flex flex-col gap-[5px]">
+          <h4 className="text-label font-semibold text-white/60">Not implemented yet</h4>
+          <ul className="mt-[10px] flex flex-col gap-[6px]">
             {gaps.map((gap) => (
-              <li
-                key={gap.title}
-                data-testid="capability-gap"
-                className="text-[11px] leading-[16px] text-white/60"
-              >
-                {gap.title} <span className="font-mono text-white/55">{gap.missing.join(' ')}</span>
+              <li key={gap.title} data-testid="capability-gap" className="text-meta text-white/50">
+                {gap.title} <span className="font-mono text-white/65">{gap.missing.join(' ')}</span>
               </li>
             ))}
           </ul>
-          <p className="mt-[10px] text-[11px] leading-[16px] text-white/55">{CALL_SCOPE_NOTE}</p>
+          <p className="mt-[12px] text-meta text-white/45">{CALL_SCOPE_NOTE}</p>
         </section>
       </div>
     </details>

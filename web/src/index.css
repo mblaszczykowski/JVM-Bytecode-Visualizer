@@ -1,12 +1,17 @@
 @import 'tailwindcss';
 
 /*
- * JetBrains Mono, self-hosted as woff2 (no CDN, no render-blocking third party). Only the
- * latin subset and the two weights the UI actually asks for — regular for code and figures,
- * medium for the one number the completion card leads with.
+ * Both faces are self-hosted as woff2 (no CDN, no render-blocking third party).
+ *
+ * JetBrains Mono: only the latin subset and the two weights the UI asks for — regular for code
+ * and figures, medium for the one number the completion card leads with.
+ *
+ * Inter Tight carries the text layer. Its `unicode-range` declarations mean the browser fetches
+ * the latin file alone, so the variable axis costs one request rather than one per weight.
  */
 @import '@fontsource/jetbrains-mono/latin-400.css';
 @import '@fontsource/jetbrains-mono/latin-500.css';
+@import '@fontsource-variable/inter-tight/wght.css';
 
 /*
  * Design tokens. Defined once here and consumed through Tailwind utilities — no raw
@@ -22,6 +27,12 @@
   /* Alpha lives in the token so the no-backdrop-filter fallback can turn the glass opaque. */
   --color-shell: rgb(var(--shell-rgb) / var(--shell-alpha));
   --color-panel: rgb(255 255 255);
+  /*
+   * Content is ink, chrome is glass. Code panels sit on a darker matte surface than the sheet
+   * they float on, so the listing reads as the thing being looked at rather than as one more
+   * translucent card. The toolbar and the transport keep the glass and stay lighter.
+   */
+  --color-ink: rgb(var(--ink-rgb) / var(--ink-alpha));
 
   --color-accent: rgb(var(--accent-rgb));
   --color-accent-soft: #9ccaff;
@@ -54,8 +65,14 @@
     inset 0 1px 0 rgb(255 255 255 / 0.16), inset 0 -1px 0 rgb(255 255 255 / 0.04);
   /* Panel outlines are inset shadows, not borders — they take no pixel from the layout. */
   --shadow-panel: inset 0 0 0 1px rgb(255 255 255 / 0.07), inset 0 1px 0 rgb(255 255 255 / 0.08);
+  /* Same hairline grammar on the darker code surface, which needs a touch more of it to show. */
+  --shadow-panel-ink:
+    inset 0 0 0 1px rgb(255 255 255 / 0.055), inset 0 1px 0 rgb(255 255 255 / 0.06),
+    0 1px 2px rgb(0 0 0 / 0.3);
   --shadow-panel-raised:
     inset 0 0 0 1px rgb(255 255 255 / 0.09), inset 0 1px 0 rgb(255 255 255 / 0.1);
+  /* The hairline a single row wears — locals slots, an empty-state block, a heap cell. */
+  --shadow-row-outline: inset 0 0 0 1px rgb(255 255 255 / 0.07);
   --shadow-control-inset:
     inset 0 1px 2px rgb(0 0 0 / 0.28), inset 0 0 0 1px rgb(255 255 255 / 0.06);
   --shadow-control-raised: 0 1px 4px rgb(0 0 0 / 0.35), inset 0 1px 0 rgb(255 255 255 / 0.28);
@@ -66,9 +83,37 @@
   --shadow-handle: 0 2px 8px rgb(0 0 0 / 0.5), inset 0 -1px 0 rgb(0 0 0 / 0.06);
   --shadow-glow-ok: 0 0 10px var(--color-ok);
 
-  --font-ui: system-ui, -apple-system, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
-  --font-sans: system-ui, -apple-system, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+  --font-ui: 'Inter Tight Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-sans: 'Inter Tight Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+
+  /*
+   * Seven steps, each with one job. Before this the whole UI lived between 10.5px and 13.5px
+   * in eight shades of grey, which reads as small print rather than as structure — a panel
+   * title has to outrank the file name beside it, and nothing was saying so.
+   *
+   * `code` is 26px because branch arcs and scroll-follow are computed from the row height
+   * (see `rhythm.ts`); it is the one step that may not be retuned in isolation.
+   */
+  /* Axis labels only — `TOP`/`BASE` and the heap indices, which sit in 30px and 34px gutters. */
+  --text-legend: 9px;
+  --text-legend--line-height: 12px;
+  --text-micro: 10.5px;
+  --text-micro--line-height: 14px;
+  --text-meta: 11px;
+  --text-meta--line-height: 16px;
+  --text-label: 12px;
+  --text-label--line-height: 16px;
+  --text-code: 12.5px;
+  --text-code--line-height: 26px;
+  --text-body: 13px;
+  --text-body--line-height: 20px;
+  --text-title: 13px;
+  --text-title--line-height: 18px;
+  --text-brand: 15px;
+  --text-brand--line-height: 20px;
+  --text-display: 30px;
+  --text-display--line-height: 34px;
 }
 
 @layer base {
@@ -76,6 +121,8 @@
     --app-bg: #0b0d13;
     --shell-rgb: 22 26 37;
     --shell-alpha: 0.52;
+    --ink-rgb: 9 11 17;
+    --ink-alpha: 0.42;
     --accent-rgb: 10 132 255;
   }
 
@@ -84,6 +131,7 @@
     :root {
       --shell-rgb: 26 30 41;
       --shell-alpha: 0.94;
+      --ink-alpha: 0.55;
     }
   }
 
@@ -94,19 +142,48 @@
   }
 
   /*
-   * Three fixed radial lights under the shell. They are not decoration: backdrop-filter
-   * has nothing to blur without them and the whole screen reads flat. Attached to the
-   * body rather than a scroll container so the gradient never drifts.
+   * One cool light, low in the top-left, and a colourless lift off the bottom edge. There used
+   * to be a violet light opposite it; two coloured lights from two directions is the stock
+   * gradient every landing page shipped between 2021 and 2023, and it read as a template.
+   *
+   * The remaining light still has work to do: `backdrop-filter` has nothing to blur across a
+   * flat field, and the shell would read as a rectangle rather than as glass. Attached to the
+   * body rather than to a scroll container so it never drifts.
    */
   body {
     background-color: var(--app-bg);
     background-image:
-      radial-gradient(90% 70% at 12% -10%, rgb(90 130 255 / 0.3) 0%, rgb(90 130 255 / 0) 60%),
-      radial-gradient(70% 60% at 95% 8%, rgb(180 120 255 / 0.18) 0%, rgb(180 120 255 / 0) 62%),
-      radial-gradient(120% 120% at 50% 120%, rgb(0 140 255 / 0.1) 0%, rgb(0 0 0 / 0) 60%);
+      radial-gradient(85% 65% at 8% -12%, rgb(74 116 214 / 0.22) 0%, rgb(74 116 214 / 0) 62%),
+      radial-gradient(120% 110% at 50% 118%, rgb(120 150 190 / 0.06) 0%, rgb(0 0 0 / 0) 58%);
     background-attachment: fixed;
     color: rgb(255 255 255 / 0.85);
     -webkit-font-smoothing: antialiased;
+  }
+
+  /*
+   * Film grain, fixed to the viewport and painted below `#root` so the shell's backdrop-filter
+   * samples it along with the gradient. It breaks up the banding a wide low-alpha radial leaves
+   * on an 8-bit display, and gives the surface a material instead of a glow.
+   */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    opacity: 0.045;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  #root {
+    position: relative;
+    z-index: 1;
+  }
+
+  @media (prefers-reduced-transparency: reduce) {
+    body::after {
+      display: none;
+    }
   }
 }
 
@@ -169,6 +246,67 @@
  * Two mask layers, not one: the second keeps the 8px scrollbar gutter fully opaque, because
  * a gradient across the whole width would take the vertical scrollbar with it.
  */
+/*
+ * A scroll container that ends at a hard edge reads as a clipped layout rather than as more
+ * content. Both fades are `mask-image`, so they cost no element and no scroll offset; the
+ * `-start`/`-end` variants are for rails that only ever overflow one way.
+ */
+@utility fade-y {
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0,
+    black 18px,
+    black calc(100% - 18px),
+    transparent 100%
+  );
+}
+
+/* For a list that only ever overflows downwards, and whose first row is a heading. */
+@utility fade-y-end {
+  mask-image: linear-gradient(to bottom, black calc(100% - 88px), transparent 100%);
+}
+
+@utility fade-x-end {
+  mask-image: linear-gradient(to right, black calc(100% - 28px), transparent 100%);
+}
+
+/*
+ * Both edges of a rail, but the leading one only once there is something behind it.
+ *
+ * `fade-x-end` alone leaves the first item cut by a hard edge as soon as the rail is scrolled;
+ * a fixed fade on both edges is worse, because it dims the first item while it is still the
+ * first item. The start stop is therefore driven by the scroll position. Where scroll-driven
+ * animation is missing the property keeps its initial `0px` and the rail behaves as it does
+ * today — trailing fade only.
+ */
+@property --fade-start {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
+}
+
+@keyframes fade-x-start {
+  to {
+    --fade-start: 20px;
+  }
+}
+
+@utility fade-x {
+  mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    black var(--fade-start),
+    black calc(100% - 28px),
+    transparent 100%
+  );
+
+  @supports (animation-timeline: scroll(self inline)) {
+    animation: fade-x-start linear both;
+    animation-timeline: scroll(self inline);
+    animation-range: 0 24px;
+  }
+}
+
 @utility fade-right {
   mask-image:
     linear-gradient(to right, black calc(100% - 24px), transparent 100%),

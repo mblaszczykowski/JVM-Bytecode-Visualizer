@@ -7,12 +7,18 @@ import { TransportControls } from './TransportControls';
 /** Call stack depth per step of the real `factorial(4)` run. */
 const runDepths = depths();
 
+/** Every prop the transport needs beyond the position, so a render reads as one line. */
 function handlers() {
   return {
+    events: [],
+    canStepOver: true,
+    canStepOut: true,
     onSeek: vi.fn(),
     onTogglePlay: vi.fn(),
     onStepForward: vi.fn(),
     onStepBack: vi.fn(),
+    onStepOver: vi.fn(),
+    onStepOut: vi.fn(),
     onSpeedChange: vi.fn(),
   };
 }
@@ -130,6 +136,78 @@ describe('TransportControls', () => {
       'aria-disabled',
       'true',
     );
+  });
+
+  it('names the shortcut of each stepping button and calls it', () => {
+    const spies = handlers();
+    render(
+      <TransportControls
+        stepIndex={5}
+        stepCount={20}
+        isPlaying={false}
+        speed={1}
+        depths={flatDepths(20)}
+        {...spies}
+      />,
+    );
+
+    const stepOver = screen.getByRole('button', { name: 'Step over' });
+    const stepOut = screen.getByRole('button', { name: 'Step out' });
+
+    expect(stepOver).toHaveAttribute('title', 'Step over (↓)');
+    expect(stepOut).toHaveAttribute('title', 'Step out (↑)');
+
+    fireEvent.click(stepOver);
+    fireEvent.click(stepOut);
+
+    expect(spies.onStepOver).toHaveBeenCalledTimes(1);
+    expect(spies.onStepOut).toHaveBeenCalledTimes(1);
+  });
+
+  it('disables a stepping button the history has no target for', () => {
+    const spies = handlers();
+    render(
+      <TransportControls
+        stepIndex={5}
+        stepCount={20}
+        isPlaying={false}
+        speed={1}
+        depths={flatDepths(20)}
+        {...spies}
+        canStepOver={false}
+        canStepOut={false}
+      />,
+    );
+
+    const stepOut = screen.getByRole('button', { name: 'Step out' });
+
+    expect(screen.getByRole('button', { name: 'Step over' })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
+    expect(stepOut).toHaveAttribute('aria-disabled', 'true');
+
+    fireEvent.click(stepOut);
+    expect(spies.onStepOut).not.toHaveBeenCalled();
+  });
+
+  it('marks the run on the scrubber from the events it is handed', () => {
+    render(
+      <TransportControls
+        stepIndex={0}
+        stepCount={runDepths.length}
+        isPlaying={false}
+        speed={1}
+        depths={runDepths}
+        {...handlers()}
+        events={[
+          { step: 1, kind: 'call' },
+          { step: 30, kind: 'return' },
+        ]}
+      />,
+    );
+
+    expect(screen.getAllByTestId('timeline-mark')).toHaveLength(2);
   });
 
   it('exposes the depth chart as the scrubber slider', () => {

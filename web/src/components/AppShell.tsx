@@ -36,7 +36,7 @@ export function AppShell({ toolbar, children, footer, isDropTarget = false }: Ap
             aria-hidden="true"
             className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center rounded-[inherit] bg-app/70 shadow-[inset_0_0_0_2px_rgb(10_132_255/0.55)] backdrop-blur-[2px]"
           >
-            <p className="rounded-row bg-accent/[0.22] px-[18px] py-[11px] text-[13px] text-accent-text shadow-current">
+            <p className="rounded-row bg-accent/[0.22] px-[18px] py-[11px] text-body text-accent-text shadow-current">
               Drop a .class file to run it
             </p>
           </div>

@@ -50,8 +50,21 @@ export function ExamplePicker({ examples, selectedId, onExampleSelected }: Examp
   }
 
   return (
-    // Below the width of the segments the row scrolls instead of pushing the toolbar apart.
-    <div className="scroll-slim -mx-1 min-w-0 overflow-x-auto px-1 md:mx-0 md:overflow-visible md:px-0">
+    /*
+     * A rail that scrolls at every width, not only below `md`. Eight examples are some 700px
+     * of pills, and letting them lay themselves out above `md` is what used to push the
+     * toolbar into a second and a third row between 768px and 1300px. The cost is the pills
+     * that fall off the end, and the fade is what says they are there.
+     *
+     * The mask stays honest: the rail carries no surface of its own, so where the pills fit
+     * it falls on empty space and nothing reads as cut off. `pr-7` is the room the last pill
+     * needs to clear the mask at the end of the scroll — the rail has to be a flex container
+     * for Chrome to count that padding as scrollable overflow at all — and `scroll-pr-7`
+     * keeps the focus ring inside it when the arrow keys reach the last option.
+     *
+     * The negative margins keep the room for that ring out of the toolbar's row height.
+     */
+    <div className="scroll-slim fade-x -mx-1 -my-1 flex min-w-0 snap-x snap-proximity items-center overflow-x-auto overflow-y-hidden py-1 pl-1 pr-7 scroll-pl-1 scroll-pr-7">
       <div
         ref={groupRef}
         role="radiogroup"
@@ -75,7 +88,7 @@ export function ExamplePicker({ examples, selectedId, onExampleSelected }: Examp
               onKeyDown={(event) => {
                 handleKeyDown(event, index);
               }}
-              className={`focus-ring flex shrink-0 items-center justify-center rounded-full px-3 py-1 text-[12px] transition-colors ${
+              className={`focus-ring text-label flex shrink-0 snap-start items-center justify-center rounded-full px-3 py-1 transition-colors ${
                 isSelected ? SELECTED : RESTING
               }`}
             >

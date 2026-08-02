@@ -3,7 +3,7 @@ import { useState } from 'react';
 
 import type { StackFrame } from '../core/interpreter/types';
 
-import { Panel } from './Panel';
+import { EmptyState, Panel } from './Panel';
 import { Pill } from './ui/Pill';
 
 interface CallStackPanelProps {
@@ -68,16 +68,17 @@ export function CallStackPanel({ frames }: CallStackPanelProps) {
       title="Call stack"
       meta={`depth ${String(frames.length)}`}
       variant="state"
-      className="min-h-[92px] flex-1 md:min-w-0"
+      className="grow"
     >
       {/*
         The list disappears with the last frame rather than fading it out: an empty call stack
         only happens once, at the terminal snapshot, and there the panel changes what it says.
       */}
       {frames.length === 0 ? (
-        <p className="px-[18px] py-3 text-[12px] text-white/55">
-          No active frame — execution finished.
-        </p>
+        <EmptyState
+          status="no active frame"
+          detail="Execution finished: returning from the entry method popped the last frame."
+        />
       ) : (
         <ol data-testid="call-frame-list" className="flex flex-col-reverse gap-[5px] px-[10px]">
           {/* `popLayout` takes the returning frame out of flow, so the stack below stays put. */}
@@ -92,7 +93,7 @@ export function CallStackPanel({ frames }: CallStackPanelProps) {
                       onClick={() => {
                         setExpanded(true);
                       }}
-                      className="focus-ring w-full rounded-row px-[13px] py-[7px] text-left text-[11px] text-white/55 hover:text-white/80"
+                      className="focus-ring w-full rounded-row px-[13px] py-[7px] text-left text-meta text-white/55 hover:text-white/80"
                     >
                       … {row.count} more frames
                     </button>
@@ -117,17 +118,17 @@ export function CallStackPanel({ frames }: CallStackPanelProps) {
                   data-frame-index={index}
                   aria-current={isTop ? 'true' : undefined}
                   title={`${frame.methodName}${frame.methodDescriptor}`}
-                  className={`flex items-center gap-2 rounded-row px-[13px] py-[9px] text-[12px] ${
+                  className={`flex items-center gap-2 rounded-row px-[13px] py-[9px] text-label ${
                     isTop
                       ? 'bg-accent/[0.26] text-accent-text shadow-current-strong'
                       : 'bg-white/5 text-white/70'
                   }`}
                 >
-                  <span className="w-3 shrink-0 font-mono text-[10px] text-white/40">{index}</span>
+                  <span className="w-3 shrink-0 font-mono text-micro text-white/40">{index}</span>
                   <span className="truncate font-medium">{frame.methodName}</span>
                   <span className="grow" />
                   {argument === undefined ? null : (
-                    <span className="shrink-0 font-mono text-[11px] text-white/55">{argument}</span>
+                    <span className="shrink-0 font-mono text-meta text-white/55">{argument}</span>
                   )}
                   {isTop ? <Pill tone="accent">pc {frame.pc}</Pill> : null}
                 </motion.li>

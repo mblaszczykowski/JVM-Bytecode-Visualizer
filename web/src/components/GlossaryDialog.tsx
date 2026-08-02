@@ -12,6 +12,8 @@ const TRANSPORT_KEYS: ReadonlySet<string> = new Set([
   ' ',
   'ArrowLeft',
   'ArrowRight',
+  'ArrowUp',
+  'ArrowDown',
   'Home',
   'End',
 ]);
@@ -27,7 +29,7 @@ function Prose({ text }: { readonly text: string }) {
         index % 2 === 0 ? (
           part
         ) : (
-          <code key={index} className="font-mono text-[11.5px] text-white/85">
+          <code key={index} className="font-mono text-label text-white/85">
             {part}
           </code>
         ),
@@ -52,7 +54,7 @@ function TermButton({ term, selected, onSelect, className = '', children }: Term
       onClick={() => {
         onSelect(term);
       }}
-      className={`focus-ring shrink-0 rounded-full px-[11px] text-left text-[11.5px] transition-colors ${
+      className={`focus-ring shrink-0 rounded-full px-[11px] text-left text-label transition-colors ${
         selected
           ? 'bg-white/[0.16] text-white/90 shadow-control-raised'
           : 'text-white/55 hover:bg-white/8 hover:text-white/80'
@@ -149,18 +151,18 @@ function GlossarySheet({ initialTerm }: { readonly initialTerm: GlossaryTermId }
         <header className="flex shrink-0 items-baseline justify-between gap-3 px-[18px] pt-[16px] pb-[12px]">
           <h2
             id="glossary-title"
-            className="text-[13.5px] font-semibold tracking-[-0.015em] text-white/95"
+            className="text-title font-semibold tracking-[-0.015em] text-white/95"
           >
             Glossary
           </h2>
           <div className="flex items-baseline gap-3">
-            <span className="hidden font-mono text-[11px] text-white/32 sm:inline">
+            <span className="hidden font-mono text-meta text-white/32 sm:inline">
               the words on these panels
             </span>
             <button
               type="button"
               onClick={closeGlossary}
-              className="focus-ring shrink-0 rounded-full bg-white/9 px-3 py-1 text-[11.5px] text-white/70 transition-colors hover:bg-white/15"
+              className="focus-ring shrink-0 rounded-full bg-white/9 px-3 py-1 text-label text-white/70 transition-colors hover:bg-white/15"
             >
               Close
             </button>
@@ -191,16 +193,16 @@ function GlossarySheet({ initialTerm }: { readonly initialTerm: GlossaryTermId }
             data-term={entry.id}
             className="scroll-slim min-h-0 flex-1 overflow-auto rounded-panel bg-white/[0.045] px-[18px] py-[15px] shadow-panel"
           >
-            <h3 className="text-[15px] font-semibold text-white/90">{entry.term}</h3>
+            <h3 className="text-brand font-semibold text-white/90">{entry.term}</h3>
 
             {entry.paragraphs.map((paragraph, index) => (
-              <p key={index} className="mt-[10px] text-[12.5px] leading-[20px] text-white/60">
+              <p key={index} className="mt-[10px] text-body text-white/60">
                 <Prose text={paragraph} />
               </p>
             ))}
 
             <div className="mt-[14px] flex flex-wrap items-baseline gap-[6px]">
-              <span className="text-[11px] text-white/32">See also</span>
+              <span className="text-meta text-white/32">See also</span>
               {entry.related.map((related) => (
                 <TermButton
                   key={related}
@@ -215,7 +217,7 @@ function GlossarySheet({ initialTerm }: { readonly initialTerm: GlossaryTermId }
             </div>
 
             {/* The long form is the authority; this is its abstract. */}
-            <p className="mt-[10px] text-[11px] leading-[16px] text-white/45">
+            <p className="mt-[10px] text-meta leading-[16px] text-white/45">
               Full treatment in <code className="font-mono text-white/60">docs/jvm-primer.md</code>{' '}
               §{entry.primer.section} — <Prose text={entry.primer.title} />, with the worked
               examples and the <code className="font-mono text-white/60">javap</code> output to

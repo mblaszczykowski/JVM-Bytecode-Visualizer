@@ -9,8 +9,13 @@ interface FileUploadProps {
   readonly variant?: FileUploadVariant;
 }
 
+/**
+ * `compact` pulls its own padding back out of the flow (`-my-1`). The padding is there to give
+ * the drag highlight some body around the pill, but as the tallest thing in the toolbar it
+ * would otherwise set the row height and cost the header the ~56px of design.md §6.1.
+ */
 const CONTAINER: Record<FileUploadVariant, string> = {
-  compact: 'flex items-center gap-2 rounded-full p-1',
+  compact: '-my-1 flex shrink-0 items-center gap-2 rounded-full p-1',
   zone: 'flex flex-col items-center gap-2 rounded-panel px-6 py-7 shadow-panel',
 };
 
@@ -81,16 +86,20 @@ export function FileUpload({ onFileSelected, variant = 'compact' }: FileUploadPr
     >
       <label
         htmlFor={inputId}
-        className="cursor-pointer rounded-full bg-white/9 px-3 py-1.5 text-[12px] text-white/80 shadow-control-raised transition-colors hover:bg-white/15"
+        className="text-label cursor-pointer rounded-full bg-white/9 px-3 py-1.5 text-white/80 shadow-control-raised transition-colors hover:bg-white/15"
       >
         Open .class…
       </label>
       {variant === 'zone' ? (
-        <span className="text-[11.5px] text-white/55">
+        <span className="text-meta text-white/55">
           or drop a .class file here — up to 512 KiB, parsed in this tab
         </span>
       ) : (
-        <span className="hidden text-[11px] text-white/55 lg:inline">or drop it here</span>
+        // From `lg` up only, and deliberately: below that the 85px it costs comes straight out
+        // of the toolbar's example rail, and the whole sheet takes a drop anyway.
+        <span className="text-meta hidden whitespace-nowrap text-white/55 lg:inline">
+          or drop it here
+        </span>
       )}
       <input
         id={inputId}

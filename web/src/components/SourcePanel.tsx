@@ -24,6 +24,13 @@ interface SourcePanelProps {
   /** First step of the run that reached each line; a line without one cannot be sought to. */
   readonly stepForLine?: ReadonlyMap<number, number> | undefined;
   readonly onSeek?: ((step: number) => void) | undefined;
+  /**
+   * Line the reader is pointing at, from either code panel — marked so the instructions it
+   * compiled to can be marked with it. Weaker than the accent, which means "current step".
+   */
+  readonly linkedLine?: number | undefined;
+  /** Pointer or focus moved onto a line, or off the listing entirely (`undefined`). */
+  readonly onLinkedLineChange?: ((line: number | undefined) => void) | undefined;
   /** Slide the highlight between lines; switched off above 4× playback. */
   readonly animateHighlight?: boolean;
   /** Rendered in the panel header in place of the title — the Source/Class switch. */
@@ -39,6 +46,8 @@ export function SourcePanel({
   lineMappingNote,
   stepForLine,
   onSeek,
+  linkedLine,
+  onLinkedLineChange,
   animateHighlight = false,
   titleControl,
   className = '',
@@ -57,7 +66,7 @@ export function SourcePanel({
         </Pill>
       )}
       {lineMappingNote === undefined ? null : (
-        <span className="font-mono text-[10.5px] text-white/55">{lineMappingNote}</span>
+        <span className="font-mono text-micro text-white/55">{lineMappingNote}</span>
       )}
     </div>
   );
@@ -75,25 +84,47 @@ export function SourcePanel({
       className={className}
     >
       {/* `isolate` keeps the highlight's negative z-index from sinking below the panel. */}
-      <ol className="isolate px-[10px]">
+      <ol
+        className="isolate px-[10px]"
+        onMouseLeave={() => {
+          onLinkedLineChange?.(undefined);
+        }}
+      >
         {lines.map((line, index) => {
           const lineNumber = index + 1;
           const isCurrent = lineNumber === currentLine;
+          const isLinked = !isCurrent && lineNumber === linkedLine;
           const step = stepForLine?.get(lineNumber);
+          // A code row never wraps (design §12), so a long line is cut by the panel edge and
+          // on a narrow screen a javadoc paragraph reaches the reader as "…is le". The row
+          // cannot know how much of itself is on screen, so every line with content carries
+          // its own text — the answer is then one hover away at any width.
+          const full = line.trim();
 
           return (
             <li
               key={lineNumber}
               aria-current={isCurrent ? 'step' : undefined}
               data-testid={isCurrent ? 'current-source-line' : 'source-line'}
-              className={`${CODE_ROW} ${isCurrent ? 'text-accent-text' : 'text-white/60'}`}
+              data-linked={isLinked ? 'true' : undefined}
+              title={full === '' ? undefined : full}
+              onMouseEnter={() => {
+                onLinkedLineChange?.(lineNumber);
+              }}
+              className={`${CODE_ROW} ${
+                isCurrent
+                  ? 'text-accent-text'
+                  : isLinked
+                    ? 'bg-white/[0.055] text-white/80'
+                    : 'text-white/60'
+              }`}
             >
               {isCurrent ? (
                 <CurrentRowHighlight layoutId="source-highlight" animate={animateHighlight} />
               ) : null}
               <span
                 className={`w-7 shrink-0 text-right select-none ${
-                  isCurrent ? 'text-accent-dim' : 'text-white/24'
+                  isCurrent ? 'text-accent-dim' : isLinked ? 'text-white/45' : 'text-white/24'
                 }`}
               >
                 {lineNumber}
@@ -115,12 +146,20 @@ export function SourcePanel({
                   type="button"
                   data-row-index={index}
                   tabIndex={index === rows.anchorIndex ? 0 : -1}
+                  // The overlay covers the row, so it has to carry the row's tooltip with it.
+                  title={full === '' ? undefined : full}
                   aria-label={`Go to line ${String(lineNumber)}`}
                   onClick={() => {
                     onSeek(step);
                   }}
                   onKeyDown={(event) => {
                     rows.onKeyDown(event, index);
+                  }}
+                  onFocus={() => {
+                    onLinkedLineChange?.(lineNumber);
+                  }}
+                  onBlur={() => {
+                    onLinkedLineChange?.(undefined);
                   }}
                   // The row is already drawn; this only has to be the target you can hit.
                   className="focus-ring absolute inset-0 rounded-code"

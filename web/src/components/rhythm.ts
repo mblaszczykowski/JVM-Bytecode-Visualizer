@@ -9,4 +9,4 @@ export const ROW_HEIGHT = 26;
 
 /** Shared geometry of a single code row — fixed height, never wraps. */
 export const CODE_ROW =
-  'relative flex h-[26px] shrink-0 items-center gap-3 rounded-code px-2 font-mono text-[12.5px] whitespace-nowrap';
+  'relative flex h-[26px] shrink-0 items-center gap-3 rounded-code px-2 font-mono text-code whitespace-nowrap';

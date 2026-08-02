@@ -1,9 +1,14 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import type { MethodListing } from '../services/program';
+import { lineForOffset, type MethodListing } from '../services/program';
 
-import { commentsOf, constructorListing, factorialListing } from './__fixtures__/factorial-run';
+import {
+  commentsOf,
+  constructorListing,
+  factorialListing,
+  factorialProgram,
+} from './__fixtures__/factorial-run';
 import { BytecodePanel } from './BytecodePanel';
 import { GlossaryDialog } from './GlossaryDialog';
 import { closeGlossary } from './glossary-store';
@@ -18,8 +23,37 @@ afterEach(() => {
 /** The real disassembly of a method of the committed `Factorial.class`. */
 const factorial = factorialListing();
 const constructor = constructorListing();
+const pool = factorialProgram().classFile.constantPool;
+
+/** The LineNumberTable of `factorial`, in the shape the panel takes it. */
+const sourceLineForOffset = new Map(
+  factorial.instructions.flatMap((instruction) => {
+    const line = lineForOffset(factorial, instruction.offset);
+    return line === undefined ? [] : [[instruction.offset, line] as const];
+  }),
+);
 
 type ExtraProps = Partial<Parameters<typeof BytecodePanel>[0]>;
+
+/** The rendered row of the one instruction with this mnemonic. */
+function rowOf(mnemonic: string): HTMLElement {
+  const row = screen.getByText(mnemonic).closest('li');
+  if (row === null) {
+    throw new Error(`No row rendered for ${mnemonic}`);
+  }
+  return row;
+}
+
+function stackCellOf(mnemonic: string): string | null {
+  return within(rowOf(mnemonic)).getByTestId('stack-effect').textContent;
+}
+
+function linkedOffsets(): readonly (string | null)[] {
+  return screen
+    .getAllByTestId(/instruction/)
+    .filter((row) => row.getAttribute('data-linked') === 'true')
+    .map((row) => row.getAttribute('data-offset'));
+}
 
 function renderListing(
   listing: MethodListing,
@@ -193,5 +227,98 @@ describe('BytecodePanel', () => {
     renderListing(constructor, 0, { truncatedAtOffset: 5 });
 
     expect(screen.getByText('… not decoded')).toBeInTheDocument();
+  });
+
+  describe('stack effect column', () => {
+    it('shows what each instruction takes off the operand stack and leaves behind', () => {
+      renderListing(factorial, undefined, { constantPool: pool });
+
+      // imul pops two ints and pushes their product; if_icmpgt pops both and pushes nothing.
+      expect(stackCellOf('imul')).toBe('−2+1');
+      expect(stackCellOf('if_icmpgt')).toBe('−2');
+      // invokestatic is `varies` in the opcode table; the descriptor behind #7 settles it.
+      expect(stackCellOf('invokestatic')).toBe('−1+1');
+    });
+
+    it('leaves the column empty for an instruction that touches nothing', () => {
+      renderListing(constructor, undefined, { constantPool: pool });
+
+      expect(stackCellOf('return')).toBe('');
+    });
+
+    /** `getstatic` reads a field of a type the listing cannot see — there is no number here. */
+    it('says varies rather than guessing at an effect that follows a descriptor', () => {
+      render(
+        <BytecodePanel
+          methodName="print"
+          methodDescriptor="()V"
+          maxStack={2}
+          maxLocals={0}
+          instructions={[
+            { offset: 0, opcode: 0xb2, mnemonic: 'getstatic', operands: [2] },
+            { offset: 3, opcode: 0x03, mnemonic: 'iconst_0', operands: [] },
+            { offset: 4, opcode: 0xb1, mnemonic: 'return', operands: [] },
+          ]}
+          currentOffset={undefined}
+          constantPool={[]}
+        />,
+      );
+
+      expect(stackCellOf('getstatic')).toBe('varies');
+      expect(stackCellOf('iconst_0')).toBe('+1');
+    });
+
+    it('claims nothing for an instruction outside the supported subset', () => {
+      renderListing(constructor, undefined, { constantPool: pool });
+
+      expect(stackCellOf('invokespecial')).toBe('');
+    });
+
+    it('announces the stack effect of the current instruction', () => {
+      renderListing(factorial, 14, { constantPool: pool });
+
+      expect(screen.getByText('pc 14 · imul · stack: pops 2, pushes 1')).toBeInTheDocument();
+    });
+
+    it('is left off entirely without a constant pool to resolve descriptors against', () => {
+      renderListing(factorial, undefined);
+
+      expect(screen.queryAllByTestId('stack-effect')).toHaveLength(0);
+    });
+  });
+
+  describe('source line linkage', () => {
+    it('reports the line a row compiled from, by pointer and by keyboard', () => {
+      const onLinkedLineChange = vi.fn();
+      renderListing(factorial, undefined, {
+        sourceLineForOffset,
+        onLinkedLineChange,
+        stepForOffset: new Map([[14, 9]]),
+        onSeek: vi.fn(),
+      });
+
+      fireEvent.mouseOver(rowOf('imul'));
+      expect(onLinkedLineChange).toHaveBeenLastCalledWith(29);
+
+      fireEvent.focus(screen.getByRole('button', { name: 'Go to pc 14, imul' }));
+      expect(onLinkedLineChange).toHaveBeenLastCalledWith(29);
+
+      fireEvent.blur(screen.getByRole('button', { name: 'Go to pc 14, imul' }));
+      expect(onLinkedLineChange).toHaveBeenLastCalledWith(undefined);
+    });
+
+    it('marks every instruction the linked line compiled to', () => {
+      renderListing(factorial, undefined, { sourceLineForOffset, linkedLine: 29 });
+
+      // `return n * factorial(n - 1);` is the whole second half of the method.
+      expect(linkedOffsets()).toEqual(['7', '8', '9', '10', '11', '14', '15']);
+    });
+
+    it('leaves the current instruction to the accent rather than marking it twice', () => {
+      renderListing(factorial, 14, { sourceLineForOffset, linkedLine: 29 });
+
+      expect(screen.getByTestId('current-instruction')).not.toHaveAttribute('data-linked');
+      expect(linkedOffsets()).toEqual(['7', '8', '9', '10', '11', '15']);
+    });
   });
 });

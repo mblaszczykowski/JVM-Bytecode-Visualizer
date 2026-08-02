@@ -24,7 +24,7 @@ export function Pill({ tone = 'neutral', title, className = '', children }: Pill
   return (
     <span
       title={title}
-      className={`shrink-0 self-center rounded-full px-2 py-px text-[10px] leading-none ${TONE[tone]} ${className}`}
+      className={`shrink-0 self-center rounded-full px-2 py-px text-micro leading-none ${TONE[tone]} ${className}`}
     >
       {children}
     </span>

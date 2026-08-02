@@ -86,6 +86,9 @@ function heldAnswer(): HeldAnswer {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  // The app writes the position of the run into the hash, and jsdom keeps one document for the
+  // whole file — without this the next mount would open on the previous test's example.
+  window.history.replaceState(null, '', '/');
 });
 
 describe('welcome screen', () => {
@@ -410,6 +413,72 @@ describe('keyboard shortcuts', () => {
     expect(screen.getByTestId('step-counter')).toHaveTextContent(
       `step 1 / ${String(FACTORIAL_STEPS)}`,
     );
+  });
+});
+
+describe('a link into a run', () => {
+  it('opens on the example the hash names', async () => {
+    window.history.replaceState(null, '', '#/factorial');
+    stubFetch(exampleRoutes());
+
+    render(<App />);
+
+    expect(await screen.findByTestId('step-counter')).toHaveTextContent(
+      `step 1 / ${String(FACTORIAL_STEPS)}`,
+    );
+  });
+
+  it('opens on the step the hash names', async () => {
+    window.history.replaceState(null, '', '#/factorial/13');
+    stubFetch(exampleRoutes());
+
+    render(<App />);
+
+    expect(await screen.findByTestId('step-counter')).toHaveTextContent(
+      `step 13 / ${String(FACTORIAL_STEPS)}`,
+    );
+  });
+
+  it('drops a step past the end of the run rather than clamping to it', async () => {
+    window.history.replaceState(null, '', `#/factorial/${String(FACTORIAL_STEPS + 1)}`);
+    stubFetch(exampleRoutes());
+
+    render(<App />);
+
+    expect(await screen.findByTestId('step-counter')).toHaveTextContent(
+      `step 1 / ${String(FACTORIAL_STEPS)}`,
+    );
+  });
+
+  it('shows the welcome screen for an example the manifest does not carry', async () => {
+    window.history.replaceState(null, '', '#/no-such-example');
+    stubFetch(exampleRoutes());
+
+    render(<App />);
+
+    expect(await screen.findByTestId('welcome-screen')).toBeInTheDocument();
+    expect(screen.queryByTestId('step-counter')).not.toBeInTheDocument();
+  });
+
+  it('writes the position back, so the address bar is the link', async () => {
+    stubFetch(exampleRoutes());
+    await openFactorial();
+
+    expect(window.location.hash).toBe('#/factorial/1');
+
+    seekTo(12);
+
+    expect(window.location.hash).toBe('#/factorial/13');
+  });
+
+  it('says nothing about an upload, which the link could not reach', async () => {
+    stubFetch(exampleRoutes());
+    await openApp();
+
+    chooseFile(uploadFile('Gcd.class', new Uint8Array(readExampleBytes('Gcd.class'))));
+    await screen.findByTestId('step-counter');
+
+    expect(window.location.hash).toBe('');
   });
 });
 

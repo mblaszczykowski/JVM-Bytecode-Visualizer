@@ -87,6 +87,12 @@ describe('WelcomeScreen', () => {
 
     expect(banner).toHaveTextContent('Not a .class file.');
     expect(screen.getByTestId('welcome-screen')).toContainElement(banner);
+    // Ahead of the drop zone, not after the last section: the column is top-anchored, so a
+    // banner at the end of it is below the fold on an ordinary laptop.
+    expect(
+      banner.compareDocumentPosition(screen.getByTestId('file-drop-zone')) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Dismiss this message' }));
     expect(onDismiss).toHaveBeenCalledTimes(1);
   });
@@ -127,6 +133,30 @@ describe('WelcomeScreen', () => {
     fireEvent.click(pointer);
 
     expect(screen.getByRole('dialog', { name: 'Glossary' })).toBeInTheDocument();
+  });
+
+  /**
+   * jsdom has no layout, so the guard is on the two class-level decisions that produce it:
+   * a column main axis (auto margins collapse to zero on overflow and anchor the block to
+   * the top) and the mask that makes a cut edge read as more content.
+   */
+  it('spills off the bottom on a short viewport instead of losing the headline off the top', () => {
+    renderWelcome();
+
+    const screenEl = screen.getByTestId('welcome-screen');
+    const content = screenEl.firstElementChild;
+
+    expect(screenEl.className).toContain('flex-col');
+    expect(screenEl.className).toContain('fade-y');
+    expect(content?.className).toContain('m-auto');
+  });
+
+  it('anchors the type scale on the headline rather than on more small grey text', () => {
+    renderWelcome();
+
+    const headline = screen.getByRole('heading', { name: /Watch a Java program run/ });
+
+    expect(headline.className).toContain('text-display');
   });
 
   it('keeps the examples ahead of the note, so the first frame is still the examples', () => {

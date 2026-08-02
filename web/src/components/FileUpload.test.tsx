@@ -43,6 +43,20 @@ describe('FileUpload', () => {
     expect(onFileSelected).not.toHaveBeenCalled();
   });
 
+  it('keeps a drop hint in both variants', () => {
+    const { rerender } = render(<FileUpload onFileSelected={vi.fn()} />);
+
+    // The toolbar variant hides its hint below `lg`; it is a breakpoint, not a casualty of
+    // the row running out of width.
+    const compact = screen.getByText('or drop it here');
+    expect(compact.className).toContain('hidden');
+    expect(compact.className).toContain('lg:inline');
+
+    rerender(<FileUpload onFileSelected={vi.fn()} variant="zone" />);
+
+    expect(screen.getByText(/or drop a \.class file here/)).toBeVisible();
+  });
+
   it('stays highlighted while the pointer crosses the elements inside the zone', () => {
     render(<FileUpload onFileSelected={vi.fn()} variant="zone" />);
 

@@ -53,6 +53,19 @@ describe('ExamplePicker', () => {
     expect(onExampleSelected).not.toHaveBeenCalled();
   });
 
+  it('keeps the options on one scrolling rail at every width', () => {
+    render(<ExamplePicker examples={examples} selectedId="gcd" onExampleSelected={vi.fn()} />);
+
+    // The rail never lets the row lay itself out — that is what used to wrap the toolbar —
+    // and the fade plus the snap points are what say the pills continue past the edge.
+    const rail = screen.getByRole('radiogroup', { name: 'Example programs' }).parentElement;
+    expect(rail?.className).toContain('overflow-x-auto');
+    expect(rail?.className).not.toContain('md:overflow-visible');
+    expect(rail?.className).toContain('fade-x');
+    expect(rail?.className).toContain('snap-x');
+    expect(screen.getByRole('radio', { name: 'GCD' }).className).toContain('snap-start');
+  });
+
   it('reports the id of the example that was clicked', () => {
     const onExampleSelected = vi.fn();
     render(

@@ -87,7 +87,7 @@ export function Segment({
           onClick();
         }
       }}
-      className={`focus-ring flex items-center justify-center rounded-full text-[12px] transition-colors aria-disabled:cursor-default aria-disabled:opacity-30 ${active} ${className}`}
+      className={`focus-ring flex items-center justify-center rounded-full text-label transition-colors aria-disabled:cursor-default aria-disabled:opacity-30 ${active} ${className}`}
     >
       {children}
     </button>

@@ -31,7 +31,7 @@ export function NextInstructionCard({ effects, explanation, cpChain }: NextInstr
       className="rounded-card bg-white/5 px-[14px] py-[11px] shadow-panel"
     >
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-[11.5px] font-semibold text-white/50">Next</span>
+        <span className="text-title font-medium text-white/80">Next</span>
         {effects.map((effect) => (
           <Pill key={effect.label} tone="accent">
             {effect.label}
@@ -39,12 +39,12 @@ export function NextInstructionCard({ effects, explanation, cpChain }: NextInstr
         ))}
       </div>
 
-      <p className="mt-[7px] text-[12px] leading-[17px] text-white/60">{explanation}</p>
+      <p className="mt-[7px] text-label leading-[17px] text-white/60">{explanation}</p>
 
       {cpChain === undefined || cpChain.length === 0 ? null : (
         <div
           data-testid="cp-chain"
-          className="mt-[9px] flex flex-wrap items-center gap-[5px] font-mono text-[10.5px]"
+          className="mt-[9px] flex flex-wrap items-center gap-[5px] font-mono text-micro"
         >
           {cpChain.map((link, index) => (
             <Fragment key={link}>

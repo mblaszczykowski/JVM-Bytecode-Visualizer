@@ -89,15 +89,15 @@ export function CompileEditor({
       className="col-span-full row-span-full flex min-h-0 flex-col rounded-panel bg-panel/[0.045] shadow-panel"
     >
       <header className="flex shrink-0 items-baseline justify-between gap-3 px-[18px] pt-[14px] pb-[10px]">
-        <h2 className="text-[11.5px] font-semibold text-white/50">Write Java</h2>
+        <h2 className="text-title font-medium text-white/80">Write Java</h2>
         <div className="flex items-baseline gap-3">
-          <span className="hidden font-mono text-[11px] text-white/32 sm:inline">
+          <span className="hidden font-mono text-meta text-white/32 sm:inline">
             javac on the server · executed in this tab
           </span>
           <button
             type="button"
             onClick={onClose}
-            className="focus-ring shrink-0 rounded-full bg-white/9 px-3 py-1 text-[11.5px] text-white/70 transition-colors hover:bg-white/15"
+            className="focus-ring shrink-0 rounded-full bg-white/9 px-3 py-1 text-label text-white/70 transition-colors hover:bg-white/15"
           >
             Close
           </button>
@@ -115,7 +115,7 @@ export function CompileEditor({
           spellCheck={false}
           autoCapitalize="off"
           autoCorrect="off"
-          className="focus-ring scroll-slim min-h-0 flex-1 resize-none rounded-row bg-white/[0.03] px-[14px] py-[10px] font-mono text-[12.5px] leading-[26px] whitespace-pre text-white/75 shadow-panel"
+          className="focus-ring scroll-slim min-h-0 flex-1 resize-none rounded-row bg-white/[0.03] px-[14px] py-[10px] font-mono text-code leading-[26px] whitespace-pre text-white/75 shadow-panel"
         />
 
         <div aria-live="polite" className="max-h-[35%] shrink-0 overflow-auto scroll-slim">
@@ -126,9 +126,9 @@ export function CompileEditor({
                   key={`${String(diagnostic.line)}:${String(index)}`}
                   data-testid="compile-diagnostic"
                   data-kind={diagnostic.kind}
-                  className={`flex items-baseline gap-3 rounded-row bg-white/5 px-[13px] py-[9px] text-[12px] ${KIND_STYLE[diagnostic.kind]}`}
+                  className={`flex items-baseline gap-3 rounded-row bg-white/5 px-[13px] py-[9px] text-label ${KIND_STYLE[diagnostic.kind]}`}
                 >
-                  <span className="shrink-0 font-mono text-[11px] text-white/32">
+                  <span className="shrink-0 font-mono text-meta text-white/32">
                     {positionOf(diagnostic)}
                   </span>
                   <span className="grow">{diagnostic.message}</span>
@@ -143,11 +143,11 @@ export function CompileEditor({
             type="button"
             onClick={onCompile}
             disabled={isCompiling}
-            className="focus-ring shrink-0 rounded-full bg-white/9 px-4 py-1.5 text-[12px] text-white/85 shadow-control-raised transition-colors hover:bg-white/15 disabled:opacity-40"
+            className="focus-ring shrink-0 rounded-full bg-white/9 px-4 py-1.5 text-label text-white/85 shadow-control-raised transition-colors hover:bg-white/15 disabled:opacity-40"
           >
             {isCompiling ? 'Compiling…' : 'Compile'}
           </button>
-          <span className="text-[11.5px] text-white/55">
+          <span className="text-label text-white/55">
             Static methods called from <span className="font-mono">main</span> — ints, int arrays,{' '}
             <span className="font-mono">Math</span> and{' '}
             <span className="font-mono">System.out</span>, nothing else.

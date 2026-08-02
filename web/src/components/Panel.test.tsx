@@ -25,6 +25,25 @@ describe('Panel', () => {
     expect(screen.getByRole('heading', { level: 2, name: 'Operand stack' })).toBeInTheDocument();
   });
 
+  it('puts a listing on ink and leaves the State column its own surface', () => {
+    const { rerender } = render(
+      <Panel title="Bytecode">
+        <p>rows</p>
+      </Panel>,
+    );
+
+    // Content is ink, chrome is glass: a listing is darker than the sheet it floats on.
+    expect(screen.getByRole('region', { name: 'Bytecode' }).className).toContain('bg-ink');
+
+    rerender(
+      <Panel title="Locals" variant="state">
+        <p>slots</p>
+      </Panel>,
+    );
+
+    expect(screen.getByRole('region', { name: 'Locals' }).className).not.toContain('bg-ink');
+  });
+
   it('offers an explanation of the concept its header names', () => {
     render(
       <>

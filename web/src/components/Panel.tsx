@@ -18,8 +18,8 @@ interface PanelProps {
    */
   readonly titleControl?: ReactNode;
   /**
-   * `code` is a light pane floating on the glass; `state` is a section inside the State
-   * column, which owns the surface for all three of its panels.
+   * `code` is a pane of ink floating on the glass; `state` is a section inside the State
+   * column, which owns the surface for all of its panels.
    */
   readonly variant?: PanelVariant;
   readonly footer?: ReactNode;
@@ -30,37 +30,21 @@ interface PanelProps {
    * so it takes a tab stop.
    */
   readonly scrolls?: boolean;
-  /**
-   * Whether the scrolling body fills the panel or is capped. `capped` is the State column,
-   * where the sections share a fixed height and none may push the others off screen; `short`
-   * is the same idea for the section that joins them last and has the least to say.
-   */
-  readonly bodyFill?: 'grow' | 'capped' | 'short';
   /** Extra classes on the scroll container, e.g. the Source panel's right-edge fade. */
   readonly bodyClassName?: string;
   readonly className?: string;
   readonly children: ReactNode;
 }
 
+/**
+ * Content is ink, chrome is glass. A listing sits on a matte surface darker than the sheet it
+ * floats on, so it reads as the thing being looked at rather than as one more translucent card;
+ * the toolbar and the transport keep the glass and stay light.
+ */
 const SURFACE: Record<PanelVariant, string> = {
-  code: 'rounded-panel bg-panel/[0.045] shadow-panel',
+  code: 'rounded-panel bg-ink shadow-panel-ink',
   state: '',
 };
-
-const TITLE: Record<PanelVariant, string> = {
-  code: 'text-white/50',
-  state: 'text-white/55',
-};
-
-/**
- * A capped body keeps its content height until the column runs out of room; from there it
- * gives way and scrolls, rather than pushing the section below it off the screen.
- */
-const BODY_FILL = {
-  grow: 'min-h-0 flex-1',
-  capped: 'max-h-[240px] min-h-0',
-  short: 'max-h-[150px] min-h-0',
-} as const;
 
 /**
  * Shared panel frame: header, independently scrolling body, optional footer.
@@ -74,14 +58,13 @@ export function Panel({
   footer,
   contentRef,
   scrolls = true,
-  bodyFill = 'grow',
   bodyClassName = '',
   className = '',
   children,
 }: PanelProps) {
-  const body = scrolls
-    ? `focus-ring scroll-visible overflow-auto ${BODY_FILL[bodyFill]}`
-    : 'shrink-0';
+  // The body takes the section it is given and no more. How much that is belongs one level up:
+  // in the column, which hands each section the height its content asks for.
+  const body = scrolls ? 'focus-ring scroll-visible min-h-0 flex-1 overflow-auto' : 'shrink-0';
   /**
    * The moment someone asks what the operand stack is, they are looking at the panel headed
    * "Operand stack" — so the way to the explanation is in that header, not only in a menu.
@@ -102,13 +85,13 @@ export function Panel({
         <h2 className="sr-only">{title}</h2>
         <span className="flex min-w-0 items-center gap-[6px]">
           {titleControl ?? (
-            <span aria-hidden="true" className={`text-[11.5px] font-semibold ${TITLE[variant]}`}>
+            <span aria-hidden="true" className="text-title font-medium text-white/80">
               {title}
             </span>
           )}
           {term === undefined ? null : <GlossaryButton term={term} />}
         </span>
-        <span className="truncate font-mono text-[11px] text-white/32">{meta}</span>
+        <span className="truncate font-mono text-meta text-white/32">{meta}</span>
       </header>
 
       <div
@@ -123,5 +106,28 @@ export function Panel({
         <div className="shrink-0 px-[14px] pt-[10px] pb-[14px]">{footer}</div>
       )}
     </section>
+  );
+}
+
+interface EmptyStateProps {
+  /** In the lower-case voice of the panel's own metadata: `empty`, `no active frame`. */
+  readonly status: string;
+  /** What would put something here. One sentence — the reader is watching a run, not reading. */
+  readonly detail: ReactNode;
+}
+
+/**
+ * Step 0 and the terminal snapshot are the frames people look at longest, and half the State
+ * column is empty in both. A section with nothing in it keeps the row grammar of the rows it
+ * would otherwise hold, and says what fills it rather than only that it is empty.
+ */
+export function EmptyState({ status, detail }: EmptyStateProps) {
+  return (
+    <div className="px-[10px] pb-[2px]">
+      <div className="rounded-row px-[13px] py-[11px] shadow-row-outline">
+        <p className="text-label text-white/65">{status}</p>
+        <p className="mt-[3px] text-body text-white/45">{detail}</p>
+      </div>
+    </div>
   );
 }

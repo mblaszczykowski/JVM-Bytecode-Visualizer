@@ -121,7 +121,7 @@ export function ConstantPoolTable({ rows, selectedIndex, onSelectIndex }: Consta
 
 /** The chip a constant pool reference is drawn as, matching the resolution chain in `Next`. */
 const REFERENCE =
-  'shrink-0 rounded-md bg-white/6 px-[7px] py-0.5 text-[10.5px] leading-none text-accent-soft';
+  'shrink-0 rounded-md bg-white/6 px-[7px] py-0.5 text-micro leading-none text-accent-soft';
 
 /**
  * Keeps the selected row inside the middle third of whichever ancestor scrolls.

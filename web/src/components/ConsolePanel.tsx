@@ -1,4 +1,4 @@
-import { Panel } from './Panel';
+import { EmptyState, Panel } from './Panel';
 import { useScrollFollow } from './useScrollFollow';
 
 export interface ConsolePanelProps {
@@ -15,7 +15,7 @@ export interface ConsolePanelProps {
  * An over-long line scrolls sideways inside the panel body, exactly as a code row does.
  */
 const LINE =
-  'flex h-[26px] shrink-0 items-center rounded-code px-2 font-mono text-[12.5px] whitespace-pre';
+  'flex h-[26px] shrink-0 items-center rounded-code px-2 font-mono text-code whitespace-pre';
 
 /**
  * What the program wrote to `System.out`, in the order it wrote it.
@@ -30,16 +30,19 @@ export function ConsolePanel({ lines }: ConsolePanelProps) {
   return (
     // The panel frame owns its own `<section>`, so the identity hook the column and the tests
     // address the section by lives on a wrapper rather than inside the shared frame.
-    <div data-testid="console-panel" className="flex min-h-0 flex-col">
+    <div data-testid="console-panel" className="flex min-h-0 grow flex-col">
       <Panel
         title="Console"
         meta={lines.length === 1 ? '1 line' : `${String(lines.length)} lines`}
         variant="state"
-        bodyFill="short"
+        className="grow"
         contentRef={contentRef}
       >
         {lines.length === 0 ? (
-          <p className="px-[23px] py-2 text-[12px] text-white/55">nothing printed yet</p>
+          <EmptyState
+            status="nothing printed yet"
+            detail="The first System.out.println the run reaches writes a line here."
+          />
         ) : (
           <ol className="px-[10px] pb-[2px]">
             {lines.map((line, index) => {

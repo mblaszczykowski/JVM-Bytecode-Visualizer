@@ -18,8 +18,8 @@ interface FigureProps {
 function Figure({ label, value }: FigureProps) {
   return (
     <div className="flex items-baseline justify-between gap-3">
-      <span className="text-[11.5px] text-white/55">{label}</span>
-      <span className="font-mono text-[13px] text-white/90 tabular-nums">{value}</span>
+      <span className="text-meta text-white/55">{label}</span>
+      <span className="font-mono text-body text-white/90 tabular-nums">{value}</span>
     </div>
   );
 }
@@ -42,21 +42,21 @@ export function CompletionCard({ summary, heap = NO_HEAP }: CompletionCardProps)
   const { resultName, resultValue, totalSteps, maxDepth, referenceValue } = summary;
 
   return (
-    <Panel title="Result" meta="run complete" variant="state" scrolls={false}>
+    <Panel title="Result" meta="run complete" variant="state" scrolls={false} className="grow">
       <div data-testid="completion-card" className="px-[10px] pb-[4px]">
         <div className="rounded-row bg-accent/[0.22] px-[13px] py-[11px] shadow-current">
           <div className="flex items-baseline gap-2">
-            <span className="font-mono text-[12.5px] text-accent-soft">{resultName}</span>
-            <span className="font-mono text-[12.5px] text-accent-soft/70">=</span>
+            <span className="font-mono text-code text-accent-soft">{resultName}</span>
+            <span className="font-mono text-code text-accent-soft/70">=</span>
             <span
               data-testid="result-value"
-              className="font-mono text-[26px] leading-none font-medium text-accent-text tabular-nums"
+              className="font-mono text-display leading-none font-medium text-accent-text tabular-nums"
             >
               {resultValue ?? '—'}
             </span>
           </div>
           {referenceValue === undefined ? null : (
-            <p className="mt-[7px] text-[10.5px] leading-[14px] text-accent-soft/85">
+            <p className="mt-[7px] text-micro text-accent-soft/85">
               Matches the value a real JVM computed for this example when the fixtures were built.
             </p>
           )}
@@ -64,7 +64,7 @@ export function CompletionCard({ summary, heap = NO_HEAP }: CompletionCardProps)
 
         {heap.length === 0 ? null : (
           <div className="mt-[10px] rounded-row bg-white/5 px-[13px] py-[10px]">
-            <p className="pb-[8px] text-[11.5px] text-white/55">Heap as the run left it</p>
+            <p className="pb-[8px] text-meta text-white/55">Heap as the run left it</p>
             {/* The card itself does not scroll, so a heap with a lot on it scrolls here. */}
             <ol className="scroll-slim flex max-h-[150px] flex-col gap-[12px] overflow-y-auto">
               {heap.map((array, handle) => (

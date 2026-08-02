@@ -8,6 +8,8 @@ function setup(enabled = true) {
     onTogglePlay: vi.fn(),
     onStepForward: vi.fn(),
     onStepBack: vi.fn(),
+    onStepOver: vi.fn(),
+    onStepOut: vi.fn(),
     onSeekToStart: vi.fn(),
     onSeekToEnd: vi.fn(),
   };
@@ -44,6 +46,36 @@ describe('transport shortcuts', () => {
     expect(handlers.onSeekToEnd).toHaveBeenCalledOnce();
   });
 
+  it('puts step over and step out on the vertical arrows', () => {
+    const handlers = setup();
+
+    fireEvent.keyDown(document.body, { key: 'ArrowDown' });
+    fireEvent.keyDown(document.body, { key: 'ArrowUp' });
+
+    expect(handlers.onStepOver).toHaveBeenCalledOnce();
+    expect(handlers.onStepOut).toHaveBeenCalledOnce();
+  });
+
+  it('stops the page from scrolling on the vertical arrows', () => {
+    setup();
+
+    expect(fireEvent.keyDown(document.body, { key: 'ArrowDown' })).toBe(false);
+    expect(fireEvent.keyDown(document.body, { key: 'ArrowUp' })).toBe(false);
+  });
+
+  it('leaves the arrows to a list that navigates with them itself', () => {
+    const handlers = setup();
+    const row = appendFocusable('button');
+
+    // What the roving tabindex of the code rows does before the event reaches the window.
+    row.addEventListener('keydown', (event) => {
+      event.preventDefault();
+    });
+    fireEvent.keyDown(row, { key: 'ArrowDown' });
+
+    expect(handlers.onStepOver).not.toHaveBeenCalled();
+  });
+
   it('subscribes once and still calls the newest callbacks', () => {
     const addListener = vi.spyOn(window, 'addEventListener');
     const first = vi.fn();
@@ -56,6 +88,8 @@ describe('transport shortcuts', () => {
           // Fresh identities every render, exactly as the player hands them over.
           onStepForward: () => undefined,
           onStepBack: () => undefined,
+          onStepOver: () => undefined,
+          onStepOut: () => undefined,
           onSeekToStart: () => undefined,
           onSeekToEnd: () => undefined,
         });

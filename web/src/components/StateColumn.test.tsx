@@ -69,6 +69,18 @@ describe('StateColumn', () => {
     ]);
   });
 
+  it('fills its cell without stretching the sections over it', () => {
+    render(<StateColumn frames={factorialSnapshotAt(20).callStack} />);
+
+    // The pane shares a baseline with the code panels beside it, but three frames and a single
+    // local slot are not spread over 800px: the sections measure to their content and the
+    // surplus collects at the foot of the pane.
+    const column = screen.getByTestId('state-column');
+    expect(column.className).not.toContain('self-start');
+    expect(column.className).toContain('max-h-full');
+    expect(column.className).toContain('min-h-0');
+  });
+
   it('leaves the console out of a run that printed nothing', () => {
     render(<StateColumn frames={factorialSnapshotAt(20).callStack} />);
 

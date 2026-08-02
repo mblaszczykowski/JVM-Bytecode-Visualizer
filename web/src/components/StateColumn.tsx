@@ -7,7 +7,7 @@ import { ConsolePanel } from './ConsolePanel';
 import { HeapPanel } from './HeapPanel';
 import { LocalsPanel } from './LocalsPanel';
 import { OperandStackPanel } from './OperandStackPanel';
-import { Panel } from './Panel';
+import { EmptyState, Panel } from './Panel';
 
 interface StateColumnProps {
   /** Frames in contract order: `[0]` is the oldest. */
@@ -58,15 +58,33 @@ function Hairline() {
 const NO_HEAP: readonly ArrayObject[] = [];
 
 /**
+ * A section is as tall as what it holds, so the room left over in the column goes to whichever
+ * one has something to say with it: the call stack while a recursion is deep, the console while
+ * a run prints, the heap while a sort runs. None of them grows past its own content — three
+ * frames and one local slot are not worth 800px of column.
+ *
+ * The floor is the explicit minimum rather than `min-h-0`: under pressure the sections shrink
+ * and scroll in place, but a section squeezed past its first row states nothing, and the room
+ * it gave up is worth less than what it stopped saying.
+ *
+ * Laid down as a band between `md` and `lg` the sections share the width instead, and there
+ * each one fills the height of the band.
+ */
+const SECTION = 'flex min-h-[84px] flex-col md:min-w-0 md:flex-1 lg:flex-initial';
+
+/** Whichever section ends the column carries the pane's bottom padding. */
+const LAST_SECTION = 'pb-[6px]';
+
+/**
  * Always the last section of the column, in either branch — the console is the one panel whose
  * content is cumulative, so it reads as the running tail of the column rather than as state
- * competing with the frame above it. Being last, it is the section that carries `pb-[6px]`.
+ * competing with the frame above it.
  */
 function ConsoleSection({ lines }: { readonly lines: readonly string[] }) {
   return (
     <>
       <Hairline />
-      <div className="flex min-h-0 flex-col pb-[6px] md:min-w-0 md:flex-1 lg:flex-initial">
+      <div className={`${SECTION} ${LAST_SECTION}`}>
         <ConsolePanel lines={lines} />
       </div>
     </>
@@ -78,6 +96,12 @@ function ConsoleSection({ lines }: { readonly lines: readonly string[] }) {
  * never scrolls, only the sections inside it do, so the operand stack and the locals stay
  * visible while a deep recursion unwinds. When the sections no longer fit the height, they
  * give way in place and scroll rather than pushing each other past the edge of the pane.
+ *
+ * The pane fills its cell so the three columns share one baseline — a sidebar stopping in mid
+ * air beside two full-height panels reads as a layout that broke, not as one that measured.
+ * The sections inside it still size to their content: surplus height collects at the foot of
+ * the pane rather than being handed to a section that has nothing to put in it, and scarcity
+ * still lands on the sections rather than on the column.
  *
  * The heap joins them only for a program that allocates — and the console only for a run that
  * prints — because otherwise the section would read "no objects" on every step of a program
@@ -111,23 +135,21 @@ export function StateColumn({
   return (
     <div
       data-testid="state-column"
-      className={`flex min-h-0 flex-col rounded-panel bg-panel/[0.065] shadow-panel-raised md:flex-row lg:flex-col ${className}`}
+      className={`flex max-h-full min-h-0 flex-col rounded-panel bg-panel/[0.065] shadow-panel-raised md:flex-row lg:flex-col ${className}`}
     >
       {noRunNote !== undefined ? (
-        <Panel title="Run state" meta="no run" variant="state" bodyFill="grow">
-          <p className="px-[18px] py-3 text-[12px] leading-[18px] text-white/55">{noRunNote}</p>
-        </Panel>
+        <div className={`${SECTION} ${LAST_SECTION}`}>
+          <Panel title="Run state" meta="no run" variant="state" className="grow">
+            <EmptyState status="nothing executed" detail={noRunNote} />
+          </Panel>
+        </div>
       ) : isComplete ? (
         <>
-          <div className="flex min-h-0 flex-1 flex-col">
+          <div className={SECTION}>
             <CompletionCard summary={summary} heap={heap} />
           </div>
           <Hairline />
-          <div
-            className={`flex min-h-0 flex-col md:min-w-0 md:flex-1 lg:flex-initial ${
-              hasConsole ? '' : 'pb-[6px]'
-            }`}
-          >
+          <div className={`${SECTION} ${hasConsole ? '' : LAST_SECTION}`}>
             <LocalsPanel
               frame={finalFrame}
               frameIndex={0}
@@ -140,9 +162,11 @@ export function StateColumn({
         </>
       ) : (
         <>
-          <CallStackPanel frames={frames} />
+          <div className={SECTION}>
+            <CallStackPanel frames={frames} />
+          </div>
           <Hairline />
-          <div className="flex min-h-0 flex-col md:min-w-0 md:flex-1 lg:flex-initial">
+          <div className={SECTION}>
             <OperandStackPanel
               frame={topFrame}
               frameIndex={topIndex}
@@ -151,21 +175,13 @@ export function StateColumn({
             />
           </div>
           <Hairline />
-          <div
-            className={`flex min-h-0 flex-col md:min-w-0 md:flex-1 lg:flex-initial ${
-              hasHeap || hasConsole ? '' : 'pb-[6px]'
-            }`}
-          >
+          <div className={`${SECTION} ${hasHeap || hasConsole ? '' : LAST_SECTION}`}>
             <LocalsPanel frame={topFrame} frameIndex={topIndex} heap={heap} />
           </div>
           {hasHeap ? (
             <>
               <Hairline />
-              <div
-                className={`flex min-h-0 flex-col md:min-w-0 md:flex-1 lg:flex-initial ${
-                  hasConsole ? '' : 'pb-[6px]'
-                }`}
-              >
+              <div className={`${SECTION} ${hasConsole ? '' : LAST_SECTION}`}>
                 <HeapPanel heap={heap} frame={topFrame} mnemonic={mnemonic} />
               </div>
             </>

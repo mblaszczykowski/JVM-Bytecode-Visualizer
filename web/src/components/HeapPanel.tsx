@@ -18,7 +18,7 @@ interface HeapPanelProps {
 
 /** A cell keeps the 26px rhythm and never falls below this, so long arrays scroll sideways. */
 const CELL =
-  'relative isolate flex h-[26px] items-center justify-center rounded-code font-mono text-[12.5px]';
+  'relative isolate flex h-[26px] items-center justify-center rounded-code font-mono text-code';
 
 type Pulses = readonly (readonly number[])[];
 
@@ -90,12 +90,10 @@ export function HeapArrayRow({ array, handle, focus, pulses }: HeapArrayRowProps
   return (
     <li data-testid="heap-array" data-handle={handle} className="px-[3px]">
       <div className="flex items-baseline gap-2 pb-[6px]">
-        <span className="font-mono text-[11.5px] text-white/55">{arrayLabel(array, handle)}</span>
+        <span className="font-mono text-meta text-white/55">{arrayLabel(array, handle)}</span>
         <span className="grow" />
         {focus === undefined ? (
-          <span className="shrink-0 font-mono text-[10px] text-white/32">
-            length {array.length}
-          </span>
+          <span className="shrink-0 font-mono text-micro text-white/32">length {array.length}</span>
         ) : (
           <Pill tone="accent">
             {focus.mode === 'write' ? 'writes' : 'reads'} index {focus.index}
@@ -139,7 +137,7 @@ export function HeapArrayRow({ array, handle, focus, pulses }: HeapArrayRowProps
                 {value}
               </span>
               <span
-                className={`mt-[3px] text-center text-[9px] tracking-[0.1em] ${
+                className={`mt-[3px] text-center text-legend tracking-[0.1em] ${
                   isFocused ? 'text-accent-dim' : 'text-white/24'
                 }`}
               >
@@ -172,7 +170,7 @@ export function HeapPanel({ heap, frame, mnemonic }: HeapPanelProps) {
       title="Heap"
       meta={heap.length === 1 ? '1 array' : `${String(heap.length)} arrays`}
       variant="state"
-      bodyFill="short"
+      className="grow"
     >
       <ol className="flex flex-col gap-[12px] px-[10px] pb-[2px]">
         {heap.map((array, handle) => (

@@ -2,7 +2,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 
 import type { ArrayObject, StackFrame } from '../core/interpreter/types';
 
-import { Panel } from './Panel';
+import { EmptyState, Panel } from './Panel';
 import { ReferenceChip } from './ui/ReferenceChip';
 
 interface OperandStackPanelProps {
@@ -26,7 +26,7 @@ interface OperandStackPanelProps {
 const BASE_LINE =
   'h-px flex-1 bg-[repeating-linear-gradient(90deg,rgb(255_255_255/0.16)_0_5px,transparent_5px_11px)]';
 
-const LABEL_COLUMN = 'w-[30px] shrink-0 text-[9px] tracking-[0.1em]';
+const LABEL_COLUMN = 'w-[30px] shrink-0 text-legend tracking-[0.1em]';
 
 /** Stable identity for the int-only runs, which never hand the panel a heap of their own. */
 const NO_HEAP: readonly ArrayObject[] = [];
@@ -42,8 +42,11 @@ export function OperandStackPanel({
 
   if (frame === undefined) {
     return (
-      <Panel title="Operand stack" meta="—" variant="state" bodyFill="capped">
-        <p className="px-[18px] py-3 text-[12px] text-white/55">No active frame.</p>
+      <Panel title="Operand stack" meta="—" variant="state" className="grow">
+        <EmptyState
+          status="no active frame"
+          detail="An operand stack belongs to a frame, and the run has none left."
+        />
       </Panel>
     );
   }
@@ -56,7 +59,7 @@ export function OperandStackPanel({
       title="Operand stack"
       meta={`height ${String(operandStack.length)}`}
       variant="state"
-      bodyFill="capped"
+      className="grow"
     >
       {/* The list stays mounted even when empty: unmounting it would cut the exit short. */}
       <ol className="flex flex-col gap-[5px] px-[10px]">
@@ -94,12 +97,12 @@ export function OperandStackPanel({
                     {isReference ? (
                       <ReferenceChip heap={heap} handle={value} onAccent={isTop} />
                     ) : (
-                      <span className="font-mono text-[15px]">{value}</span>
+                      <span className="font-mono text-brand">{value}</span>
                     )}
                     <span className="grow" />
                     {annotation === undefined ? null : (
                       <span
-                        className={`shrink-0 font-ui text-[10px] ${
+                        className={`shrink-0 font-ui text-micro ${
                           isTop ? 'text-accent-soft' : 'text-white/55'
                         }`}
                       >
@@ -113,7 +116,10 @@ export function OperandStackPanel({
         </AnimatePresence>
       </ol>
       {operandStack.length === 0 ? (
-        <p className="px-[23px] py-2 text-[12px] text-white/55">empty</p>
+        <EmptyState
+          status="empty"
+          detail="Values appear here as instructions push them, and are taken off the top."
+        />
       ) : null}
 
       <div className="flex items-center gap-2 px-[10px] pt-2">
