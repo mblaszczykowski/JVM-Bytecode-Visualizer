@@ -1,0 +1,211 @@
+import { execFileSync } from 'node:child_process';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import { describe, expect, it } from 'vitest';
+
+import { disassemble, OPCODES } from '../disassembler';
+import { EXECUTABLE_OPCODES } from '../interpreter';
+import { findEntryMethod } from '../interpreter/interpreter';
+
+import { ClassFileError } from './errors';
+import { parseClassFile } from './parser';
+import type { ClassFile } from './types';
+
+/**
+ * The parser and the disassembler against eight thousand class files nobody here wrote.
+ *
+ * Every other test in this directory asserts against a fixture built by this repository, which
+ * means it can only ever find the cases someone thought of. This one runs the two pure stages
+ * over the output of four compilers — javac across a decade, kotlinc, scalac — and asks a
+ * single question of each file: did anything throw?
+ *
+ * It is skipped unless the corpus has been fetched, exactly as the compile end-to-end suite
+ * skips itself without a backend. `npm run corpus -w web` downloads and verifies it; CI has a
+ * job that does the same and then runs this.
+ */
+
+const CACHE = join(dirname(fileURLToPath(import.meta.url)), '../../../corpus/.cache');
+const CLASSES = join(CACHE, 'classes');
+const hasCorpus = existsSync(CLASSES);
+
+function corpusFiles(): readonly string[] {
+  return execFileSync('find', [CLASSES, '-name', '*.class'], { maxBuffer: 64 * 1024 * 1024 })
+    .toString()
+    .split('\n')
+    .filter(Boolean);
+}
+
+function bytesOf(path: string): ArrayBuffer {
+  const buffer = readFileSync(path);
+  return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
+}
+
+interface Failure {
+  readonly file: string;
+  readonly stage: 'parse' | 'disassemble';
+  readonly error: string;
+  /** A `ClassFileError` is a refusal the parser designed; anything else is a crash. */
+  readonly typed: boolean;
+}
+
+interface Scan {
+  readonly files: number;
+  readonly methods: number;
+  readonly instructions: number;
+  readonly failures: readonly Failure[];
+  /** Instruction occurrences by opcode, over the whole corpus. */
+  readonly opcodeCounts: ReadonlyMap<number, number>;
+  /** Class file major versions seen, with how many files carried each. */
+  readonly majorVersions: ReadonlyMap<number, number>;
+  readonly withRunnableEntry: number;
+  readonly truncated: number;
+}
+
+function scanCorpus(files: readonly string[]): Scan {
+  const failures: Failure[] = [];
+  const opcodeCounts = new Map<number, number>();
+  const majorVersions = new Map<number, number>();
+  let methods = 0;
+  let instructions = 0;
+  let withRunnableEntry = 0;
+  let truncated = 0;
+
+  for (const file of files) {
+    let classFile: ClassFile;
+    try {
+      classFile = parseClassFile(bytesOf(file));
+    } catch (error) {
+      failures.push({
+        file,
+        stage: 'parse',
+        error: error instanceof Error ? error.message : String(error),
+        typed: error instanceof ClassFileError,
+      });
+      continue;
+    }
+
+    majorVersions.set(classFile.majorVersion, (majorVersions.get(classFile.majorVersion) ?? 0) + 1);
+    if (findEntryMethod(classFile) !== undefined) {
+      withRunnableEntry += 1;
+    }
+
+    for (const method of classFile.methods) {
+      const { code } = method;
+      if (code === undefined) {
+        continue;
+      }
+      methods += 1;
+      try {
+        const decoded = disassemble(code.code);
+        if (decoded.truncatedAtOffset !== undefined) {
+          truncated += 1;
+        }
+        for (const instruction of decoded.instructions) {
+          instructions += 1;
+          opcodeCounts.set(instruction.opcode, (opcodeCounts.get(instruction.opcode) ?? 0) + 1);
+        }
+      } catch (error) {
+        failures.push({
+          file,
+          stage: 'disassemble',
+          error: error instanceof Error ? error.message : String(error),
+          typed: false,
+        });
+      }
+    }
+  }
+
+  return {
+    files: files.length,
+    methods,
+    instructions,
+    failures,
+    opcodeCounts,
+    majorVersions,
+    withRunnableEntry,
+    truncated,
+  };
+}
+
+/** Nothing to scan, for the collection pass that happens even when the suite is skipped. */
+const NO_SCAN: Scan = {
+  files: 0,
+  methods: 0,
+  instructions: 0,
+  failures: [],
+  opcodeCounts: new Map(),
+  majorVersions: new Map(),
+  withRunnableEntry: 0,
+  truncated: 0,
+};
+
+describe.skipIf(!hasCorpus)('the parser and disassembler against a real-world corpus', () => {
+  // `skipIf` still runs the body to collect the tests inside it, so the scan itself has to be
+  // conditional — otherwise a checkout with no corpus fails here instead of skipping.
+  const scan = hasCorpus ? scanCorpus(corpusFiles()) : NO_SCAN;
+
+  it('has a corpus worth the name', () => {
+    expect(scan.files).toBeGreaterThan(5_000);
+    // Several compilers and a decade of targets, not one build of one project.
+    expect(scan.majorVersions.size).toBeGreaterThan(3);
+  });
+
+  it('parses and disassembles every class file, without one exception', () => {
+    // Named rather than counted: a failure has to say which file and why, or the next person
+    // has eight thousand candidates and no lead.
+    expect(scan.failures.slice(0, 10)).toEqual([]);
+    expect(scan.failures).toHaveLength(0);
+  });
+
+  it('decodes every method to the end, leaving no undecodable tail', () => {
+    // `truncatedAtOffset` is legitimate for hand-written bytecode, but a jar from Maven
+    // Central contains none: a truncation here means the decoder lost the instruction stream.
+    expect(scan.truncated).toBe(0);
+  });
+
+  /**
+   * Not an assertion about the corpus so much as an honest measurement of scope: the
+   * interpreter runs a subset, and this is what that subset is worth against real code.
+   * Written to a file so the README can quote a number that was measured rather than guessed.
+   */
+  it('records what the executable subset covers', () => {
+    const executable = [...scan.opcodeCounts]
+      .filter(([opcode]) => EXECUTABLE_OPCODES.has(opcode))
+      .reduce((total, [, count]) => total + count, 0);
+
+    const distinctSeen = scan.opcodeCounts.size;
+    const distinctExecutable = [...scan.opcodeCounts.keys()].filter((opcode) =>
+      EXECUTABLE_OPCODES.has(opcode),
+    ).length;
+
+    const top = [...scan.opcodeCounts]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 15)
+      .map(([opcode, count]) => ({
+        mnemonic: OPCODES.get(opcode)?.mnemonic ?? `0x${opcode.toString(16)}`,
+        count,
+        executable: EXECUTABLE_OPCODES.has(opcode),
+      }));
+
+    const summary = {
+      files: scan.files,
+      methodsWithCode: scan.methods,
+      instructions: scan.instructions,
+      classFileMajorVersions: [...scan.majorVersions.keys()].sort((a, b) => a - b),
+      classesWithRunnableEntry: scan.withRunnableEntry,
+      distinctOpcodesSeen: distinctSeen,
+      distinctOpcodesExecutable: distinctExecutable,
+      instructionsExecutable: executable,
+      instructionCoveragePercent: Math.round((executable / scan.instructions) * 1000) / 10,
+      mostCommon: top,
+    };
+    writeFileSync(join(CACHE, 'scan.json'), `${JSON.stringify(summary, null, 2)}\n`);
+
+    // The subset is narrow by design, but it is not a toy: it has to carry the ordinary
+    // arithmetic and control flow that dominates any real method body.
+    expect(summary.instructionCoveragePercent).toBeGreaterThan(30);
+    expect(scan.instructions).toBeGreaterThan(1_000_000);
+  });
+});

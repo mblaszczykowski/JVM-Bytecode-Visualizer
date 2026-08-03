@@ -118,11 +118,37 @@ purpose so that what exists can be complete — see
 [ADR-0005](docs/adr/0005-heap-of-int-arrays.md) for where the boundary moved to when that path was
 taken.
 
-**Every valid `.class` file opens; roughly half of them replay.** 21 Java programs of the kind a
+**The parser and the disassembler are measured against the real world; the interpreter is
+deliberately not.** Those are two different claims and it is worth keeping them apart.
+
+`npm run corpus -w web` fetches ten libraries from Maven Central — pinned by SHA-1, and chosen so
+that four compilers are represented rather than one: javac across a decade (a Java 6 target through
+a Java 17 one), plus `kotlinc` and `scalac`, which emit shapes javac never does, plus ASM, which is
+a bytecode library and therefore full of the format's own corners. `npm run test:corpus -w web` then
+puts every class file in them through the same parse → disassemble path the application uses:
+
+| Over 10 jars from Maven Central       |           |
+| ------------------------------------- | --------- |
+| Class files parsed                    | 8,053     |
+| Failures                              | **0**     |
+| Methods disassembled                  | 88,604    |
+| Instructions decoded                  | 1,173,738 |
+| Methods with an undecodable tail      | **0**     |
+| Class file major versions encountered | 49–53     |
+
+That is what "the parser reads the whole format" means here, and CI runs it on every change.
+
+**Execution is another matter, and the same corpus says so exactly.** 75.2% of those 1.17 million
+instructions are ones the interpreter implements — but a method runs only if _all_ of its
+instructions do, and the four most common it cannot run are `areturn`, `getfield`, `invokespecial`
+and `invokeinterface`. Those are objects. So of 8,053 real library classes, exactly **one** has a
+method this machine can start from. A class file from your own project will almost certainly open in
+the explorer and not replay, and the table below is here to make that predictable rather than
+surprising.
+
+What does replay is the shape of program the bundled examples are: 21 Java programs of the kind a
 tutorial or an interview question produces were compiled with `javac -g` and pushed through the same
-parse → disassemble → execute path the application uses. 11 replayed to completion. The other 10
-stopped, and they stopped in ways that are predictable from the source, so the table below is here
-to work the outcome out before uploading anything.
+path. 11 replayed to completion; the other 10 stopped in ways predictable from the source.
 
 A file that does not replay is not a dead end. Parsing, the constant pool, the method table and the
 full listing of every method do not depend on execution, so the class opens in the explorer either
@@ -156,7 +182,9 @@ The parts that hold regardless of which file is loaded:
   executes. Decoding stops only at bytes that genuinely have no instruction boundary after them.
 - **The parser is wider still.** It reads the whole class file format — every constant pool tag,
   unknown attributes skipped by length — because a modern `javac` emits attributes a narrow parser
-  would choke on.
+  would choke on. Not a claim taken on trust: 8,053 class files from ten Maven Central libraries,
+  including Kotlin's and Scala's standard libraries, parse and disassemble with zero failures, and
+  CI checks it on every change (see [Scope and limitations](#scope-and-limitations)).
 - **`try`/`catch` catches what the machine raises.** The `exception_table` is read, `athrow` runs,
   and a thrown exception walks the call stack looking for a handler, unwinding the frames that have
   none — visibly, in the call stack panel, one step at a time. What it catches are the exceptions

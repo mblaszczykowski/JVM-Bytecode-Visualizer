@@ -17,6 +17,10 @@ web/blob-report/
 # Java / Maven
 server/target/
 
+# Corpus of third-party jars, fetched and verified by web/corpus/fetch-corpus.mjs.
+# Pinned by SHA-1 in that script, so it is reproducible without being committed.
+web/corpus/.cache/
+
 # Env & OS
 .env
 .env.local

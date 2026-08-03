@@ -57,6 +57,41 @@ jobs:
       - name: Build
         run: npm run build
 
+  # The parser and the disassembler against eight thousand class files from Maven Central —
+  # javac across a decade, plus kotlinc and scalac, which emit shapes javac never does. Every
+  # other suite asserts against fixtures this repository built, and so can only find the cases
+  # someone thought of; this one is the evidence that the two pure stages hold on code nobody
+  # here wrote. Its own job because it is the only one that needs the network.
+  corpus:
+    name: parses the real world
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      # Keyed on the fetch script, which is where the versions and their checksums live: a
+      # changed corpus is a changed key, and an unchanged one is never downloaded twice.
+      - name: Restore the corpus
+        uses: actions/cache@v4
+        with:
+          path: web/corpus/.cache
+          key: corpus-${{ hashFiles('web/corpus/fetch-corpus.mjs') }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Fetch the corpus
+        run: npm run corpus -w web
+
+      - name: Scan it
+        run: npm run test:corpus -w web
+
   # Separate job, because it is the only one that needs a JDK: it recompiles every committed
   # Java source and re-runs it on a real JVM, so a drift between a source, its class file and
   # the result recorded next to it cannot reach main unnoticed. That covers the examples the
