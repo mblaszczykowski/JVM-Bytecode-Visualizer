@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { CurrentRowHighlight } from './CurrentRowHighlight';
 import { Panel } from './Panel';
 import { CODE_ROW } from './rhythm';
-import { TOKEN_CLASS, tokenizeJava } from './syntax';
+import { TOKEN_CLASS, tokenizeJavaLines } from './syntax';
 import { Pill } from './ui/Pill';
 import { useRowNavigation } from './useRowNavigation';
 import { useScrollFollow } from './useScrollFollow';
@@ -56,6 +56,9 @@ export function SourcePanel({
   const isMapped = currentIndex !== undefined && currentIndex >= 0 && currentIndex < lines.length;
   const contentRef = useScrollFollow(isMapped ? currentIndex : undefined);
   const rows = useRowNavigation(lines.length, isMapped ? currentIndex : undefined);
+  // Once for the file, not once per row: a block comment spans lines, so colouring a line
+  // needs to know what the lines above it left open.
+  const highlighted = tokenizeJavaLines(lines);
 
   // Anything that does not fit on a code row goes to the footer rather than growing the row.
   const footer = !isMapped ? undefined : (
@@ -129,8 +132,16 @@ export function SourcePanel({
               >
                 {lineNumber}
               </span>
-              <span className="grow">
-                {tokenizeJava(line).map((token, tokenIndex) => (
+              {/*
+                `whitespace-pre`, not the row's `nowrap`: `nowrap` only stops the line
+                breaking, and still collapses a run of spaces to one — so every level of
+                indentation in the source arrived here intact and was painted flush left.
+                `pre` keeps the spaces and stops the wrapping, which is what a code row wants
+                from both. Tabs are worth four columns rather than the browser default of
+                eight, which would step a nested block halfway across the panel.
+              */}
+              <span className="grow whitespace-pre [tab-size:4]">
+                {(highlighted[index] ?? []).map((token, tokenIndex) => (
                   <span
                     // Tokens are positional within a line; there is no stabler key than the index.
                     key={`${String(tokenIndex)}:${token.text}`}
