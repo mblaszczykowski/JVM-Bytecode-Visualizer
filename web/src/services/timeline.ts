@@ -6,7 +6,7 @@
  * consecutive snapshots at a time, so it stays linear over a twenty-thousand step run.
  */
 
-import type { ArrayObject, Snapshot } from '../core/interpreter';
+import type { HeapObject, Snapshot } from '../core/interpreter';
 
 /**
  * Smallest step after `from` at the same call stack depth or shallower — where a debugger's
@@ -136,7 +136,7 @@ function consoleGrew(before: readonly string[], after: readonly string[]): boole
  * A step that touched no array hands back the very array and the very objects it handed back
  * last time (see `Heap.freeze`), so identity decides this without comparing elements.
  */
-function heapChanged(before: readonly ArrayObject[], after: readonly ArrayObject[]): boolean {
+function heapChanged(before: readonly HeapObject[], after: readonly HeapObject[]): boolean {
   if (before === after) {
     return false;
   }

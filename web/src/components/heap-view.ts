@@ -6,17 +6,28 @@
  * that say which of those numbers are references — so no example is special-cased.
  */
 
-import type { ArrayObject, StackFrame } from '../core/interpreter/types';
+import type { HeapObject, StackFrame } from '../core/interpreter/types';
 
-/** `int[5]@0`: the element type, the length, and the handle that names it on the stack. */
-export function arrayLabel(array: ArrayObject, handle: number): string {
-  return `int[${String(array.length)}]@${String(handle)}`;
+/** `int[5]@0` or `Node@2`: what the object is, and the handle that names it on the stack. */
+export function objectLabel(object: HeapObject, handle: number): string {
+  return object.kind === 'int-array'
+    ? `int[${String(object.length)}]@${String(handle)}`
+    : `${object.className}@${String(handle)}`;
 }
 
-/** What a `ref` value reads as: the array it points at, or `null` when it points at nothing. */
-export function referenceLabel(heap: readonly ArrayObject[], handle: number | undefined): string {
-  const array = handle === undefined ? undefined : heap[handle];
-  return array === undefined || handle === undefined ? 'null' : arrayLabel(array, handle);
+/** What a `ref` value reads as: the object it points at, or `null` when it points at nothing. */
+export function referenceLabel(heap: readonly HeapObject[], handle: number | undefined): string {
+  const object = handle === undefined ? undefined : heap[handle];
+  return object === undefined || handle === undefined ? 'null' : objectLabel(object, handle);
+}
+
+/**
+ * The numbers an object holds, in the order they are drawn: an array's elements, or an
+ * instance's field values. The panel flashes a changed cell and does not care which of the two
+ * it is looking at, so the difference is resolved here rather than in the rendering.
+ */
+export function cellValuesOf(object: HeapObject): readonly number[] {
+  return object.kind === 'int-array' ? object.elements : object.fields.map((field) => field.value);
 }
 
 export interface HeapFocus {
@@ -51,7 +62,7 @@ const ADDRESSING: Readonly<Record<string, Addressing>> = {
 export function heapFocusOf(
   mnemonic: string | undefined,
   frame: StackFrame | undefined,
-  heap: readonly ArrayObject[],
+  heap: readonly HeapObject[],
 ): HeapFocus | undefined {
   const addressing = mnemonic === undefined ? undefined : ADDRESSING[mnemonic];
   if (addressing === undefined || frame === undefined) {
@@ -72,8 +83,10 @@ export function heapFocusOf(
     return undefined;
   }
 
-  const array = heap[handle];
-  if (array === undefined || index < 0 || index >= array.length) {
+  // Only an array is addressed by index; `iaload` on an instance is a state the verifier
+  // rejects, and the run is about to stop rather than light a cell up.
+  const object = heap[handle];
+  if (object?.kind !== 'int-array' || index < 0 || index >= object.length) {
     return undefined;
   }
   return { handle, index, mode: addressing.mode };

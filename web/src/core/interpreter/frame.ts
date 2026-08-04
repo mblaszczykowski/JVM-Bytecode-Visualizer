@@ -81,15 +81,17 @@ export function prepareMethod(method: MethodInfo, code: CodeAttribute): Prepared
 }
 
 /**
- * Static call arguments land in slots 0..n-1, first argument first (JVMS §2.6.1). Only int
- * parameters are callable, so every argument slot starts out holding an int.
+ * Arguments land in slots 0..n-1, first argument first (JVMS §2.6.1). For an instance method
+ * the receiver is the first of them, which is why `this` is slot 0 and why the caller assembles
+ * the list rather than passing the arguments alone: each slot carries the kind it holds, and a
+ * reference must not arrive looking like an int.
  */
-export function createFrame(method: PreparedMethod, args: readonly number[]): Frame {
+export function createFrame(method: PreparedMethod, args: readonly StackValue[]): Frame {
   const locals = new Array<number | undefined>(method.code.maxLocals).fill(undefined);
   const localKinds = new Array<ValueKind | undefined>(method.code.maxLocals).fill(undefined);
   for (let slot = 0; slot < args.length; slot += 1) {
-    locals[slot] = args[slot];
-    localKinds[slot] = 'int';
+    locals[slot] = args[slot]?.value;
+    localKinds[slot] = args[slot]?.kind;
   }
   return {
     method,

@@ -232,18 +232,18 @@ describe('execute — branch targets', () => {
 
 describe('execute — unsupported instructions', () => {
   it('names the instruction that stopped the run', () => {
-    // new #1; return — objects are decoded and listed, and will never be allocated here.
-    const result = run([0xbb, 0x00, 0x01, 0xb1]);
+    // monitorenter; return — locks are decoded and listed, and this machine has no threads.
+    const result = run([0xc2, 0xb1]);
 
     expect(expectVmError(result)).toEqual({
       kind: 'unsupported-opcode',
-      mnemonic: 'new',
+      mnemonic: 'monitorenter',
       offset: 0,
       methodName: 'main',
     });
     // The snapshot of the offending instruction stays in the history so the UI can point at it.
     expect(result.snapshots.at(-1)?.currentInstruction).toMatchObject({
-      mnemonic: 'new',
+      mnemonic: 'monitorenter',
       unsupported: true,
     });
   });
@@ -520,11 +520,6 @@ describe('execute — invokestatic restrictions', () => {
   });
 
   it.each([
-    {
-      case: 'a reference parameter',
-      reference: { name: 'print', descriptor: '(Ljava/lang/String;)V' },
-      extras: [{ name: 'print', descriptor: '(Ljava/lang/String;)V', code: [0xb1] }],
-    },
     {
       case: 'a long parameter',
       reference: { name: 'wide', descriptor: '(J)V' },

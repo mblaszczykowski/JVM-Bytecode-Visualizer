@@ -11,6 +11,9 @@ export {
 export {
   DEFAULT_MAX_STEPS,
   type ArrayObject,
+  type FieldSlot,
+  type HeapObject,
+  type InstanceObject,
   type ExecuteOptions,
   type ExternalValue,
   type ExecutionResult,

@@ -5,6 +5,7 @@ import { EXECUTABLE_OPCODES } from '../core/interpreter';
 import type * as Interpreter from '../core/interpreter';
 
 import {
+  CALL_SCOPE_NOTE,
   capabilitySummary,
   executableFamilies,
   featureGaps,
@@ -71,18 +72,19 @@ describe('instruction families', () => {
    * one opcode has to move that opcode into its family and out of the gap that named it.
    */
   it('follows the interpreter into an instruction it has just learned', async () => {
-    const getfield = 0xb4;
-    expect(EXECUTABLE_OPCODES.has(getfield)).toBe(false);
+    const putstatic = 0xb3;
+    expect(EXECUTABLE_OPCODES.has(putstatic)).toBe(false);
 
-    const widened = await capabilitiesWith(getfield);
+    const widened = await capabilitiesWith(putstatic);
 
     const fields = widened.executableFamilies().find((family) => family.name === 'Field access');
-    const state = widened
+    const statics = widened
       .featureGaps()
-      .find((gap) => gap.title === 'Fields — any state outside a local slot');
+      .find((gap) => gap.title === 'Static fields — state that outlives every instance');
 
-    expect(fields?.mnemonics).toContain('getfield');
-    expect(state?.missing).toEqual(['putfield']);
+    expect(fields?.mnemonics).toContain('putstatic');
+    // The gap named exactly one instruction, so implementing it retires the gap outright.
+    expect(statics).toBeUndefined();
     expect(widened.capabilitySummary().executable).toBe(capabilitySummary().executable + 1);
   });
 });
@@ -100,33 +102,37 @@ describe('feature gaps', () => {
     }
   });
 
-  it('still reports the absences the empirical probe kept hitting', () => {
+  it('still reports the absences a real class file keeps hitting', () => {
     const titles = featureGaps().map((gap) => gap.title);
 
-    expect(titles).toContain('Objects, constructors and instance methods');
-    expect(titles).toContain('Fields — any state outside a local slot');
+    expect(titles).toContain('Interfaces, lambdas and method references');
+    expect(titles).toContain('long, float and double values');
   });
 
   it('drops a feature once every instruction behind it runs', async () => {
-    const [newObject, invokespecial] = [0xbb, 0xb7];
-    const widened = await capabilitiesWith(newObject, invokespecial);
-    const title = 'Objects, constructors and instance methods';
+    const [invokeinterface, invokedynamic] = [0xb9, 0xba];
+    const widened = await capabilitiesWith(invokeinterface, invokedynamic);
+    const title = 'Interfaces, lambdas and method references';
 
     expect(featureGaps().map((gap) => gap.title)).toContain(title);
     expect(widened.featureGaps().map((gap) => gap.title)).not.toContain(title);
   });
 
   /**
-   * `athrow` runs and the exception table is read, so `try`/`catch` is no longer a gap — but
-   * the machine still cannot build the object a `throw` of your own needs, and the list has to
-   * keep saying so rather than falling silent about exceptions altogether.
+   * Objects, constructors, instance methods and fields all run now, so none of them is a gap.
+   * What stops `new ArrayList<>()` is not a missing instruction but a missing class file, and
+   * no opcode expresses that — which is exactly why `CALL_SCOPE_NOTE` is asserted by hand and
+   * the list must not quietly imply the feature is complete.
    */
-  it('reports what is left of exceptions, now that catching them works', () => {
+  it('leaves objects out of the gap list, because the instructions behind them run', () => {
     const titles = featureGaps().map((gap) => gap.title);
 
-    expect(isExecutableMnemonic('athrow')).toBe(true);
+    for (const mnemonic of ['new', 'invokespecial', 'invokevirtual', 'getfield', 'putfield']) {
+      expect(isExecutableMnemonic(mnemonic)).toBe(true);
+    }
+    expect(titles).not.toContain('Objects, constructors and instance methods');
     expect(titles).not.toContain('Exceptions, throw and try/catch');
-    expect(titles).toContain('Throwing an exception you constructed yourself');
+    expect(CALL_SCOPE_NOTE).toContain('uploaded class only');
   });
 });
 

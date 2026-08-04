@@ -1,8 +1,8 @@
-import type { ArrayObject } from '../../core/interpreter/types';
+import type { HeapObject } from '../../core/interpreter/types';
 import { referenceLabel } from '../heap-view';
 
 interface ReferenceChipProps {
-  readonly heap: readonly ArrayObject[];
+  readonly heap: readonly HeapObject[];
   /** The reference itself — a handle into the heap, or a value pointing at no object. */
   readonly handle: number;
   /** On an accent surface the chip has to sit on light; a second blue would disappear. */

@@ -163,15 +163,15 @@ describe('next instruction summary', () => {
   });
 
   it('warns that an unsupported instruction ends the run', () => {
-    // invokespecial #1 — decoded, listed, outside the executable subset.
+    // monitorenter — decoded, listed, outside the executable subset.
     const program = buildProgram({
       origin: { kind: 'upload', fileName: 'Unsupported.class' },
       classFile: syntheticClass({
-        methods: [{ name: 'main', descriptor: '([Ljava/lang/String;)V', code: [0xb7, 0x00, 0x01] }],
+        methods: [{ name: 'main', descriptor: '([Ljava/lang/String;)V', code: [0xc2] }],
       }),
     });
 
-    const summary = summaryOf(program, 'invokespecial');
+    const summary = summaryOf(program, 'monitorenter');
 
     expect(summary.effects).toEqual([]);
     expect(summary.explanation).toContain('outside the supported instruction subset');

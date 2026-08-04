@@ -9,7 +9,7 @@
  */
 
 import { parseClassFile } from '../../core/classfile';
-import type { ArrayObject, Snapshot, StackFrame } from '../../core/interpreter';
+import type { ArrayObject, HeapObject, Snapshot, StackFrame } from '../../core/interpreter';
 import { readExampleBytes, readExampleText } from '../../services/__fixtures__/example-files';
 import { describeOperandRoles } from '../../services/derivations';
 import { buildProgram, listingFor, runSummaryOf, type LoadedProgram } from '../../services/program';
@@ -54,17 +54,17 @@ export function mnemonicAt(step: number): string | undefined {
   return snapshotAt(step).currentInstruction?.mnemonic;
 }
 
-export function heapAt(step: number): readonly ArrayObject[] {
+export function heapAt(step: number): readonly HeapObject[] {
   return snapshotAt(step).heap ?? [];
 }
 
 /** The one array the program allocates, as it stood at `step`. */
 export function arrayAt(step: number): ArrayObject {
-  const array = heapAt(step)[0];
-  if (array === undefined) {
+  const object = heapAt(step)[0];
+  if (object?.kind !== 'int-array') {
     throw new Error(`the BubbleSort run has no array on the heap at step ${String(step)}`);
   }
-  return array;
+  return object;
 }
 
 /**

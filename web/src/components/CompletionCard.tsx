@@ -1,13 +1,13 @@
-import type { ArrayObject } from '../core/interpreter/types';
+import type { HeapObject } from '../core/interpreter/types';
 import type { RunSummary } from '../services/program';
 
-import { HeapArrayRow } from './HeapPanel';
+import { HeapArrayRow, HeapInstanceRow } from './HeapPanel';
 import { Panel } from './Panel';
 
 interface CompletionCardProps {
   readonly summary: RunSummary;
   /** The heap as the run left it; empty for a program that never allocated anything. */
-  readonly heap?: readonly ArrayObject[] | undefined;
+  readonly heap?: readonly HeapObject[] | undefined;
 }
 
 interface FigureProps {
@@ -24,7 +24,7 @@ function Figure({ label, value }: FigureProps) {
   );
 }
 
-const NO_HEAP: readonly ArrayObject[] = [];
+const NO_HEAP: readonly HeapObject[] = [];
 
 /**
  * What the last snapshot is actually about. The call stack is empty there, so the three state
@@ -67,9 +67,13 @@ export function CompletionCard({ summary, heap = NO_HEAP }: CompletionCardProps)
             <p className="pb-[8px] text-meta text-white/55">Heap as the run left it</p>
             {/* The card itself does not scroll, so a heap with a lot on it scrolls here. */}
             <ol className="scroll-slim flex max-h-[150px] flex-col gap-[12px] overflow-y-auto">
-              {heap.map((array, handle) => (
-                <HeapArrayRow key={handle} array={array} handle={handle} />
-              ))}
+              {heap.map((object, handle) =>
+                object.kind === 'int-array' ? (
+                  <HeapArrayRow key={handle} array={object} handle={handle} />
+                ) : (
+                  <HeapInstanceRow key={handle} instance={object} handle={handle} />
+                ),
+              )}
             </ol>
           </div>
         )}

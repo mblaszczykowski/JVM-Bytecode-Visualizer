@@ -24,12 +24,40 @@ export interface ExternalValue {
   readonly text?: string;
 }
 
-/** The only object this heap knows: a fixed-length array of ints (`newarray T_INT`). */
+/** A fixed-length array of ints (`newarray T_INT`). */
 export interface ArrayObject {
   readonly kind: 'int-array';
   readonly length: number;
   readonly elements: readonly number[];
 }
+
+/** One field of an instance, in the order the class file declares it. */
+export interface FieldSlot {
+  readonly name: string;
+  /** The field descriptor, e.g. `I` or `LNode;` — what the class file says it holds. */
+  readonly descriptor: string;
+  /** Absent until something writes to it; a fresh instance has every slot at its default. */
+  readonly value: number;
+  readonly kind: ValueKind;
+}
+
+/**
+ * An instance of the class being executed (`new`).
+ *
+ * There is no class loading here, so an instance can only ever be of the one class in the
+ * file — the same boundary `invokestatic` has always had. Its fields are fixed at allocation
+ * from the class's own field table, which is why they are an array and not a map: the shape
+ * of an object is decided once, by the class, exactly as it is on a real heap.
+ */
+export interface InstanceObject {
+  readonly kind: 'instance';
+  /** Internal name of the class, e.g. `Node`. */
+  readonly className: string;
+  readonly fields: readonly FieldSlot[];
+}
+
+/** Everything a reference can point at. */
+export type HeapObject = ArrayObject | InstanceObject;
 
 export interface StackFrame {
   readonly methodName: string;
@@ -69,7 +97,7 @@ export interface Snapshot {
    * consecutive snapshots share every array they did not change. Always present on a snapshot
    * `execute()` produced; optional for the same reason as the kind arrays above.
    */
-  readonly heap?: readonly ArrayObject[];
+  readonly heap?: readonly HeapObject[];
   /**
    * Every line the program has printed up to and including this snapshot's state, i.e. before
    * `currentInstruction` runs. Cumulative, and shared with the previous snapshot whenever that

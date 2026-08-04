@@ -477,12 +477,25 @@ const STACK_EFFECTS = new Map<number, StackEffect>([
   [TABLESWITCH, fixed(1, 0)],
   [LOOKUPSWITCH, fixed(1, 0)],
 
-  // Calls, field reads and returns: the descriptor or the caller frame decides the effect.
+  // Reference comparisons: two handles off the stack, or one against null.
+  [0xa5, fixed(2, 0)], // if_acmpeq
+  [0xa6, fixed(2, 0)], // if_acmpne
+  [0xc6, fixed(1, 0)], // ifnull
+  [0xc7, fixed(1, 0)], // ifnonnull
+
+  // Calls, field access and returns: the descriptor or the caller frame decides the effect.
   [0xac, VARIES], // ireturn
+  [0xb0, VARIES], // areturn
   [0xb1, VARIES], // return
   [0xb2, VARIES], // getstatic
+  [0xb4, VARIES], // getfield
+  [0xb5, VARIES], // putfield
   [0xb6, VARIES], // invokevirtual
+  [0xb7, VARIES], // invokespecial
   [0xb8, VARIES], // invokestatic
+
+  // `new` pushes the uninitialised instance; its constructor is a separate instruction.
+  [0xbb, fixed(0, 1)], // new
 
   // `athrow` empties the operand stack and leaves the exception alone on it (JVMS §2.10) —
   // or the frame does not survive to have one, and the effect belongs to a frame further down.

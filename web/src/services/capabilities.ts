@@ -36,12 +36,17 @@ export interface CapabilitySummary {
 }
 
 /**
- * The one restriction no opcode can express: `invokestatic` is executable, but the interpreter
- * resolves it against the uploaded class alone and rejects any other target, so there is no
- * standard library behind it. Kept here next to the derived facts, and marked as asserted.
+ * The restriction no opcode can express, and the one that decides most outcomes: every
+ * instruction that names a class resolves against the uploaded class and nothing else.
+ *
+ * `new`, `invokespecial`, `invokevirtual`, `getfield` and `putfield` all run — so objects,
+ * constructors, instance methods and fields work — but only for the class in the file. There
+ * is no second class file to load, which is why `new ArrayList<>()` and
+ * `throw new IllegalStateException(...)` stop where they do. Kept here next to the derived
+ * facts, and marked as asserted rather than inferred from the opcode table.
  */
 export const CALL_SCOPE_NOTE =
-  'Calls resolve inside the uploaded class only — static methods taking and returning int, with no standard library behind them.';
+  'Everything resolves inside the uploaded class only: its own objects, constructors, instance methods and fields run, and any other type — including the standard library — stops the run.';
 
 /** Inclusive, as the JVMS tables are written. */
 type OpcodeRange = readonly [first: number, last: number];
@@ -124,20 +129,16 @@ interface FeatureSpec {
  */
 const FEATURES: readonly FeatureSpec[] = [
   { title: 'Printing to the console', requires: ['getstatic', 'invokevirtual'] },
-  { title: 'Objects, constructors and instance methods', requires: ['new', 'invokespecial'] },
   { title: 'String literals and other pooled constants', requires: ['ldc'] },
   { title: 'long, float and double values', requires: ['ladd', 'fadd', 'dadd'] },
-  // `try`/`catch` runs: `athrow` and the exception table are implemented, and the machine
-  // raises the exceptions a beginner meets. What is still missing is the other half — an
-  // exception of your own has to be constructed before it can be thrown.
-  { title: 'Throwing an exception you constructed yourself', requires: ['new', 'invokespecial'] },
   { title: 'switch statements', requires: ['tableswitch', 'lookupswitch'] },
   { title: 'Bitwise operators and shifts', requires: ['iand', 'ior', 'ixor', 'ishl', 'ishr'] },
+  { title: 'Static fields — state that outlives every instance', requires: ['putstatic'] },
   {
     title: 'Interfaces, lambdas and method references',
     requires: ['invokeinterface', 'invokedynamic'],
   },
-  { title: 'Fields — any state outside a local slot', requires: ['getfield', 'putfield'] },
+  { title: 'Casts and type tests', requires: ['checkcast', 'instanceof'] },
   { title: 'Arrays of anything but int', requires: ['anewarray', 'aaload', 'baload', 'caload'] },
 ];
 

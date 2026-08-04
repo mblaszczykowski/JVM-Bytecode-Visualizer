@@ -127,12 +127,13 @@ describe('disassemble — javap parity on Factorial.class', () => {
   it('marks the constructor instructions outside the subset as unsupported', () => {
     const result = disassemble(codeOf('<init>'));
 
-    // `aload_0` is in the subset since references exist; the call to Object.<init> is not.
+    // Every instruction of a default constructor is in the subset now that `invokespecial`
+    // runs: `aload_0` puts the receiver up, the super call consumes it, `return` ends.
     expect(
       result.instructions
         .filter((instruction) => instruction.unsupported === true)
         .map((instruction) => instruction.mnemonic),
-    ).toEqual(['invokespecial']);
+    ).toEqual([]);
   });
 
   it('keeps the encoded delta next to the resolved branch target', () => {
@@ -247,6 +248,7 @@ describe('disassemble — javap parity on OpcodeZoo.class', () => {
     expect([...supported].sort()).toEqual([
       'aload_0',
       'aload_1',
+      'areturn',
       'arraylength',
       'astore_1',
       'bipush',
@@ -262,10 +264,12 @@ describe('disassemble — javap parity on OpcodeZoo.class', () => {
       'iconst_m1',
       'ifeq',
       'iload_0',
+      'invokespecial',
       'invokevirtual',
       'ireturn',
       'ldc',
       'lookupswitch',
+      'new',
       'newarray',
       'pop',
       'return',
@@ -274,16 +278,13 @@ describe('disassemble — javap parity on OpcodeZoo.class', () => {
     expect([...unsupported].sort()).toEqual([
       'aastore',
       'anewarray',
-      'areturn',
       'checkcast',
       'dreturn',
       'instanceof',
       'invokedynamic',
       'invokeinterface',
-      'invokespecial',
       'ldc2_w',
       'multianewarray',
-      'new',
     ]);
   });
 });
@@ -413,13 +414,13 @@ describe('disassemble — branch targets', () => {
 
 describe('disassemble — instructions outside the executable subset', () => {
   it('decodes an unsupported opcode in full and keeps decoding after its operands', () => {
-    // iconst_1; invokevirtual #5; new #7; iadd
-    const result = disassemble(bytes(0x04, 0xb6, 0x00, 0x05, 0xbb, 0x00, 0x07, 0x60));
+    // iconst_1; invokevirtual #5; checkcast #7; iadd
+    const result = disassemble(bytes(0x04, 0xb6, 0x00, 0x05, 0xc0, 0x00, 0x07, 0x60));
 
     expect(result.instructions).toEqual([
       { offset: 0, opcode: 0x04, mnemonic: 'iconst_1', operands: [] },
       { offset: 1, opcode: 0xb6, mnemonic: 'invokevirtual', operands: [5] },
-      { offset: 4, opcode: 0xbb, mnemonic: 'new', operands: [7], unsupported: true },
+      { offset: 4, opcode: 0xc0, mnemonic: 'checkcast', operands: [7], unsupported: true },
       { offset: 7, opcode: 0x60, mnemonic: 'iadd', operands: [] },
     ]);
     expect(result.truncatedAtOffset).toBeUndefined();

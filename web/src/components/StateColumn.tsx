@@ -1,4 +1,4 @@
-import type { ArrayObject, StackFrame } from '../core/interpreter/types';
+import type { HeapObject, StackFrame } from '../core/interpreter/types';
 import type { RunSummary } from '../services/program';
 
 import { CallStackPanel } from './CallStackPanel';
@@ -14,7 +14,7 @@ interface StateColumnProps {
   readonly frames: readonly StackFrame[];
   readonly operandAnnotations?: readonly (string | undefined)[] | undefined;
   /** Objects of the current snapshot; empty for the runs that only ever hold ints. */
-  readonly heap?: readonly ArrayObject[] | undefined;
+  readonly heap?: readonly HeapObject[] | undefined;
   /**
    * Lines printed up to the current step. Present — even as an empty array — exactly when the
    * run printed something at all; absent when it printed nothing, and then the section does not
@@ -55,7 +55,7 @@ function Hairline() {
 }
 
 /** Stable identity, so the panels below never see a new heap on a render that changed nothing. */
-const NO_HEAP: readonly ArrayObject[] = [];
+const NO_HEAP: readonly HeapObject[] = [];
 
 /**
  * A section is as tall as what it holds, so the room left over in the column goes to whichever

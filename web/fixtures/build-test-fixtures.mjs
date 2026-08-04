@@ -118,6 +118,12 @@ const FIXTURES = Object.freeze([
     runs: true,
   },
   {
+    className: 'Instances',
+    directory: 'src/core/interpreter/__fixtures__/programs',
+    javap: undefined,
+    runs: true,
+  },
+  {
     className: 'MathOps',
     directory: 'src/core/interpreter/__fixtures__/programs',
     javap: undefined,

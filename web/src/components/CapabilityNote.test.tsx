@@ -74,15 +74,17 @@ describe('CapabilityNote', () => {
     const rows = screen.getAllByTestId('capability-gap');
 
     expect(rows).toHaveLength(gaps.length);
-    expect(screen.getByText(/Objects, constructors and instance methods/)).toHaveTextContent(
-      'invokespecial',
+    expect(screen.getByText(/Interfaces, lambdas and method references/)).toHaveTextContent(
+      'invokedynamic',
     );
   });
 
   it('mentions the one limit no opcode expresses — calls never leave the uploaded class', () => {
     render(<CapabilityNote />);
 
-    expect(screen.getByText(/Calls resolve inside the uploaded class only/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Everything resolves inside the uploaded class only/),
+    ).toBeInTheDocument();
   });
 
   it('keeps the open and closed affordances out of the accessible name', () => {

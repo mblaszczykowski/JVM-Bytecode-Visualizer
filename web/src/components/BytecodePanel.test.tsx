@@ -145,11 +145,11 @@ describe('BytecodePanel', () => {
   });
 
   it('marks instructions outside the supported subset as unsupported', () => {
-    // The constructor javac generates: aload_0, invokespecial, return. Only the call to
-    // Object.<init> is outside the subset — `aload_0` came in with the array instructions.
+    // The constructor javac generates — aload_0, invokespecial, return — is entirely inside
+    // the subset now that objects run, so nothing in it carries the marker.
     renderListing(constructor, 0);
 
-    expect(screen.getAllByText('unsupported')).toHaveLength(1);
+    expect(screen.queryAllByText('unsupported')).toHaveLength(0);
     expect(screen.getByTestId('current-instruction')).toHaveTextContent('aload_0');
   });
 
@@ -268,10 +268,12 @@ describe('BytecodePanel', () => {
       expect(stackCellOf('iconst_0')).toBe('+1');
     });
 
-    it('claims nothing for an instruction outside the supported subset', () => {
+    it('says the effect varies where the descriptor decides it', () => {
       renderListing(constructor, undefined, { constantPool: pool });
 
-      expect(stackCellOf('invokespecial')).toBe('');
+      // `invokespecial` is executable, but how much it pops depends on the method it calls,
+      // so the column reports that rather than a number it would have to invent.
+      expect(stackCellOf('invokespecial')).toBe('varies');
     });
 
     it('announces the stack effect of the current instruction', () => {

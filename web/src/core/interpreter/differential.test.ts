@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-import { execute, parseClassFile, type ArrayObject, type Snapshot } from '../index';
+import { execute, parseClassFile, type HeapObject, type Snapshot } from '../index';
 import { expectCompleted, lastFrameOf, localValue } from './__fixtures__/expect-execution';
 
 /**
@@ -109,6 +109,11 @@ const PROGRAMS_UNDER_TEST: readonly DifferentialProgram[] = [
   { name: 'MathOps', directory: PROGRAMS, covers: 'the java.lang.Math intrinsics' },
   { name: 'Console', directory: PROGRAMS, covers: 'every println and print overload' },
   {
+    name: 'Instances',
+    directory: PROGRAMS,
+    covers: 'new, constructors, instance fields and methods, areturn and reference identity',
+  },
+  {
     name: 'Exceptions',
     directory: PROGRAMS,
     covers: 'the exception table, handler matching, unwinding, finally and athrow',
@@ -174,12 +179,21 @@ describe('execute — console output, differential against the real JVM', () => 
 const BUBBLE_SORT_INPUT: readonly number[] = [5, 3, 4, 1, 2];
 
 /** The heap of the last snapshot that still has a frame — the run's final object graph. */
-function lastLiveHeap(snapshots: readonly Snapshot[]): readonly ArrayObject[] {
+function lastLiveHeap(snapshots: readonly Snapshot[]): readonly HeapObject[] {
   const live = [...snapshots].reverse().find((snapshot) => snapshot.callStack.length > 0);
   if (live === undefined) {
     throw new Error('the run has no snapshot with a frame');
   }
   return live.heap ?? [];
+}
+
+/** Elements of the array at `handle`; the examples here allocate nothing but arrays. */
+function arrayElementsAt(heap: readonly HeapObject[], handle: number): readonly number[] {
+  const object = heap[handle];
+  if (object?.kind !== 'int-array') {
+    throw new Error(`no array at handle ${String(handle)}`);
+  }
+  return object.elements;
 }
 
 describe('execute — the array BubbleSort leaves behind', () => {
@@ -188,12 +202,13 @@ describe('execute — the array BubbleSort leaves behind', () => {
   it('sorts the one array it allocates into ascending order', () => {
     const heap = lastLiveHeap(snapshots);
 
-    // `newarray` runs once, so a second array would mean the run took a route of its own.
+    // `newarray` runs once, so a second object would mean the run took a route of its own.
     expect(heap).toHaveLength(1);
     expect(heap[0]?.kind).toBe('int-array');
-    expect(heap[0]?.length).toBe(BUBBLE_SORT_INPUT.length);
     // Sorted ascending and no value invented or lost on the way.
-    expect(heap[0]?.elements).toEqual([...BUBBLE_SORT_INPUT].sort((left, right) => left - right));
+    expect(arrayElementsAt(heap, 0)).toEqual(
+      [...BUBBLE_SORT_INPUT].sort((left, right) => left - right),
+    );
   });
 
   it('starts out unsorted, so the sort is what put the array in order', () => {
@@ -202,7 +217,7 @@ describe('execute — the array BubbleSort leaves behind', () => {
       (snapshot) => snapshot.currentInstruction?.mnemonic === 'arraylength',
     );
 
-    expect(beforeSorting?.heap?.[0]?.elements).toEqual(BUBBLE_SORT_INPUT);
+    expect(arrayElementsAt(beforeSorting?.heap ?? [], 0)).toEqual(BUBBLE_SORT_INPUT);
   });
 
   it('needs a few hundred steps for five elements — long enough to scrub, short to replay', () => {

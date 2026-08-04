@@ -1,7 +1,7 @@
 import { motion, useReducedMotion } from 'framer-motion';
 import { useState } from 'react';
 
-import type { ArrayObject, StackFrame } from '../core/interpreter/types';
+import type { HeapObject, StackFrame } from '../core/interpreter/types';
 
 import { EmptyState, Panel } from './Panel';
 import { ReferenceChip } from './ui/ReferenceChip';
@@ -12,7 +12,7 @@ interface LocalsPanelProps {
   /** Depth of that frame — a different depth is a different set of variables. */
   readonly frameIndex?: number;
   /** Objects of the current snapshot, so a `ref` slot can name what it points at. */
-  readonly heap?: readonly ArrayObject[] | undefined;
+  readonly heap?: readonly HeapObject[] | undefined;
   /** Replaces the slot count in the header when the panel is showing a frame that is gone. */
   readonly caption?: string | undefined;
 }
@@ -26,7 +26,7 @@ type Locals = readonly (number | undefined)[];
 const NO_LOCALS: Locals = [];
 
 /** Stable identity for the int-only runs, which never hand the panel a heap of their own. */
-const NO_HEAP: readonly ArrayObject[] = [];
+const NO_HEAP: readonly HeapObject[] = [];
 
 interface Tracked {
   readonly frameIndex: number;

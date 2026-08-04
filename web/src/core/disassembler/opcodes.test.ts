@@ -87,17 +87,26 @@ const EXECUTABLE_OPCODES: readonly (readonly [opcode: number, mnemonic: string])
   [0xa2, 'if_icmpge'],
   [0xa3, 'if_icmpgt'],
   [0xa4, 'if_icmple'],
+  [0xa5, 'if_acmpeq'],
+  [0xa6, 'if_acmpne'],
   [0xa7, 'goto'],
   [0xaa, 'tableswitch'],
   [0xab, 'lookupswitch'],
   [0xac, 'ireturn'],
+  [0xb0, 'areturn'],
   [0xb1, 'return'],
   [0xb2, 'getstatic'],
+  [0xb4, 'getfield'],
+  [0xb5, 'putfield'],
   [0xb6, 'invokevirtual'],
+  [0xb7, 'invokespecial'],
   [0xb8, 'invokestatic'],
+  [0xbb, 'new'],
   [0xbc, 'newarray'],
   [0xbe, 'arraylength'],
   [0xbf, 'athrow'],
+  [0xc6, 'ifnull'],
+  [0xc7, 'ifnonnull'],
 ];
 
 const HIGHEST_ASSIGNED_OPCODE = 0xca; // breakpoint (reserved) closes the contiguous range
@@ -174,7 +183,7 @@ describe('opcode classification', () => {
       .sort((a, b) => a[0] - b[0]);
 
     expect(supported).toEqual(EXECUTABLE_OPCODES);
-    expect(supported).toHaveLength(81);
+    expect(supported).toHaveLength(90);
   });
 
   it('leaves `wide` alone as a prefix rather than an instruction of its own', () => {
@@ -201,17 +210,22 @@ describe('opcode classification', () => {
   });
 
   it('decodes the instructions it cannot execute just as completely', () => {
-    expect(infoFor(0xb7)).toEqual({
+    // `invokeinterface` needs a second class file to resolve against, so it stays outside the
+    // subset — and is still decoded down to its mandated zero byte.
+    expect(infoFor(0xb9)).toEqual({
       kind: 'unsupported',
-      opcode: 0xb7,
-      mnemonic: 'invokespecial',
-      operandBytes: 2,
-      operands: [{ type: 'u2', role: 'constant-pool-index' }],
+      opcode: 0xb9,
+      mnemonic: 'invokeinterface',
+      operandBytes: 4,
+      operands: [
+        { type: 'u2', role: 'constant-pool-index' },
+        { type: 'u1', role: 'argument-count' },
+        { type: 'u1', role: 'mandated-zero' },
+      ],
     });
-    expect(infoFor(0xb9)).toMatchObject({ mnemonic: 'invokeinterface', operandBytes: 4 });
     expect(infoFor(0xc5)).toMatchObject({ mnemonic: 'multianewarray', operandBytes: 3 });
-    expect(isSupportedOpcode(0xb7)).toBe(false);
-    expect(isSupportedOpcode(0xb8)).toBe(true);
+    expect(isSupportedOpcode(0xb9)).toBe(false);
+    expect(isSupportedOpcode(0xb7)).toBe(true);
   });
 
   it('gives every assigned opcode but the reserved three an operand encoding', () => {

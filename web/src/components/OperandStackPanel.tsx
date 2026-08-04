@@ -1,6 +1,6 @@
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 
-import type { ArrayObject, StackFrame } from '../core/interpreter/types';
+import type { HeapObject, StackFrame } from '../core/interpreter/types';
 
 import { EmptyState, Panel } from './Panel';
 import { ReferenceChip } from './ui/ReferenceChip';
@@ -9,7 +9,7 @@ interface OperandStackPanelProps {
   /** Top frame of the current snapshot; `undefined` when the call stack is empty. */
   readonly frame: StackFrame | undefined;
   /** Objects of the current snapshot, so a `ref` cell can name what it points at. */
-  readonly heap?: readonly ArrayObject[] | undefined;
+  readonly heap?: readonly HeapObject[] | undefined;
   /**
    * Depth of the frame the cells belong to. It is part of the cell keys, so a value left on
    * a caller's stack never animates into a same-valued cell of the callee.
@@ -29,7 +29,7 @@ const BASE_LINE =
 const LABEL_COLUMN = 'w-[30px] shrink-0 text-legend tracking-[0.1em]';
 
 /** Stable identity for the int-only runs, which never hand the panel a heap of their own. */
-const NO_HEAP: readonly ArrayObject[] = [];
+const NO_HEAP: readonly HeapObject[] = [];
 
 export function OperandStackPanel({
   frame,

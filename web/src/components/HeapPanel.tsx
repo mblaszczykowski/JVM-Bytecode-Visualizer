@@ -1,15 +1,20 @@
 import { motion, useReducedMotion } from 'framer-motion';
 import { useState } from 'react';
 
-import type { ArrayObject, StackFrame } from '../core/interpreter/types';
+import type {
+  ArrayObject,
+  HeapObject,
+  InstanceObject,
+  StackFrame,
+} from '../core/interpreter/types';
 
-import { arrayLabel, heapFocusOf, type HeapFocus } from './heap-view';
+import { cellValuesOf, heapFocusOf, objectLabel, type HeapFocus } from './heap-view';
 import { Panel } from './Panel';
 import { Pill } from './ui/Pill';
 
 interface HeapPanelProps {
   /** Objects by handle, straight off the snapshot; empty for a run that allocates nothing. */
-  readonly heap: readonly ArrayObject[];
+  readonly heap: readonly HeapObject[];
   /** Top frame of the current snapshot — its operand stack names the element being touched. */
   readonly frame?: StackFrame | undefined;
   /** Mnemonic of the instruction the snapshot is about to run. */
@@ -23,14 +28,14 @@ const CELL =
 type Pulses = readonly (readonly number[])[];
 
 interface Tracked {
-  readonly heap: readonly ArrayObject[];
+  readonly heap: readonly HeapObject[];
   /** Per element, a counter bumped whenever the value changed — the key of one flash. */
   readonly pulses: Pulses;
 }
 
 /** Every element at rest: what a heap looks like the first time the panel sees it. */
-function restingPulses(heap: readonly ArrayObject[]): Pulses {
-  return heap.map((array) => array.elements.map(() => 0));
+function restingPulses(heap: readonly HeapObject[]): Pulses {
+  return heap.map((object) => cellValuesOf(object).map(() => 0));
 }
 
 /**
@@ -38,20 +43,26 @@ function restingPulses(heap: readonly ArrayObject[]): Pulses {
  * object for an array no step touched, so identity settles the question for a whole array
  * before a single element has to be compared.
  */
-function nextPulses(previous: Tracked, heap: readonly ArrayObject[]): Pulses {
-  return heap.map((array, handle) => {
+function nextPulses(previous: Tracked, heap: readonly HeapObject[]): Pulses {
+  return heap.map((object, handle) => {
     const before = previous.heap[handle];
     const counters = previous.pulses[handle];
-    // A freshly allocated array is not a change to show: every cell of it is new.
-    if (before === undefined || counters === undefined || before.length !== array.length) {
-      return array.elements.map(() => 0);
+    const cells = cellValuesOf(object);
+    // A freshly allocated object is not a change to show: every cell of it is new.
+    if (
+      before === undefined ||
+      counters === undefined ||
+      cellValuesOf(before).length !== cells.length
+    ) {
+      return cells.map(() => 0);
     }
-    if (before === array) {
+    if (before === object) {
       return counters;
     }
-    return array.elements.map((value, index) => {
+    const past = cellValuesOf(before);
+    return cells.map((value, index) => {
       const counter = counters[index] ?? 0;
-      return value === before.elements[index] ? counter : counter + 1;
+      return value === past[index] ? counter : counter + 1;
     });
   });
 }
@@ -60,7 +71,7 @@ function nextPulses(previous: Tracked, heap: readonly ArrayObject[]): Pulses {
  * Element-by-element history of the heap. Derived during render rather than in an effect, so
  * the flash and the new value are committed together — the same reasoning as the locals pulse.
  */
-function usePulses(heap: readonly ArrayObject[]): Pulses {
+function usePulses(heap: readonly HeapObject[]): Pulses {
   const [tracked, setTracked] = useState<Tracked>(() => ({ heap, pulses: restingPulses(heap) }));
 
   if (tracked.heap !== heap) {
@@ -90,7 +101,7 @@ export function HeapArrayRow({ array, handle, focus, pulses }: HeapArrayRowProps
   return (
     <li data-testid="heap-array" data-handle={handle} className="px-[3px]">
       <div className="flex items-baseline gap-2 pb-[6px]">
-        <span className="font-mono text-meta text-white/55">{arrayLabel(array, handle)}</span>
+        <span className="font-mono text-meta text-white/55">{objectLabel(array, handle)}</span>
         <span className="grow" />
         {focus === undefined ? (
           <span className="shrink-0 font-mono text-micro text-white/32">length {array.length}</span>
@@ -151,6 +162,80 @@ export function HeapArrayRow({ array, handle, focus, pulses }: HeapArrayRowProps
   );
 }
 
+interface HeapInstanceRowProps {
+  readonly instance: InstanceObject;
+  readonly handle: number;
+  readonly pulses?: readonly number[] | undefined;
+}
+
+/**
+ * One instance: its class and handle, then a row per field.
+ *
+ * Fields are drawn as rows rather than as the cells an array gets, because they are named and
+ * a name is what the reader needs to find one — an array is addressed by an index the
+ * instruction supplies, an object by a name the source wrote.
+ */
+export function HeapInstanceRow({ instance, handle, pulses }: HeapInstanceRowProps) {
+  const reduced = useReducedMotion() ?? false;
+
+  return (
+    <li data-testid="heap-instance" data-handle={handle} className="px-[3px]">
+      <div className="flex items-baseline gap-2 pb-[6px]">
+        <span className="font-mono text-meta text-white/55">{objectLabel(instance, handle)}</span>
+        <span className="grow" />
+        <span className="shrink-0 font-mono text-micro text-white/32">
+          {instance.fields.length === 1 ? '1 field' : `${String(instance.fields.length)} fields`}
+        </span>
+      </div>
+
+      <ol className="flex flex-col gap-[3px]">
+        {instance.fields.map((field, index) => {
+          const pulse = pulses?.[index] ?? 0;
+
+          return (
+            <li
+              key={field.name}
+              data-testid="heap-field"
+              data-field={field.name}
+              className={`${CELL} justify-between gap-3 bg-white/5 px-2 text-white/75`}
+            >
+              {pulse === 0 ? null : (
+                <motion.span
+                  key={pulse}
+                  data-testid="heap-pulse"
+                  aria-hidden="true"
+                  initial={{ opacity: 1 }}
+                  animate={{ opacity: 0 }}
+                  transition={{ duration: reduced ? 0 : 0.4, ease: 'easeOut' }}
+                  className="pointer-events-none absolute inset-0 -z-10 rounded-code bg-accent/[0.22]"
+                />
+              )}
+              <span className="truncate text-white/55">{field.name}</span>
+              <span>{field.kind === 'ref' && field.value < 0 ? 'null' : field.value}</span>
+            </li>
+          );
+        })}
+      </ol>
+    </li>
+  );
+}
+
+interface HeapObjectRowProps {
+  readonly object: HeapObject;
+  readonly handle: number;
+  readonly focus?: HeapFocus | undefined;
+  readonly pulses?: readonly number[] | undefined;
+}
+
+/** The one place that knows an object can be either kind; both rows below are total. */
+function HeapObjectRow({ object, handle, focus, pulses }: HeapObjectRowProps) {
+  return object.kind === 'int-array' ? (
+    <HeapArrayRow array={object} handle={handle} focus={focus} pulses={pulses} />
+  ) : (
+    <HeapInstanceRow instance={object} handle={handle} pulses={pulses} />
+  );
+}
+
 /**
  * Objects the run allocated, in handle order. The panel is not rendered at all for a program
  * that never touches the heap — most programs worth watching here never allocate, and an empty
@@ -168,15 +253,15 @@ export function HeapPanel({ heap, frame, mnemonic }: HeapPanelProps) {
   return (
     <Panel
       title="Heap"
-      meta={heap.length === 1 ? '1 array' : `${String(heap.length)} arrays`}
+      meta={heap.length === 1 ? '1 object' : `${String(heap.length)} objects`}
       variant="state"
       className="grow"
     >
       <ol className="flex flex-col gap-[12px] px-[10px] pb-[2px]">
-        {heap.map((array, handle) => (
-          <HeapArrayRow
+        {heap.map((object, handle) => (
+          <HeapObjectRow
             key={handle}
-            array={array}
+            object={object}
             handle={handle}
             focus={focus?.handle === handle ? focus : undefined}
             pulses={pulses[handle]}

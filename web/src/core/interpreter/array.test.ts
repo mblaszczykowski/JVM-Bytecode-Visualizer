@@ -4,7 +4,7 @@ import { expectCompleted, expectVmError } from './__fixtures__/expect-execution'
 import { ConstantPoolBuilder, syntheticClass } from './__fixtures__/synthetic-class';
 import { MAX_HEAP_ELEMENTS, MAX_RECORDED_ELEMENTS } from './heap';
 import { execute } from './interpreter';
-import type { ArrayObject, ExecutionResult, Snapshot, ValueKind } from './types';
+import type { ExecutionResult, HeapObject, Snapshot, ValueKind } from './types';
 
 /**
  * The int-array subset: allocation, element access, the reference kind that tells a handle
@@ -81,20 +81,28 @@ function evaluate(code: readonly number[], maxLocals = 4): number | undefined {
   ).returnValue;
 }
 
-function heapOf(snapshot: Snapshot | undefined): readonly ArrayObject[] {
-  return snapshot?.heap ?? [];
+/**
+ * The heap of a snapshot, exactly as it came — identity matters here, because the structural
+ * sharing these tests assert on is identity. `arrayAt` does the narrowing where a test needs
+ * an array rather than an object; every program in this file allocates nothing else.
+ */
+function heapOf(snapshot: Snapshot | undefined): readonly HeapObject[] {
+  return snapshot?.heap ?? NO_HEAP;
 }
 
-function finalHeap(snapshots: readonly Snapshot[]): readonly ArrayObject[] {
+/** One identity for "no heap", so a snapshot without one does not look like a change. */
+const NO_HEAP: readonly HeapObject[] = Object.freeze([]);
+
+function finalHeap(snapshots: readonly Snapshot[]): readonly HeapObject[] {
   return heapOf(snapshots.at(-1));
 }
 
-function elementsAt(heap: readonly ArrayObject[], handle: number): readonly number[] {
-  const array = heap[handle];
-  if (array === undefined) {
+function elementsAt(heap: readonly HeapObject[], handle: number): readonly number[] {
+  const object = heap[handle];
+  if (object?.kind !== 'int-array') {
     throw new Error(`the heap has no array at handle ${String(handle)}`);
   }
-  return array.elements;
+  return object.elements;
 }
 
 /** Kind of the top operand stack cell in the snapshot that follows the first `mnemonic`. */
@@ -108,9 +116,9 @@ function topKindAfter(snapshots: readonly Snapshot[], mnemonic: string): ValueKi
   return snapshots[step + 1]?.callStack.at(-1)?.operandKinds?.at(-1);
 }
 
-/** Every distinct `ArrayObject` the whole history holds — one per array, plus one per write. */
+/** Every distinct heap object the whole history holds — one per array, plus one per write. */
 function distinctArrays(snapshots: readonly Snapshot[]): number {
-  const seen = new Set<ArrayObject>();
+  const seen = new Set<HeapObject>();
   for (const snapshot of snapshots) {
     for (const array of heapOf(snapshot)) {
       seen.add(array);
@@ -391,9 +399,10 @@ describe('execute — heap snapshots', () => {
     for (const snapshot of snapshots) {
       const heap = heapOf(snapshot);
       expect(Object.isFrozen(heap)).toBe(true);
-      for (const array of heap) {
-        expect(Object.isFrozen(array)).toBe(true);
-        expect(Object.isFrozen(array.elements)).toBe(true);
+      for (const object of heap) {
+        expect(Object.isFrozen(object)).toBe(true);
+        expect(object.kind).toBe('int-array');
+        expect(Object.isFrozen(elementsAt(heap, heap.indexOf(object)))).toBe(true);
       }
     }
 
@@ -423,8 +432,8 @@ describe('execute — heap snapshots', () => {
     const before = heapOf(snapshots[step]);
     const after = heapOf(snapshots[step + 1]);
 
-    expect(before[0]?.elements).toEqual([0, 0]);
-    expect(after[0]?.elements).toEqual([1, 0]);
+    expect(elementsAt(before, 0)).toEqual([0, 0]);
+    expect(elementsAt(after, 0)).toEqual([1, 0]);
     expect(after[0]).not.toBe(before[0]);
     expect(after[1]).toBe(before[1]);
   });
@@ -459,7 +468,7 @@ describe('execute — heap snapshots', () => {
     const terminal = snapshots.at(-1);
 
     expect(terminal?.callStack).toEqual([]);
-    expect(terminal?.heap?.[0]?.elements).toEqual([1, 2, 3, 4, 5]);
+    expect(elementsAt(heapOf(terminal), 0)).toEqual([1, 2, 3, 4, 5]);
   });
 
   it('leaves the heap empty for a run that never allocates', () => {

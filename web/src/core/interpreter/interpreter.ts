@@ -336,17 +336,26 @@ const Op = {
   if_icmpge: 0xa2,
   if_icmpgt: 0xa3,
   if_icmple: 0xa4,
+  if_acmpeq: 0xa5,
+  if_acmpne: 0xa6,
   goto: 0xa7,
   tableswitch: 0xaa,
   lookupswitch: 0xab,
   ireturn: 0xac,
+  areturn: 0xb0,
   return: 0xb1,
   getstatic: 0xb2,
+  getfield: 0xb4,
+  putfield: 0xb5,
   invokevirtual: 0xb6,
+  invokespecial: 0xb7,
   invokestatic: 0xb8,
+  new: 0xbb,
   newarray: 0xbc,
   arraylength: 0xbe,
   athrow: 0xbf,
+  ifnull: 0xc6,
+  ifnonnull: 0xc7,
 } as const;
 
 type Op = (typeof Op)[keyof typeof Op];
@@ -665,6 +674,22 @@ function step(machine: Machine, frame: Frame, instruction: Instruction): void {
     case Op.if_icmple:
       branchIf(frame, instruction, comparePair(frame, lessOrEqual));
       break;
+    // JVMS §6.5 if_acmp<cond>: two references are equal when they name the same object, which
+    // for this machine is the same handle — `null` included, as -1.
+    case Op.if_acmpeq:
+    case Op.if_acmpne: {
+      const value2 = popReference(frame);
+      const value1 = popReference(frame);
+      const same = value1.value === value2.value && value1.kind === value2.kind;
+      branchIf(frame, instruction, opcode === Op.if_acmpeq ? same : !same);
+      break;
+    }
+    case Op.ifnull:
+      branchIf(frame, instruction, popReference(frame).value === NULL_REFERENCE);
+      break;
+    case Op.ifnonnull:
+      branchIf(frame, instruction, popReference(frame).value !== NULL_REFERENCE);
+      break;
     case Op.goto:
       setPc(frame, branchTargetOf(instruction));
       break;
@@ -676,6 +701,18 @@ function step(machine: Machine, frame: Frame, instruction: Instruction): void {
     case Op.getstatic:
       pushStaticField(machine, frame, operand(instruction, 0));
       break;
+    case Op.new:
+      allocateInstance(machine, frame, operand(instruction, 0));
+      break;
+    case Op.getfield:
+      readField(machine, frame, operand(instruction, 0));
+      break;
+    case Op.putfield:
+      writeField(machine, frame, operand(instruction, 0));
+      break;
+    case Op.invokespecial:
+      invokeSpecial(machine, frame, operand(instruction, 0));
+      break;
     case Op.invokevirtual:
       invokeVirtual(machine, frame, operand(instruction, 0));
       break;
@@ -686,7 +723,10 @@ function step(machine: Machine, frame: Frame, instruction: Instruction): void {
       throwFromStack(machine, frame);
       break;
     case Op.ireturn:
-      returnFromFrame(machine, pop(frame, 'int'));
+      returnFromFrame(machine, { value: pop(frame, 'int'), kind: 'int' });
+      break;
+    case Op.areturn:
+      returnFromFrame(machine, popReference(frame));
       break;
     case Op.return:
       returnFromFrame(machine, undefined);
@@ -829,18 +869,19 @@ function throwFromStack(machine: Machine, frame: Frame): void {
   throw new VmFault({ kind: 'thrown', handle, className: value.className, label: value.label });
 }
 
-function returnFromFrame(machine: Machine, value: number | undefined): void {
+function returnFromFrame(machine: Machine, returned: StackValue | undefined): void {
   machine.callStack.pop();
-  if (value === undefined) {
+  if (returned === undefined) {
     return;
   }
   const caller = machine.callStack.at(-1);
   if (caller === undefined) {
-    machine.returnValue = value;
+    // The result of the whole run, which the UI reports as a number; a reference leaving the
+    // entry method is a handle into a heap the run is about to end with, and says nothing.
+    machine.returnValue = returned.kind === 'int' ? returned.value : undefined;
     return;
   }
-  // Only `ireturn` carries a value, and only int-returning methods are callable.
-  push(caller, value, 'int');
+  push(caller, returned.value, returned.kind);
 }
 
 /**
@@ -902,6 +943,88 @@ function pushStaticField(machine: Machine, frame: Frame, poolIndex: number): voi
   push(frame, machine.externals.intern(value), 'external');
 }
 
+/** JVMS §4.1: every class this machine can build an instance of extends Object directly. */
+const OBJECT_CLASS = 'java/lang/Object';
+
+/**
+ * JVMS §6.5 new: an uninitialised instance of the class the pool entry names.
+ *
+ * Only the class being executed can be instantiated, which is the boundary `invokestatic` has
+ * always had and for the same reason: nothing here loads a second class file, so there is no
+ * field table to give the object a shape.
+ *
+ * The instance appears on the stack before its constructor has run — that is the real order,
+ * and it is worth seeing: `new` and `invokespecial` are two instructions, and between them
+ * sits an object whose fields are all still at their defaults.
+ */
+function allocateInstance(machine: Machine, frame: Frame, poolIndex: number): void {
+  const className = classNameAt(machine.classFile.constantPool, poolIndex);
+  if (className !== machine.classFile.thisClassName) {
+    throw new VmFault({ kind: 'unsupported-call', target: `new ${className}` });
+  }
+  const fields = machine.classFile.fields
+    .filter((field) => !isStatic(field.accessFlags))
+    .map((field) => ({ name: field.name, descriptor: field.descriptor }));
+  push(frame, machine.heap.allocateInstance(className, fields), 'ref');
+}
+
+/** JVMS §6.5 getfield: `…, objectref → …, value`. */
+function readField(machine: Machine, frame: Frame, poolIndex: number): void {
+  const reference = fieldReference(machine, poolIndex);
+  const held = machine.heap.loadField(pop(frame, 'ref'), reference.name);
+  push(frame, held.value, held.kind);
+}
+
+/** JVMS §6.5 putfield: `…, objectref, value →`, so the value comes off first. */
+function writeField(machine: Machine, frame: Frame, poolIndex: number): void {
+  const reference = fieldReference(machine, poolIndex);
+  const value = popAny(frame);
+  machine.heap.storeField(pop(frame, 'ref'), reference.name, value.value, value.kind);
+}
+
+/** A Fieldref that names a field of the executed class; anything else has no object behind it. */
+function fieldReference(machine: Machine, poolIndex: number): MethodReference {
+  const reference = resolveMemberReference(
+    machine.classFile.constantPool,
+    poolIndex,
+    ConstantTag.Fieldref,
+    'Fieldref',
+  );
+  if (reference.className !== machine.classFile.thisClassName) {
+    throw new VmFault({
+      kind: 'unsupported-field',
+      target: memberKey(reference.className, reference.name, reference.descriptor),
+    });
+  }
+  return reference;
+}
+
+/**
+ * JVMS §6.5 invokespecial, which in this subset means one thing: a constructor.
+ *
+ * Two shapes reach it. `super()` compiles to `Object.<init>()V` on every class here, and there
+ * is no Object to initialise — the receiver is popped and the call is over. The class's own
+ * `<init>` is an ordinary method call with the new object in slot 0.
+ *
+ * Private and super-class method calls also use this opcode; neither can occur while a class
+ * can only see itself, so they are reported rather than guessed at.
+ */
+function invokeSpecial(machine: Machine, frame: Frame, poolIndex: number): void {
+  const reference = resolveMethodref(machine.classFile.constantPool, poolIndex);
+
+  if (reference.className === OBJECT_CLASS && reference.name === CONSTRUCTOR) {
+    // `Object.<init>` sets up nothing this machine models; the receiver is all it consumes.
+    pop(frame, 'ref');
+    return;
+  }
+  if (reference.className !== machine.classFile.thisClassName) {
+    throw new VmFault({ kind: 'unsupported-call', target: callTarget(reference) });
+  }
+  callWithin(machine, frame, reference, 'instance');
+}
+
+const CONSTRUCTOR = '<init>';
+
 /**
  * JVMS §6.5 invokevirtual, restricted to the recognised members: the stack holds
  * `…, objectref, [arg1, …]`, so the arguments come off first and the receiver last.
@@ -912,6 +1035,14 @@ function pushStaticField(machine: Machine, frame: Frame, poolIndex: number): voi
  */
 function invokeVirtual(machine: Machine, frame: Frame, poolIndex: number): void {
   const reference = resolveMethodref(machine.classFile.constantPool, poolIndex);
+
+  // An instance method of the executed class is a frame like any other; only the receiver in
+  // slot 0 makes it different from a static call.
+  if (reference.className === machine.classFile.thisClassName) {
+    callWithin(machine, frame, reference, 'instance');
+    return;
+  }
+
   const method = EXTERNAL_METHODS.get(
     memberKey(reference.className, reference.name, reference.descriptor),
   );
@@ -992,14 +1123,31 @@ function invokeStatic(machine: Machine, frame: Frame, poolIndex: number): void {
     return;
   }
 
-  const parameterCount = intParameterCount(reference.descriptor);
+  callWithin(machine, frame, reference, 'static');
+}
+
+/**
+ * A call to a method of the class being executed: the one kind this machine resolves itself.
+ *
+ * `shape` decides two things at once — whether the method must be static, and whether a
+ * receiver is popped after the arguments and laid into slot 0 (JVMS §2.6.1). Everything else,
+ * including the depth limit, is the same for both, which is why they share this.
+ */
+function callWithin(
+  machine: Machine,
+  frame: Frame,
+  reference: MethodReference,
+  shape: 'static' | 'instance',
+): void {
+  const target = callTarget(reference);
+  const parameters = parameterKinds(reference.descriptor);
   const method = findMethod(machine.classFile, reference.name, reference.descriptor);
   const code = method?.code;
   if (
-    parameterCount === undefined ||
+    parameters === undefined ||
     method === undefined ||
     code === undefined ||
-    !isStatic(method.accessFlags)
+    isStatic(method.accessFlags) !== (shape === 'static')
   ) {
     throw new VmFault({ kind: 'unsupported-call', target });
   }
@@ -1009,12 +1157,18 @@ function invokeStatic(machine: Machine, frame: Frame, poolIndex: number): void {
     throw new VmFault({ kind: 'stack-overflow', limit: machine.maxCallDepth });
   }
 
-  // Arguments were pushed left to right, so they come off the stack in reverse order.
-  const args = new Array<number>(parameterCount);
-  for (let index = parameterCount - 1; index >= 0; index -= 1) {
-    args[index] = pop(frame, 'int');
+  // Arguments were pushed left to right, so they come off the stack in reverse order; the
+  // receiver was pushed before all of them, so it comes off last and sits in front of them.
+  const slots = new Array<StackValue>(parameters.length);
+  for (let index = parameters.length - 1; index >= 0; index -= 1) {
+    const kind = parameters[index];
+    slots[index] = kind === 'int' ? { value: pop(frame, 'int'), kind: 'int' } : popReference(frame);
   }
-  machine.callStack.push(createFrame(prepare(machine.prepared, method, code), args));
+  if (shape === 'instance') {
+    slots.unshift(popReference(frame));
+  }
+
+  machine.callStack.push(createFrame(prepare(machine.prepared, method, code), slots));
 }
 
 function prepare(
@@ -1073,17 +1227,38 @@ export function isEntryMethod(method: MethodInfo): boolean {
   );
 }
 
-/** Parameter count, or `undefined` for a descriptor outside the MVP subset `(I*)I|V`. */
-function intParameterCount(descriptor: string): number | undefined {
+/**
+ * The kind each parameter arrives as, or `undefined` for a descriptor this machine cannot
+ * call: anything with a `long`, `float` or `double` in it, which needs slots it has no model
+ * for. An `int` is a value and everything else in the subset is a reference.
+ */
+function parameterKinds(descriptor: string): readonly ValueKind[] | undefined {
   const parsed = parseDescriptor(descriptor);
   if (parsed === undefined) {
     return undefined;
   }
-  const returnsIntOrVoid = parsed.returnType.kind === 'void' || isIntType(parsed.returnType);
-  if (!returnsIntOrVoid || !parsed.params.every(isIntType)) {
+  const returnable =
+    parsed.returnType.kind === 'void' ||
+    isIntType(parsed.returnType) ||
+    isReferenceType(parsed.returnType);
+  if (!returnable || !parsed.params.every((type) => isIntType(type) || isReferenceType(type))) {
     return undefined;
   }
-  return parsed.params.length;
+  return parsed.params.map((type) => (isIntType(type) ? 'int' : 'ref'));
+}
+
+/** A class or an array type — the two shapes a reference can have (JVMS §4.3.2). */
+function isReferenceType(type: JvmReturnType): boolean {
+  return type.kind === 'class' || type.kind === 'array';
+}
+
+/** The class a `new` or a `catch` names, resolved through its Class entry. */
+function classNameAt(pool: ConstantPool, index: number): string {
+  const entry = poolEntry(pool, index);
+  if (entry?.tag !== ConstantTag.Class) {
+    throw badPoolEntry(index, 'Class');
+  }
+  return utf8(pool, entry.nameIndex);
 }
 
 function parseDescriptor(descriptor: string): MethodDescriptor | undefined {

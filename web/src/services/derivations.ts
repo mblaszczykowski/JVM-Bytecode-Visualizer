@@ -15,7 +15,7 @@ import {
   type ConstantPool,
 } from '../core/classfile';
 import { arrayTypeName, lookupOpcode, T_INT, type Instruction } from '../core/disassembler';
-import type { ArrayObject, Snapshot, StackFrame } from '../core/interpreter';
+import type { ArrayObject, HeapObject, Snapshot, StackFrame } from '../core/interpreter';
 // int semantics live in one place: the explanations quote the interpreter, not a copy of it.
 import { iadd, idiv, imul, ineg, irem, isub } from '../core/interpreter/int32';
 
@@ -376,7 +376,7 @@ const ARITHMETIC: Readonly<
 function explain(
   instruction: Instruction,
   frame: StackFrame,
-  heap: readonly ArrayObject[],
+  heap: readonly HeapObject[],
   listing: MethodListing | undefined,
   pool: ConstantPool,
 ): string {
@@ -517,7 +517,7 @@ function explain(
 function explainArray(
   instruction: Instruction,
   frame: StackFrame,
-  heap: readonly ArrayObject[],
+  heap: readonly HeapObject[],
 ): string | undefined {
   const { mnemonic } = instruction;
   const top = frame.operandStack.at(-1);
@@ -569,18 +569,22 @@ function explainArray(
   }
 }
 
-/** The array a reference points at, or `undefined` for `null` and for a handle with no object. */
+/** The array a reference points at; `undefined` for `null`, an instance, or an unused handle. */
 function arrayAt(
-  heap: readonly ArrayObject[],
+  heap: readonly HeapObject[],
   reference: number | undefined,
 ): ArrayObject | undefined {
-  return reference === undefined ? undefined : heap[reference];
+  const object = reference === undefined ? undefined : heap[reference];
+  return object?.kind === 'int-array' ? object : undefined;
 }
 
-/** How a reference reads in a sentence: the array it names, or `null`. */
-function referenceText(heap: readonly ArrayObject[], reference: number | undefined): string {
-  const array = arrayAt(heap, reference);
-  return array === undefined ? 'null' : `int[${String(array.length)}]`;
+/** How a reference reads in a sentence: the object it names, or `null`. */
+function referenceText(heap: readonly HeapObject[], reference: number | undefined): string {
+  const object = reference === undefined ? undefined : heap[reference];
+  if (object === undefined) {
+    return 'null';
+  }
+  return object.kind === 'int-array' ? `int[${String(object.length)}]` : object.className;
 }
 
 /**
@@ -736,7 +740,7 @@ function localNameAt(listing: MethodListing, pc: number, slot: number): string |
   )?.name;
 }
 
-function describeSlot(frame: StackFrame, slot: number, heap: readonly ArrayObject[]): string {
+function describeSlot(frame: StackFrame, slot: number, heap: readonly HeapObject[]): string {
   const value = frame.locals[slot];
   // A reference slot holds a heap handle; the array behind it is what the reader wants.
   const shown =
