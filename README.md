@@ -22,7 +22,7 @@ machine execute it one instruction at a time.
 - **The machine state, panel by panel.** Source with the current line highlighted, the disassembly
   with the program counter, the call stack, the operand stack, the local variable slots — named from
   the `LocalVariableTable` when the class was compiled with `-g` — the heap when the program
-  allocates an array, and the console when it prints.
+  allocates an array or an object, and the console when it prints.
 - **Branch arcs.** Jump targets are drawn as arcs in the bytecode gutter, so a loop looks like a
   loop before you read a single offset.
 - **A "next instruction" card.** For the instruction about to execute: its effect on the operand
@@ -62,7 +62,7 @@ flowchart LR
     editor["Java editor"]
     bytes[".class bytes"] --> parser["Parser<br/>DataView cursor"]
     parser --> disasm["Disassembler<br/>Instruction list"]
-    disasm --> interp["Interpreter<br/>int subset, int arrays"]
+    disasm --> interp["Interpreter<br/>int subset, arrays, objects"]
     interp --> history["Snapshot history<br/>one per step"]
     history --> ui["React UI<br/>replay = index lookup"]
   end
@@ -103,9 +103,14 @@ The interpreter is the part that has to be right, so it is pinned from four dire
   rather than a transcription of them. The full javap dump is committed next to the fixture
   (`web/src/core/classfile/__fixtures__/Factorial.javap.txt`) so a reviewer can check the expected
   values without a JDK.
-- **The rest of the pyramid.** Around 800 unit and component tests, plus a Playwright suite that
+- **A corpus nobody here wrote.** 8,053 class files from ten Maven Central libraries — javac across
+  a decade, plus `kotlinc` and `scalac` — parsed and disassembled with zero failures, on every CI
+  run. It is also what measures the interpreter's reach rather than asserting it; see
+  [Scope and limitations](#scope-and-limitations).
+- **The rest of the pyramid.** Over a thousand unit and component tests, plus a Playwright suite that
   replays a recursive program end to end, scrubs into the recursion, opens a class with no entry
-  point in the explorer, rejects a non-class file and keeps the app usable afterwards.
+  point in the explorer, rejects a non-class file and keeps the app usable afterwards — and a second
+  end-to-end job that runs the editor against the compile service built from its own Dockerfile.
 
 Coverage thresholds are enforced by CI rather than by review: `web/src/core/**` must stay at 90%
 lines, branches and functions, configured in `web/vite.config.ts`.
@@ -138,37 +143,48 @@ puts every class file in them through the same parse → disassemble path the ap
 
 That is what "the parser reads the whole format" means here, and CI runs it on every change.
 
-**Execution is another matter, and the same corpus says so exactly.** 75.2% of those 1.17 million
-instructions are ones the interpreter implements — but a method runs only if _all_ of its
-instructions do, and the four most common it cannot run are `areturn`, `getfield`, `invokespecial`
-and `invokeinterface`. Those are objects. So of 8,053 real library classes, exactly **one** has a
-method this machine can start from. A class file from your own project will almost certainly open in
-the explorer and not replay, and the table below is here to make that predictable rather than
-surprising.
+**Execution is a narrower claim, and the same corpus measures it rather than guessing.** 91.5% of
+those 1.17 million instructions are ones the interpreter implements. That figure flatters, though,
+because a method replays only if _every_ instruction in it runs — so the number that matters is the
+one counted per method: **65.2% of the 88,604 methods (57,732 of them) consist entirely of
+implemented instructions.**
 
-What does replay is the shape of program the bundled examples are: 21 Java programs of the kind a
-tutorial or an interview question produces were compiled with `javac -g` and pushed through the same
-path. 11 replayed to completion; the other 10 stopped in ways predictable from the source.
+The most common instruction still outside the subset is `invokeinterface`, and behind it sit the
+things a second class file would be needed for. Which is the boundary in one sentence: **everything
+resolves inside the uploaded class.** Its own objects, constructors, instance methods and fields all
+run — `new ArrayList<>()` does not, and neither does `throw new IllegalStateException(...)`, not for
+want of an instruction but for want of a class to load. The table below makes that predictable
+rather than surprising.
+
+A separate limit decides whether a file replays at all: a run needs a static method it can enter,
+and a library class has none. Only one of the 8,053 has a `main` — which is a fact about libraries,
+not about the interpreter, and why the explorer matters as much as the transport.
 
 A file that does not replay is not a dead end. Parsing, the constant pool, the method table and the
 full listing of every method do not depend on execution, so the class opens in the explorer either
 way, and a run that stops midway keeps the history it recorded up to that point.
 
-| In the Java source                                                                  | In the bytecode                                | What the application does                                                                                                          |
-| ----------------------------------------------------------------------------------- | ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `new`, instance methods, instance and static fields                                 | `new`, `invokespecial`, `getfield`, `putfield` | Stops at the allocation or the field access.                                                                                       |
-| `long`, `float`, `double`                                                           | `ladd`, `fmul`, `dload`, two-slot locals       | Stops at the first such instruction; a method whose parameters are not all `int` cannot be called.                                 |
-| `throw new SomeException(...)`                                                      | `new`, `invokespecial`, then `athrow`          | Stops at the `new`. Catching works (below); it is _building_ the exception that needs objects.                                     |
-| Lambdas, method references, `"a" + b`                                               | `invokedynamic`                                | Stops at the call site. String concatenation compiles to `invokedynamic` on Java 9 and later.                                      |
-| Arrays of anything but `int`                                                        | `anewarray`, `multianewarray`, `baload`, …     | Stops at the allocation. The heap holds `int` arrays only.                                                                         |
-| Standard library calls beyond `Math` and `System.out`                               | `invokestatic`/`invokevirtual` on another type | Stops with `unsupported-call`. The recognised members are a table in `web/src/core/interpreter/externals.ts`; adding one is a row. |
-| No static `main` — a utility class, an interface, an enum, a record, a nested class | no entry point to run                          | Opens in the explorer with no run attached: the listing, the pool and the class header are all still there to read.                |
+| In the Java source                                                                                                         | In the bytecode                                         | What the application does                                                                                                          |
+| -------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| A type other than the one loaded — `new ArrayList<>()`, `throw new IllegalStateException(...)`, a second class of your own | `new`, `invokespecial`, `getfield` naming another class | Stops at the instruction that names it. Objects of the _loaded_ class work; there is no second class file to load.                 |
+| Static fields                                                                                                              | `putstatic`, `getstatic` outside the externals table    | Stops at the write. There is no class initialisation and no static state.                                                          |
+| `long`, `float`, `double`                                                                                                  | `ladd`, `fmul`, `dload`, two-slot locals                | Stops at the first such instruction; a method taking one cannot be called.                                                         |
+| Lambdas, method references, `"a" + b`                                                                                      | `invokedynamic`                                         | Stops at the call site. String concatenation compiles to `invokedynamic` on Java 9 and later.                                      |
+| Arrays of anything but `int`                                                                                               | `anewarray`, `multianewarray`, `baload`, …              | Stops at the allocation. The heap holds `int` arrays only.                                                                         |
+| Standard library calls beyond `Math` and `System.out`                                                                      | `invokestatic`/`invokevirtual` on another type          | Stops with `unsupported-call`. The recognised members are a table in `web/src/core/interpreter/externals.ts`; adding one is a row. |
+| No static `main` — a utility class, an interface, an enum, a record, a nested class                                        | no entry point to run                                   | Opens in the explorer with no run attached: the listing, the pool and the class header are all still there to read.                |
 
 The parts that hold regardless of which file is loaded:
 
-- **An `int`-scale machine.** `int` values, `int` arrays on a small heap, and opaque tokens for the
-  few external members it recognises. No `long`/`float`/`double`, no user-defined classes, no
-  instance or static fields, no threads, no lambdas, no bytecode verification.
+- **A single-class machine.** `int` values, `int` arrays and instances of the one class in the file,
+  on a small heap, plus opaque tokens for the few external members it recognises. No
+  `long`/`float`/`double`, no second class file, no inheritance beyond `Object`, no interfaces, no
+  static state, no threads, no lambdas, no bytecode verification.
+- **Objects of the loaded class.** `new`, the constructor, instance methods and instance fields all
+  run: an object's shape is fixed at allocation from the class's own field table, each field starts
+  at the default its descriptor names, and the heap panel draws the fields by name as the run writes
+  them — a linked list of the class shows up as the chain it is
+  ([ADR-0008](docs/adr/0008-objects-of-the-loaded-class.md)).
 - **The executable subset** is integer computation and control flow — constants, load/store, `iinc`,
   stack manipulation, integer arithmetic, shifts and bitwise operations, narrowing conversions, the
   `if<cond>`/`if_icmp<cond>` families, `goto`, `tableswitch`/`lookupswitch`, `wide`, `int` array
@@ -319,6 +335,11 @@ opened the JVM specification.
   because deserialising it lands on the thread the worker was meant to free. Batching splits that
   cost into tasks the browser can interleave: the longest main-thread stall drops from 403 ms to
   ~120 ms.
+- [**ADR-0008 — Objects, of the loaded class and no other.**](docs/adr/0008-objects-of-the-loaded-class.md)
+  The corpus measurement is what chose this over `long`/`double`: three of the four most common
+  instructions the interpreter could not run were one feature. The boundary is the one
+  `invokestatic` always had — everything resolves inside the uploaded class, because there is no
+  second class file to give another object a shape.
 - [**ADR-0007 — Exceptions the machine raises, caught without an object model.**](docs/adr/0007-exceptions-without-an-object-model.md)
   `try`/`catch` looked blocked behind `new`, until the observation that the exceptions a learner
   actually meets are never constructed by their code — the JVM raises them. Catching is the half
@@ -355,13 +376,14 @@ build in.
    channel for argument values, so a static `int` method that takes parameters is listed and marked
    rather than offered. `notRunnableReasonOf` in `web/src/services/program.ts` is the one place that
    has to change.
-2. **Objects and `invokevirtual`** — instance fields, `new`, `invokespecial`, and dynamic dispatch
-   shown as it resolves. It is also the other half of exceptions: catching them works, and
-   constructing one to throw is what `new` unlocks.
+2. **A second class file** — the one limit that now decides most outcomes. Loading a class by name
+   would let `new` and the call instructions resolve against something other than the file in front
+   of them, which is what `new ArrayList<>()`, `throw new MyException()` and interface dispatch are
+   all waiting on. ADR-0008 records why nothing built for objects has to change for it.
 3. **Shareable links** — a program and a step index encoded in the URL, so a run can be linked to
    mid-execution.
-4. **Other JVM languages** — Kotlin and Scala compile to the same bytecode; the constraint is the
-   instruction set, not the source language.
+4. **Other JVM languages** — Kotlin and Scala compile to the same bytecode, and the corpus already
+   parses both standard libraries; the constraint is the instruction set, not the source language.
 
 Three earlier items are done and are described above rather than here: arrays on a small heap
 (BubbleSort is a bundled example again), the everyday instruction set that uploads used to stop on

@@ -61,6 +61,11 @@ interface Scan {
   readonly majorVersions: ReadonlyMap<number, number>;
   readonly withRunnableEntry: number;
   readonly truncated: number;
+  /**
+   * Methods every one of whose instructions the interpreter implements. The honest measure of
+   * reach: a method replays only if all of it runs, so a per-instruction percentage flatters.
+   */
+  readonly fullyExecutableMethods: number;
 }
 
 function scanCorpus(files: readonly string[]): Scan {
@@ -71,6 +76,7 @@ function scanCorpus(files: readonly string[]): Scan {
   let instructions = 0;
   let withRunnableEntry = 0;
   let truncated = 0;
+  let fullyExecutableMethods = 0;
 
   for (const file of files) {
     let classFile: ClassFile;
@@ -102,9 +108,14 @@ function scanCorpus(files: readonly string[]): Scan {
         if (decoded.truncatedAtOffset !== undefined) {
           truncated += 1;
         }
+        let whole = decoded.instructions.length > 0;
         for (const instruction of decoded.instructions) {
           instructions += 1;
           opcodeCounts.set(instruction.opcode, (opcodeCounts.get(instruction.opcode) ?? 0) + 1);
+          whole &&= EXECUTABLE_OPCODES.has(instruction.opcode);
+        }
+        if (whole) {
+          fullyExecutableMethods += 1;
         }
       } catch (error) {
         failures.push({
@@ -126,6 +137,7 @@ function scanCorpus(files: readonly string[]): Scan {
     majorVersions,
     withRunnableEntry,
     truncated,
+    fullyExecutableMethods,
   };
 }
 
@@ -139,6 +151,7 @@ const NO_SCAN: Scan = {
   majorVersions: new Map(),
   withRunnableEntry: 0,
   truncated: 0,
+  fullyExecutableMethods: 0,
 };
 
 describe.skipIf(!hasCorpus)('the parser and disassembler against a real-world corpus', () => {
@@ -195,6 +208,9 @@ describe.skipIf(!hasCorpus)('the parser and disassembler against a real-world co
       instructions: scan.instructions,
       classFileMajorVersions: [...scan.majorVersions.keys()].sort((a, b) => a - b),
       classesWithRunnableEntry: scan.withRunnableEntry,
+      fullyExecutableMethods: scan.fullyExecutableMethods,
+      fullyExecutableMethodPercent:
+        Math.round((scan.fullyExecutableMethods / scan.methods) * 1000) / 10,
       distinctOpcodesSeen: distinctSeen,
       distinctOpcodesExecutable: distinctExecutable,
       instructionsExecutable: executable,
