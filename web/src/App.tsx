@@ -66,8 +66,10 @@ import {
   runPrintedOutput,
   runSummaryOf,
   topFrameOf,
+  type LoadedProgram,
   type MethodListing,
 } from './services/program';
+import type { ProgramContext } from './services/telemetry';
 import {
   defaultProgramRunner,
   isRunCancelled,
@@ -132,6 +134,27 @@ const SHORTCUTS: readonly ShortcutGroup[] = [
     ],
   },
 ];
+
+/**
+ * What a crash report is allowed to say about the loaded program.
+ *
+ * A bundled example is named, because it is ours and its id replays the run exactly. Anything
+ * the reader brought is a kind and a rounded size — the file name, the class name and the
+ * bytes stay in the tab, which is the promise the README makes about an upload.
+ */
+function telemetryContextOf(program: LoadedProgram): ProgramContext {
+  const { origin } = program;
+  switch (origin.kind) {
+    case 'example':
+      return { origin: 'example', exampleId: origin.entry.id };
+    case 'upload':
+      return { origin: 'upload', methods: program.methods.length };
+    case 'compiled':
+      // The source is the reader's own and was typed into this tab; only the fact that it was
+      // compiled here travels.
+      return { origin: 'compiled', methods: program.methods.length };
+  }
+}
 
 /** Below 768px the grid holds one panel; everywhere else all three columns are on screen. */
 function visibilityOf(panel: PanelName, selected: PanelName): string {
@@ -748,6 +771,11 @@ export function App({
       ) : canExplore ? (
         <ErrorBoundary
           key={`${program.sourceFileName}:${String(snapshots.length)}:${String(program.maxSteps)}`}
+          context={{
+            program: telemetryContextOf(program),
+            step: player.stepIndex,
+            totalSteps: player.stepCount,
+          }}
           fallback={(error) => (
             <div className="col-span-full row-span-full flex items-center justify-center p-6">
               <ErrorBanner

@@ -112,6 +112,33 @@ The interpreter is the part that has to be right, so it is pinned from four dire
   point in the explorer, rejects a non-class file and keeps the app usable afterwards — and a second
   end-to-end job that runs the editor against the compile service built from its own Dockerfile.
 
+## Running it in the open
+
+Two things a deployed build needs that a local one does not.
+
+**Failures reach someone.** `web/src/services/telemetry.ts` is one function, one payload type and
+one endpoint, off unless `VITE_TELEMETRY_URL` is set. Two constraints shaped it. The first is
+privacy: an uploaded `.class` never leaves the tab, and a crash report is exactly the sort of thing
+that quietly breaks such a promise — so the payload is a **closed union of scalars**, with no field
+a class file, a line of source or a pool string can be put in. That is a stronger guarantee than
+remembering to redact, and a test reads the bytes actually put on the wire to prove it. The second
+is that a report has to be actionable, which here costs almost nothing: runs are deterministic
+(ADR-0001), so for a bundled example an id and a step index reproduce the exact state that broke.
+
+**The bundle cannot drift.** ADR-0006 measured what this application costs a browser and changed the
+architecture on the strength of it, and then nothing enforced any of it. `npm run size -w web`
+checks each chunk's gzipped size against a budget set close to its current figure, and CI runs it
+after the build — a bundle grows a hundred kilobytes one reasonable-looking dependency at a time,
+and this makes the hundredth kilobyte a decision instead of an accident.
+
+```
+✓ index.js                   85.7 kB gzip /  95 kB  the application itself
+✓ react.js                   42.2 kB gzip /  48 kB  react + react-dom
+✓ motion.js                  44.1 kB gzip /  50 kB  framer-motion
+✓ index.css                  10.1 kB gzip /  14 kB  the whole stylesheet
+✓ run-program.worker.js      12.2 kB gzip /  16 kB  parser + interpreter
+```
+
 Coverage thresholds are enforced by CI rather than by review: `web/src/core/**` must stay at 90%
 lines, branches and functions, configured in `web/vite.config.ts`.
 

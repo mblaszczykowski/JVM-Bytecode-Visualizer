@@ -57,6 +57,13 @@ jobs:
       - name: Build
         run: npm run build
 
+      # ADR-0006 measured what this application costs a browser and changed the architecture on
+      # the strength of it; nothing enforced any of it afterwards. A bundle grows a hundred
+      # kilobytes one reasonable-looking dependency at a time, and this is what makes the
+      # hundredth kilobyte a decision rather than an accident.
+      - name: Check the bundle budget
+        run: npm run size -w web
+
   # The parser and the disassembler against eight thousand class files from Maven Central —
   # javac across a decade, plus kotlinc and scalac, which emit shapes javac never does. Every
   # other suite asserts against fixtures this repository built, and so can only find the cases
