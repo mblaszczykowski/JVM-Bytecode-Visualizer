@@ -109,6 +109,8 @@ function toStackFrame(frame: Frame): StackFrame {
     localNames: localNamesAt(frame.method, frame.pc),
     operandKinds: Object.freeze([...frame.operandKinds]),
     localKinds: Object.freeze([...frame.localKinds]),
+    operandOrigins: Object.freeze([...frame.operandOrigins]),
+    localOrigins: Object.freeze([...frame.localOrigins]),
   });
 }
 

@@ -35,6 +35,12 @@ interface StateColumnProps {
    * saying "no active frame" would describe a run that was never started.
    */
   readonly noRunNote?: string | undefined;
+  /**
+   * Seek the run to a step. The operand stack and the locals hand it the step that produced a
+   * value, so a cell can be followed back to the instruction it came from; omitted, neither
+   * panel offers it.
+   */
+  readonly onSeekToStep?: ((step: number) => void) | undefined;
   readonly className?: string;
 }
 
@@ -123,6 +129,7 @@ export function StateColumn({
   lastLiveFrames,
   summary,
   noRunNote,
+  onSeekToStep,
   className = '',
 }: StateColumnProps) {
   const topFrame = frames.at(-1);
@@ -155,6 +162,7 @@ export function StateColumn({
               frameIndex={0}
               heap={heap}
               caption={`Left behind by ${finalFrame?.methodName ?? 'the entry method'}`}
+              onSeekToStep={onSeekToStep}
             />
           </div>
           {/* What the program printed is part of what it produced; the payoff keeps it. */}
@@ -172,11 +180,17 @@ export function StateColumn({
               frameIndex={topIndex}
               annotations={operandAnnotations}
               heap={heap}
+              onSeekToStep={onSeekToStep}
             />
           </div>
           <Hairline />
           <div className={`${SECTION} ${hasHeap || hasConsole ? '' : LAST_SECTION}`}>
-            <LocalsPanel frame={topFrame} frameIndex={topIndex} heap={heap} />
+            <LocalsPanel
+              frame={topFrame}
+              frameIndex={topIndex}
+              heap={heap}
+              onSeekToStep={onSeekToStep}
+            />
           </div>
           {hasHeap ? (
             <>

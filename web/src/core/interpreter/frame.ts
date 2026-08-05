@@ -27,6 +27,18 @@ export interface PreparedMethod {
 }
 
 /**
+ * The step the machine is currently dispatching, shared by every frame of one run.
+ *
+ * Provenance is a fact about machine time, not about a frame: a value can be pushed onto a
+ * caller's stack by a callee returning. One mutable holder passed down at frame creation keeps
+ * `push` and `storeLocal` free of a step argument they would otherwise need at every one of
+ * their call sites.
+ */
+export interface RunClock {
+  step: number;
+}
+
+/**
  * Frame of the JVM stack (JVMS §2.6). Mutable during execution — snapshots take the
  * immutable copies the outside world sees.
  */
@@ -47,9 +59,18 @@ export interface Frame {
   readonly operandStack: number[];
   /** Kind of each cell of `operandStack`, pushed and popped with it. */
   readonly operandKinds: ValueKind[];
+  /**
+   * Step that pushed each cell of `operandStack`, pushed and popped with it. This is what lets
+   * a reader ask where a value came from rather than only what it is.
+   */
+  readonly operandOrigins: number[];
   readonly locals: (number | undefined)[];
   /** Kind of each slot of `locals`; `undefined` exactly where the slot is uninitialised. */
   readonly localKinds: (ValueKind | undefined)[];
+  /** Step that last wrote each slot; `undefined` exactly where the slot is uninitialised. */
+  readonly localOrigins: (number | undefined)[];
+  /** Shared with every other frame of the run — see `RunClock`. */
+  readonly clock: RunClock;
   /**
    * Bumped by every mutation of this frame. A snapshot reuses the frozen copy it already
    * emitted for an unchanged frame, which is what keeps a deep call stack from being copied
@@ -86,12 +107,19 @@ export function prepareMethod(method: MethodInfo, code: CodeAttribute): Prepared
  * the list rather than passing the arguments alone: each slot carries the kind it holds, and a
  * reference must not arrive looking like an int.
  */
-export function createFrame(method: PreparedMethod, args: readonly StackValue[]): Frame {
+export function createFrame(
+  method: PreparedMethod,
+  args: readonly StackValue[],
+  clock: RunClock,
+): Frame {
   const locals = new Array<number | undefined>(method.code.maxLocals).fill(undefined);
   const localKinds = new Array<ValueKind | undefined>(method.code.maxLocals).fill(undefined);
+  const localOrigins = new Array<number | undefined>(method.code.maxLocals).fill(undefined);
   for (let slot = 0; slot < args.length; slot += 1) {
     locals[slot] = args[slot]?.value;
     localKinds[slot] = args[slot]?.kind;
+    // The arguments were written by the call, so they date from the invoke, not from slot 0.
+    localOrigins[slot] = clock.step;
   }
   return {
     method,
@@ -99,8 +127,11 @@ export function createFrame(method: PreparedMethod, args: readonly StackValue[])
     currentPc: 0,
     operandStack: [],
     operandKinds: [],
+    operandOrigins: [],
     locals,
     localKinds,
+    localOrigins,
+    clock,
     version: 0,
   };
 }
@@ -113,6 +144,7 @@ export function createFrame(method: PreparedMethod, args: readonly StackValue[])
 export function clearOperandStack(frame: Frame): void {
   frame.operandStack.length = 0;
   frame.operandKinds.length = 0;
+  frame.operandOrigins.length = 0;
   frame.version += 1;
 }
 
@@ -124,6 +156,7 @@ export function setPc(frame: Frame, pc: number): void {
 export function push(frame: Frame, value: number, kind: ValueKind): void {
   frame.operandStack.push(value);
   frame.operandKinds.push(kind);
+  frame.operandOrigins.push(frame.clock.step);
   frame.version += 1;
 }
 
@@ -147,6 +180,7 @@ export function pop(frame: Frame, expected: ValueKind): number {
 export function popAny(frame: Frame): StackValue {
   const value = frame.operandStack.pop();
   const kind = frame.operandKinds.pop();
+  frame.operandOrigins.pop();
   if (value === undefined || kind === undefined) {
     throw new VmFault({ kind: 'invalid-state', message: 'operand stack underflow' });
   }
@@ -222,6 +256,7 @@ export function storeLocal(frame: Frame, slot: number, value: number, kind: Valu
   checkSlot(frame, slot);
   frame.locals[slot] = value;
   frame.localKinds[slot] = kind;
+  frame.localOrigins[slot] = frame.clock.step;
   frame.version += 1;
 }
 

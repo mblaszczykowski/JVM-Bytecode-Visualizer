@@ -1,5 +1,5 @@
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { fireEvent, render, screen, within } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
 
 import { consoleLinesOf } from '../services/program';
 
@@ -125,6 +125,52 @@ describe('StateColumn', () => {
 
     expect(sections()).toEqual(['Result', 'Locals', 'Console']);
     expect(screen.getByTestId('console-line').textContent).toBe('after: 1 2 3 4 5');
+  });
+
+  it('lets both the stack and the locals be followed back to where a value came from', () => {
+    const onSeekToStep = vi.fn();
+    render(
+      <StateColumn
+        frames={snapshotAt(sortingStep).callStack}
+        heap={heapAt(sortingStep)}
+        onSeekToStep={onSeekToStep}
+      />,
+    );
+
+    const stack = screen.getByRole('region', { name: 'Operand stack' });
+    const locals = screen.getByRole('region', { name: 'Locals' });
+    expect(within(stack).getAllByTestId('operand-origin').length).toBeGreaterThan(0);
+
+    // Slot 0 of the sort holds the array; it was written by the step that stored it.
+    fireEvent.click(within(locals).getByRole('button', { name: /where a was set to int\[5\]@0/ }));
+
+    expect(onSeekToStep).toHaveBeenCalledWith(23);
+  });
+
+  it('keeps the trail on the locals the finished run left behind', () => {
+    const step = terminalStep();
+    const onSeekToStep = vi.fn();
+    render(
+      <StateColumn
+        frames={snapshotAt(step).callStack}
+        heap={heapAt(step)}
+        lastLiveFrames={snapshotAt(step - 1).callStack}
+        summary={runSummary()}
+        onSeekToStep={onSeekToStep}
+      />,
+    );
+
+    // The run's answer is the one thing left on screen, and it still says where it came from.
+    fireEvent.click(screen.getByTestId('local-origin'));
+
+    expect(onSeekToStep).toHaveBeenCalledTimes(1);
+  });
+
+  it('offers no trail where the column was given no way to seek', () => {
+    render(<StateColumn frames={snapshotAt(sortingStep).callStack} heap={heapAt(sortingStep)} />);
+
+    expect(screen.queryByTestId('operand-origin')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('local-origin')).not.toBeInTheDocument();
   });
 
   it('renders no console output for a snapshot whose interpreter records none', () => {

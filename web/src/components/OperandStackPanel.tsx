@@ -2,8 +2,10 @@ import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 
 import type { HeapObject, StackFrame } from '../core/interpreter/types';
 
+import { referenceLabel } from './heap-view';
 import { EmptyState, Panel } from './Panel';
 import { ReferenceChip } from './ui/ReferenceChip';
+import { useRowNavigation } from './useRowNavigation';
 
 interface OperandStackPanelProps {
   /** Top frame of the current snapshot; `undefined` when the call stack is empty. */
@@ -20,6 +22,11 @@ interface OperandStackPanelProps {
    * is about to do with the value, or which later instruction is waiting for it.
    */
   readonly annotations?: readonly (string | undefined)[] | undefined;
+  /**
+   * Follow a cell back to the step that pushed it. Omitted, the origins stay data the panel
+   * does not offer to act on and no cell grows a control.
+   */
+  readonly onSeekToStep?: ((step: number) => void) | undefined;
 }
 
 /** Without a visible floor the list reads as cut off rather than as a stack. */
@@ -27,6 +34,15 @@ const BASE_LINE =
   'h-px flex-1 bg-[repeating-linear-gradient(90deg,rgb(255_255_255/0.16)_0_5px,transparent_5px_11px)]';
 
 const LABEL_COLUMN = 'w-[30px] shrink-0 text-legend tracking-[0.1em]';
+
+/**
+ * Where a value came from is not what the machine is doing now, so it is deliberately the
+ * quietest thing in the row: no fill until it is pointed at, one notch under the annotation,
+ * and identical on the top cell and below it — a treatment that changed with the state would
+ * read as a second accent (design §12).
+ */
+const ORIGIN_BUTTON =
+  'focus-ring shrink-0 rounded-[4px] px-[4px] font-ui text-micro text-white/50 transition-colors hover:bg-white/12 hover:text-white/85';
 
 /** Stable identity for the int-only runs, which never hand the panel a heap of their own. */
 const NO_HEAP: readonly HeapObject[] = [];
@@ -36,9 +52,26 @@ export function OperandStackPanel({
   frameIndex = 0,
   annotations,
   heap = NO_HEAP,
+  onSeekToStep,
 }: OperandStackPanelProps) {
   const reduced = useReducedMotion() ?? false;
   const duration = reduced ? 0 : 0.16;
+
+  /**
+   * Stack indices that know where they came from, ordered top-first like the list itself, so
+   * Up/Down move the way the cells are drawn. Built before the empty branch below because the
+   * roving tabindex over them is a hook.
+   *
+   * A snapshot is the state *before* its instruction runs, so an origin is always a step
+   * strictly earlier than the one on screen: following one can never be a jump to where the
+   * reader already is, and there is no no-op case to suppress.
+   */
+  const traceable = (frame?.operandStack ?? [])
+    .map((_, index) => index)
+    .filter((index) => frame?.operandOrigins?.[index] !== undefined)
+    .reverse();
+  const origins = useRowNavigation(traceable.length, 0, 'data-origin-row');
+  const originRow = new Map(traceable.map((index, position) => [index, position]));
 
   if (frame === undefined) {
     return (
@@ -73,6 +106,8 @@ export function OperandStackPanel({
               const annotation = annotations?.[index];
               // A reference is a heap handle; the array behind it is what the cell is about.
               const isReference = frame.operandKinds?.[index] === 'ref';
+              const origin = frame.operandOrigins?.[index];
+              const originPosition = originRow.get(index);
 
               return (
                 <motion.li
@@ -100,6 +135,32 @@ export function OperandStackPanel({
                       <span className="font-mono text-brand">{value}</span>
                     )}
                     <span className="grow" />
+                    {/* Left of the annotation, so the annotations keep their column at the
+                        edge of the row rather than jittering with the width of a step number. */}
+                    {origin === undefined ||
+                    originPosition === undefined ||
+                    onSeekToStep === undefined ? null : (
+                      <button
+                        type="button"
+                        data-testid="operand-origin"
+                        data-origin-row={originPosition}
+                        tabIndex={originPosition === origins.anchorIndex ? 0 : -1}
+                        aria-label={`Go to step ${String(origin + 1)}, where ${
+                          isReference ? referenceLabel(heap, value) : String(value)
+                        } was pushed`}
+                        onClick={() => {
+                          onSeekToStep(origin);
+                        }}
+                        onKeyDown={(event) => {
+                          origins.onKeyDown(event, originPosition);
+                        }}
+                        className={ORIGIN_BUTTON}
+                      >
+                        {/* 1-based, like the step counter and the shareable link: the
+                            history is indexed from 0 but nothing the reader sees is. */}
+                        {`from ${String(origin + 1)}`}
+                      </button>
+                    )}
                     {annotation === undefined ? null : (
                       <span
                         className={`shrink-0 font-ui text-micro ${

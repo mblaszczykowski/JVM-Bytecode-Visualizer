@@ -423,8 +423,10 @@ describe('a link into a run', () => {
 
     render(<App />);
 
-    expect(await screen.findByTestId('step-counter')).toHaveTextContent(
-      `step 1 / ${String(FACTORIAL_STEPS)}`,
+    await waitFor(() =>
+      expect(screen.getByTestId('step-counter')).toHaveTextContent(
+        `step 1 / ${String(FACTORIAL_STEPS)}`,
+      ),
     );
   });
 
@@ -434,8 +436,10 @@ describe('a link into a run', () => {
 
     render(<App />);
 
-    expect(await screen.findByTestId('step-counter')).toHaveTextContent(
-      `step 13 / ${String(FACTORIAL_STEPS)}`,
+    await waitFor(() =>
+      expect(screen.getByTestId('step-counter')).toHaveTextContent(
+        `step 13 / ${String(FACTORIAL_STEPS)}`,
+      ),
     );
   });
 
@@ -445,8 +449,10 @@ describe('a link into a run', () => {
 
     render(<App />);
 
-    expect(await screen.findByTestId('step-counter')).toHaveTextContent(
-      `step 1 / ${String(FACTORIAL_STEPS)}`,
+    await waitFor(() =>
+      expect(screen.getByTestId('step-counter')).toHaveTextContent(
+        `step 1 / ${String(FACTORIAL_STEPS)}`,
+      ),
     );
   });
 

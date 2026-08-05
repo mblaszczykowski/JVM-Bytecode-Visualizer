@@ -79,6 +79,13 @@ export interface StackFrame {
   readonly operandKinds?: readonly ValueKind[];
   /** Kind of each slot of `locals`, aligned by index; undefined = uninitialised slot. */
   readonly localKinds?: readonly (ValueKind | undefined)[];
+  /**
+   * Step that pushed each cell of `operandStack`, aligned by index — where the value came from,
+   * as opposed to what it is. Optional for the same reason as the kind arrays above.
+   */
+  readonly operandOrigins?: readonly number[];
+  /** Step that last wrote each slot of `locals`; undefined = uninitialised slot. */
+  readonly localOrigins?: readonly (number | undefined)[];
 }
 
 /**

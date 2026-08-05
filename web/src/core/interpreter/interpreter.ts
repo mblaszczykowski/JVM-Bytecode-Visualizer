@@ -38,6 +38,7 @@ import {
   setPc,
   storeLocal,
   type Frame,
+  type RunClock,
   type PreparedMethod,
   type StackValue,
 } from './frame';
@@ -106,12 +107,14 @@ export function execute(classFile: ClassFile, options: ExecuteOptions = {}): Exe
   const writer = new SnapshotWriter();
   const prepared = new Map<MethodInfo, PreparedMethod>();
 
+  // One clock for the whole run: every frame stamps the values it produces with it.
+  const clock: RunClock = { step: 0 };
   let entryFrame: Frame;
   try {
     // Preparing the entry method is the one step outside the run loop that can fault (an
     // unverifiable branch target), so it needs the same handling — without this `execute()`
     // would throw a `VmFault` at its caller instead of returning a result.
-    entryFrame = createFrame(prepare(prepared, entry.method, entry.code), []);
+    entryFrame = createFrame(prepare(prepared, entry.method, entry.code), [], clock);
   } catch (error) {
     return failedRun(error, snapshots, 0, entry.method.name);
   }
@@ -121,6 +124,7 @@ export function execute(classFile: ClassFile, options: ExecuteOptions = {}): Exe
     prepared,
     maxCallDepth: atLeastOne(options.maxCallDepth, DEFAULT_MAX_CALL_DEPTH),
     callStack: [entryFrame],
+    clock,
     heap: new Heap(),
     console: new ConsoleOutput(),
     externals: new ExternalPool(),
@@ -151,6 +155,10 @@ export function execute(classFile: ClassFile, options: ExecuteOptions = {}): Exe
       // Advance before dispatching: a call pushed by this instruction must leave the caller
       // pointing at its continuation, which is where the frame resumes after the callee returns.
       frame.currentPc = offset;
+      // The snapshot just pushed is the state before this instruction, so anything the dispatch
+      // below produces is stamped with its index — the step a reader is sent to when they ask
+      // where a value came from.
+      clock.step = snapshots.length - 1;
       setPc(frame, fetched.nextOffset);
       step(machine, frame, fetched.instruction);
     } catch (error) {
@@ -372,6 +380,8 @@ interface Machine extends MachineState {
   readonly prepared: Map<MethodInfo, PreparedMethod>;
   readonly maxCallDepth: number;
   readonly callStack: Frame[];
+  /** The run's clock, so a call can stamp the callee's arguments with the invoke's step. */
+  readonly clock: RunClock;
   /** Shared by every frame of the run, and never unwound (JVMS §2.5.3). */
   readonly heap: Heap;
   /** What the program has printed, in the order it printed it. */
@@ -1168,7 +1178,9 @@ function callWithin(
     slots.unshift(popReference(frame));
   }
 
-  machine.callStack.push(createFrame(prepare(machine.prepared, method, code), slots));
+  machine.callStack.push(
+    createFrame(prepare(machine.prepared, method, code), slots, machine.clock),
+  );
 }
 
 function prepare(

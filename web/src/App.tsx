@@ -843,6 +843,7 @@ export function App({
             lastLiveFrames={lastLive?.callStack}
             summary={summary}
             consoleLines={consoleLines}
+            onSeekToStep={seekTo}
             noRunNote={snapshots.length === 0 ? NO_RUN_NOTE : undefined}
             className={`md:col-span-2 lg:col-span-1 ${visibilityOf('state', visiblePanel)}`}
           />

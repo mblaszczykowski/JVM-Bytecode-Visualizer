@@ -1,5 +1,5 @@
-import { render, screen, within } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { fireEvent, render, screen, within } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
 
 import type { StackFrame } from '../core/interpreter/types';
 
@@ -9,7 +9,7 @@ import {
   heapAt,
   operandRolesAt as bubbleSortRolesAt,
 } from './__fixtures__/bubble-sort-run';
-import { firstStepOf, frameAt, operandRolesAt } from './__fixtures__/factorial-run';
+import { firstStepOf, frameAt, operandRolesAt, snapshots } from './__fixtures__/factorial-run';
 import { OperandStackPanel } from './OperandStackPanel';
 
 /** factorial(4) just before its `isub`: the stack holds [4, 4, 1] from base to top. */
@@ -115,5 +115,87 @@ describe('OperandStackPanel', () => {
     render(<OperandStackPanel frame={nullReferenceFrame} />);
 
     expect(within(cellAt(0)).getByTestId('ref-chip')).toHaveTextContent('null');
+  });
+
+  describe('where a value came from', () => {
+    it('seeks to the step that pushed the cell', () => {
+      const onSeekToStep = vi.fn();
+      render(<OperandStackPanel frame={frameWithValues} onSeekToStep={onSeekToStep} />);
+
+      // [4, 4, 1] from base to top, pushed by three consecutive steps.
+      expect(frameWithValues?.operandOrigins).toEqual([5, 6, 7]);
+      fireEvent.click(within(cellAt(0)).getByRole('button'));
+
+      expect(onSeekToStep).toHaveBeenCalledWith(7);
+    });
+
+    it('names the value and the destination for a screen reader', () => {
+      render(<OperandStackPanel frame={frameWithValues} onSeekToStep={vi.fn()} />);
+
+      expect(
+        within(cellAt(0)).getByRole('button', { name: 'Go to step 8, where 1 was pushed' }),
+      ).toBeInTheDocument();
+    });
+
+    it('says what a reference cell is rather than the handle it holds', () => {
+      const step = bubbleSortStepOf('iaload');
+      render(
+        <OperandStackPanel
+          frame={bubbleSortFrameAt(step)}
+          heap={heapAt(step)}
+          onSeekToStep={vi.fn()}
+        />,
+      );
+
+      expect(
+        within(cellAt(1)).getByRole('button', { name: /where int\[5\]@0 was pushed/ }),
+      ).toBeInTheDocument();
+    });
+
+    it('offers nothing on a cell whose origin the frame does not carry', () => {
+      // A frame assembled without provenance — every cell is a value with no history.
+      render(<OperandStackPanel frame={nullReferenceFrame} onSeekToStep={vi.fn()} />);
+
+      expect(screen.queryByTestId('operand-origin')).not.toBeInTheDocument();
+    });
+
+    it('renders no affordance at all without a way to seek', () => {
+      render(<OperandStackPanel frame={frameWithValues} annotations={operandRolesAt(isubStep)} />);
+
+      expect(screen.queryByTestId('operand-origin')).not.toBeInTheDocument();
+      expect(within(screen.getByRole('list')).queryByRole('button')).not.toBeInTheDocument();
+    });
+
+    /**
+     * A snapshot is the state before its instruction runs, so nothing on the stack can have
+     * been produced by the step on screen. The affordance therefore never leads to where the
+     * reader already is, and no cell has to be rendered inert.
+     */
+    it('never points at the step being viewed', () => {
+      for (const [step] of snapshots().entries()) {
+        const view = render(<OperandStackPanel frame={frameAt(step)} onSeekToStep={vi.fn()} />);
+
+        for (const button of screen.queryAllByTestId('operand-origin')) {
+          // The label is 1-based, like the step counter; the invariant is about the index.
+          const target = Number(/from (\d+)/.exec(button.textContent)?.[1]) - 1;
+          expect(target).toBeLessThan(step);
+        }
+        view.unmount();
+      }
+    });
+
+    it('takes one tab stop and moves the focus down the stack with the arrow keys', () => {
+      render(<OperandStackPanel frame={frameWithValues} onSeekToStep={vi.fn()} />);
+
+      // The top of the stack is where attention already is, so it holds the tab stop.
+      const top = within(cellAt(0)).getByTestId('operand-origin');
+      const below = within(cellAt(1)).getByTestId('operand-origin');
+      expect(top).toHaveAttribute('tabindex', '0');
+      expect(below).toHaveAttribute('tabindex', '-1');
+
+      fireEvent.keyDown(top, { key: 'ArrowDown' });
+
+      expect(below).toHaveFocus();
+    });
   });
 });
