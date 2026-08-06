@@ -18,7 +18,12 @@ machine execute it one instruction at a time.
   rather than being turned away.
 - **Deterministic replay.** The whole run is recorded before anything is drawn, so play, pause, step
   forward, step back and scrubbing are all the same operation: an index into an array. Speeds run
-  from 0.5x to 8x; space, arrow keys, Home and End drive the transport from the keyboard.
+  from 0.5x to 8x; space, arrow keys, Home and End drive the transport from the keyboard, and `?`
+  lists the rest.
+- **Debugger stepping over a recording.** Step over runs to the next step no deeper than this one —
+  past a call and over its whole callee — and step out to the step at which the current frame has
+  returned. Where the history holds no such step the control is disabled rather than jumping to
+  whichever step happens to be last.
 - **The machine state, panel by panel.** Source with the current line highlighted, the disassembly
   with the program counter, the call stack, the operand stack, the local variable slots — named from
   the `LocalVariableTable` when the class was compiled with `-g` — the heap when the program
@@ -29,7 +34,16 @@ machine execute it one instruction at a time.
   stack, a sentence about the concrete values it will touch, and — for instructions with a constant
   pool operand — the resolution chain, e.g. `#7 → Methodref → Factorial.factorial:(I)I`.
 - **A depth chart under the scrubber.** Call stack depth across the entire run, which makes
-  recursion visible as a shape you can click into.
+  recursion visible as a shape you can click into, marked with the calls, returns, taken branches,
+  heap writes and printed lines — so the track is a map of the run rather than a progress bar.
+- **Where a value came from.** Every cell of the operand stack and every local slot carries the step
+  that produced it, and following it seeks the run there. A live debugger cannot answer that; a
+  recording can, and this one keeps every step.
+- **A link to a moment.** `#/bubble-sort/248` addresses a step of a run, so a question about one
+  instruction can be sent as the run standing on it. Only the bundled examples are addressable — an
+  uploaded `.class` never leaves the tab.
+- **A glossary where the words are.** Every panel header whose term needs explaining carries a way
+  into it, and `docs/jvm-primer.md` is the long form behind them.
 
 ![Mid-run: the console filling line by line as `invokevirtual` resolves `PrintStream.println`](docs/screenshots/console.png)
 
@@ -407,15 +421,14 @@ build in.
    would let `new` and the call instructions resolve against something other than the file in front
    of them, which is what `new ArrayList<>()`, `throw new MyException()` and interface dispatch are
    all waiting on. ADR-0008 records why nothing built for objects has to change for it.
-3. **Shareable links** — a program and a step index encoded in the URL, so a run can be linked to
-   mid-execution.
-4. **Other JVM languages** — Kotlin and Scala compile to the same bytecode, and the corpus already
+3. **Other JVM languages** — Kotlin and Scala compile to the same bytecode, and the corpus already
    parses both standard libraries; the constraint is the instruction set, not the source language.
 
-Three earlier items are done and are described above rather than here: arrays on a small heap
-(BubbleSort is a bundled example again), the everyday instruction set that uploads used to stop on
-(shifts and bitwise operations, `switch`, `System.out.println` and the static `Math` methods), and
-the explorer that opens a class file whether or not anything in it can run.
+Earlier items are done and are described above rather than here: arrays on a small heap (BubbleSort
+is a bundled example again), the everyday instruction set that uploads used to stop on (shifts and
+bitwise operations, `switch`, `System.out.println` and the static `Math` methods), the explorer that
+opens a class file whether or not anything in it can run, and shareable links — `#/bubble-sort/248`
+addresses a step of a run, so a moment can be linked to rather than described.
 
 ![Bubble sort mid-run: the heap panel shows the array being reordered, with the element the current `iastore` writes highlighted](docs/screenshots/bubble-sort.png)
 
