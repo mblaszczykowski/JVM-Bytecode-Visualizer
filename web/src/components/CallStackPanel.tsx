@@ -80,7 +80,7 @@ export function CallStackPanel({ frames }: CallStackPanelProps) {
           detail="Execution finished: returning from the entry method popped the last frame."
         />
       ) : (
-        <ol data-testid="call-frame-list" className="flex flex-col-reverse gap-[5px] px-[10px]">
+        <ol data-testid="call-frame-list" className="flex flex-col-reverse gap-[3px] px-[8px]">
           {/* `popLayout` takes the returning frame out of flow, so the stack below stays put. */}
           <AnimatePresence initial={false} mode="popLayout">
             {rows.map((row) => {
@@ -93,7 +93,7 @@ export function CallStackPanel({ frames }: CallStackPanelProps) {
                       onClick={() => {
                         setExpanded(true);
                       }}
-                      className="focus-ring w-full rounded-row px-[13px] py-[7px] text-left text-meta text-white/55 hover:text-white/80"
+                      className="focus-ring w-full rounded-row px-[10px] py-[5px] text-left text-meta text-fg-3 transition-colors duration-150 hover:text-fg-2"
                     >
                       … {row.count} more frames
                     </button>
@@ -118,17 +118,15 @@ export function CallStackPanel({ frames }: CallStackPanelProps) {
                   data-frame-index={index}
                   aria-current={isTop ? 'true' : undefined}
                   title={`${frame.methodName}${frame.methodDescriptor}`}
-                  className={`flex items-center gap-2 rounded-row px-[13px] py-[9px] text-label ${
-                    isTop
-                      ? 'bg-accent/[0.26] text-accent-text shadow-current-strong'
-                      : 'bg-white/5 text-white/70'
+                  className={`flex items-center gap-2 rounded-row px-[10px] py-[6px] text-label ${
+                    isTop ? 'now-row text-accent-text' : 'bg-raised text-fg-2'
                   }`}
                 >
-                  <span className="w-3 shrink-0 font-mono text-micro text-white/40">{index}</span>
+                  <span className="w-3 shrink-0 font-mono text-micro text-fg-3">{index}</span>
                   <span className="truncate font-medium">{frame.methodName}</span>
                   <span className="grow" />
                   {argument === undefined ? null : (
-                    <span className="shrink-0 font-mono text-meta text-white/55">{argument}</span>
+                    <span className="shrink-0 font-mono text-meta text-fg-3">{argument}</span>
                   )}
                   {isTop ? <Pill tone="accent">pc {frame.pc}</Pill> : null}
                 </motion.li>

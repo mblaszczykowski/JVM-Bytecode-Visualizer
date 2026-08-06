@@ -18,8 +18,8 @@ interface FigureProps {
 function Figure({ label, value }: FigureProps) {
   return (
     <div className="flex items-baseline justify-between gap-3">
-      <span className="text-meta text-white/55">{label}</span>
-      <span className="font-mono text-body text-white/90 tabular-nums">{value}</span>
+      <span className="text-meta text-fg-3">{label}</span>
+      <span className="font-mono text-body text-fg tabular-nums">{value}</span>
     </div>
   );
 }
@@ -44,7 +44,7 @@ export function CompletionCard({ summary, heap = NO_HEAP }: CompletionCardProps)
   return (
     <Panel title="Result" meta="run complete" variant="state" scrolls={false} className="grow">
       <div data-testid="completion-card" className="px-[10px] pb-[4px]">
-        <div className="rounded-row bg-accent/[0.22] px-[13px] py-[11px] shadow-current">
+        <div className="rounded-row bg-accent/12 px-[12px] py-[10px] shadow-current">
           <div className="flex items-baseline gap-2">
             <span className="font-mono text-code text-accent-soft">{resultName}</span>
             <span className="font-mono text-code text-accent-soft/70">=</span>
@@ -63,8 +63,8 @@ export function CompletionCard({ summary, heap = NO_HEAP }: CompletionCardProps)
         </div>
 
         {heap.length === 0 ? null : (
-          <div className="mt-[10px] rounded-row bg-white/5 px-[13px] py-[10px]">
-            <p className="pb-[8px] text-meta text-white/55">Heap as the run left it</p>
+          <div className="mt-[10px] rounded-row bg-raised px-[13px] py-[10px]">
+            <p className="pb-[8px] text-meta text-fg-3">Heap as the run left it</p>
             {/* The card itself does not scroll, so a heap with a lot on it scrolls here. */}
             <ol className="scroll-slim flex max-h-[150px] flex-col gap-[12px] overflow-y-auto">
               {heap.map((object, handle) =>
@@ -78,7 +78,7 @@ export function CompletionCard({ summary, heap = NO_HEAP }: CompletionCardProps)
           </div>
         )}
 
-        <div className="mt-[10px] flex flex-col gap-[7px] rounded-row bg-white/5 px-[13px] py-[10px]">
+        <div className="mt-[10px] flex flex-col gap-[7px] rounded-row bg-raised px-[13px] py-[10px]">
           <Figure label="Steps executed" value={totalSteps.toLocaleString('en-US')} />
           <Figure label="Deepest call stack" value={`${String(maxDepth)} frames`} />
         </div>

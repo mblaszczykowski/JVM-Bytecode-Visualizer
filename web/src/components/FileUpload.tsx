@@ -11,17 +11,20 @@ interface FileUploadProps {
 
 /**
  * `compact` pulls its own padding back out of the flow (`-my-1`). The padding is there to give
- * the drag highlight some body around the pill, but as the tallest thing in the toolbar it
- * would otherwise set the row height and cost the header the ~56px of design.md §6.1.
+ * the drag highlight some body around the control, but as the tallest thing in the toolbar it
+ * would otherwise set the row height and cost the header its ~48px.
+ *
+ * `zone` used to be a 140px panel holding one button and one line of text — the largest object
+ * on the welcome screen, for the way in that almost nobody takes. It is a strip now.
  */
 const CONTAINER: Record<FileUploadVariant, string> = {
-  compact: '-my-1 flex shrink-0 items-center gap-2 rounded-full p-1',
-  zone: 'flex flex-col items-center gap-2 rounded-panel px-6 py-7 shadow-panel',
+  compact: '-my-1 flex shrink-0 items-center gap-2 rounded-control p-1',
+  zone: 'flex flex-wrap items-center justify-center gap-x-3 gap-y-1 rounded-panel px-5 py-4 shadow-panel',
 };
 
 const IDLE_SURFACE: Record<FileUploadVariant, string> = {
   compact: '',
-  zone: 'bg-white/[0.03]',
+  zone: 'bg-panel',
 };
 
 export function FileUpload({ onFileSelected, variant = 'compact' }: FileUploadProps) {
@@ -80,27 +83,21 @@ export function FileUpload({ onFileSelected, variant = 'compact' }: FileUploadPr
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       // The input itself is `sr-only`, so the focus ring has to be drawn around the label.
-      className={`focus-ring-within ${CONTAINER[variant]} transition-colors ${
-        isDragging ? 'bg-accent/[0.22]' : IDLE_SURFACE[variant]
+      className={`focus-ring-within ${CONTAINER[variant]} transition-colors duration-150 ${
+        isDragging ? 'bg-accent/12' : IDLE_SURFACE[variant]
       }`}
     >
       <label
         htmlFor={inputId}
-        className="text-label cursor-pointer rounded-full bg-white/9 px-3 py-1.5 text-white/80 shadow-control-raised transition-colors hover:bg-white/15"
+        className="text-label cursor-pointer rounded-control bg-raised px-[10px] py-[5px] text-fg shadow-control-raised transition-colors duration-150 hover:bg-raised-hover"
       >
         Open .class…
       </label>
       {variant === 'zone' ? (
-        <span className="text-meta text-white/55">
+        <span className="text-meta text-fg-3">
           or drop a .class file here — up to 512 KiB, parsed in this tab
         </span>
-      ) : (
-        // From `lg` up only, and deliberately: below that the 85px it costs comes straight out
-        // of the toolbar's example rail, and the whole sheet takes a drop anyway.
-        <span className="text-meta hidden whitespace-nowrap text-white/55 lg:inline">
-          or drop it here
-        </span>
-      )}
+      ) : null}
       <input
         id={inputId}
         type="file"

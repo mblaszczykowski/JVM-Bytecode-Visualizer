@@ -22,7 +22,7 @@ export function GlossaryButton({ term }: { readonly term: GlossaryTermId }) {
       onClick={() => {
         openGlossary(term);
       }}
-      className="focus-ring flex h-4 w-4 shrink-0 items-center justify-center self-center rounded-full bg-white/6 text-micro leading-none text-white/45 transition-colors hover:bg-white/15 hover:text-white/85"
+      className="focus-ring flex h-4 w-4 shrink-0 items-center justify-center self-center rounded-full bg-raised text-micro leading-none text-fg-3 transition-colors duration-150 hover:bg-raised-active hover:text-fg"
     >
       <span aria-hidden="true">?</span>
       <span className="sr-only">{question}</span>
@@ -55,7 +55,7 @@ export function GlossaryLink({
       onClick={() => {
         openGlossary(term);
       }}
-      className="focus-ring rounded-[3px] underline decoration-white/25 decoration-dotted underline-offset-[3px] transition-colors hover:text-white/60 hover:decoration-white/60"
+      className="focus-ring rounded-[3px] underline decoration-fg-dim decoration-dotted underline-offset-[3px] transition-colors duration-150 hover:text-fg-2 hover:decoration-fg-2"
     >
       {text}
     </button>

@@ -3,8 +3,22 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="color-scheme" content="dark" />
-    <meta name="theme-color" content="#0b0d13" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f4f5f7" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#08090a" />
+    <!--
+      Applies the stored theme before the first paint. It has to be inline and it has to be
+      here: anything loaded as a module runs after the document has already been painted, and
+      a reader who chose dark would watch a white page flash on the way in.
+    -->
+    <script>
+      try {
+        var t = localStorage.getItem('jbv:theme');
+        if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
+      } catch (e) {
+        /* Site data blocked: the theme falls back to the system preference. */
+      }
+    </script>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>JVM Bytecode Visualizer — step through Java bytecode</title>
     <meta

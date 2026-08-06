@@ -7,7 +7,12 @@ interface CurrentRowHighlightProps {
   readonly animate: boolean;
 }
 
-const FILL = 'absolute inset-0 -z-10 rounded-code bg-accent/[0.22] shadow-current';
+/**
+ * The same mark the top frame and the top of the operand stack wear: a wash plus a rail on the
+ * leading edge. The reader is tracking one position across three columns, so it has to be one
+ * mark — `now-row` is where it is defined.
+ */
+const FILL = 'now-row absolute inset-0 -z-10 rounded-code';
 
 /**
  * Accent fill behind the current code row. It is a sibling of the row content rather than a

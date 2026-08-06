@@ -29,7 +29,7 @@ function Prose({ text }: { readonly text: string }) {
         index % 2 === 0 ? (
           part
         ) : (
-          <code key={index} className="font-mono text-label text-white/85">
+          <code key={index} className="font-mono text-label text-fg">
             {part}
           </code>
         ),
@@ -54,10 +54,10 @@ function TermButton({ term, selected, onSelect, className = '', children }: Term
       onClick={() => {
         onSelect(term);
       }}
-      className={`focus-ring shrink-0 rounded-full px-[11px] text-left text-label transition-colors ${
+      className={`focus-ring shrink-0 rounded-control px-[11px] text-left text-label transition-colors ${
         selected
-          ? 'bg-white/[0.16] text-white/90 shadow-control-raised'
-          : 'text-white/55 hover:bg-white/8 hover:text-white/80'
+          ? 'bg-raised-active text-fg shadow-control-raised'
+          : 'text-fg-3 hover:bg-raised hover:text-fg'
       } ${className}`}
     >
       {children}
@@ -137,7 +137,7 @@ function GlossarySheet({ initialTerm }: { readonly initialTerm: GlossaryTermId }
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-[16px] sm:p-[28px]">
-      <div aria-hidden="true" onClick={closeGlossary} className="absolute inset-0 bg-black/60" />
+      <div aria-hidden="true" onClick={closeGlossary} className="absolute inset-0 bg-scrim" />
 
       <div
         ref={sheetRef}
@@ -146,23 +146,20 @@ function GlossarySheet({ initialTerm }: { readonly initialTerm: GlossaryTermId }
         aria-labelledby="glossary-title"
         data-testid="glossary"
         tabIndex={-1}
-        className="relative flex max-h-full w-full max-w-[860px] flex-col overflow-hidden rounded-shell bg-app/95 shadow-shell outline-none"
+        className="relative flex max-h-full w-full max-w-[860px] flex-col overflow-hidden rounded-panel bg-overlay shadow-overlay outline-none"
       >
         <header className="flex shrink-0 items-baseline justify-between gap-3 px-[18px] pt-[16px] pb-[12px]">
-          <h2
-            id="glossary-title"
-            className="text-title font-semibold tracking-[-0.015em] text-white/95"
-          >
+          <h2 id="glossary-title" className="text-title font-semibold tracking-[-0.015em] text-fg">
             Glossary
           </h2>
           <div className="flex items-baseline gap-3">
-            <span className="hidden font-mono text-meta text-white/32 sm:inline">
+            <span className="hidden font-mono text-meta text-fg-3 sm:inline">
               the words on these panels
             </span>
             <button
               type="button"
               onClick={closeGlossary}
-              className="focus-ring shrink-0 rounded-full bg-white/9 px-3 py-1 text-label text-white/70 transition-colors hover:bg-white/15"
+              className="focus-ring shrink-0 rounded-control bg-raised px-3 py-1 text-label text-fg-2 transition-colors hover:bg-raised-active"
             >
               Close
             </button>
@@ -191,25 +188,25 @@ function GlossarySheet({ initialTerm }: { readonly initialTerm: GlossaryTermId }
           <article
             data-testid="glossary-entry"
             data-term={entry.id}
-            className="scroll-slim min-h-0 flex-1 overflow-auto rounded-panel bg-white/[0.045] px-[18px] py-[15px] shadow-panel"
+            className="scroll-slim min-h-0 flex-1 overflow-auto rounded-panel bg-raised px-[18px] py-[15px] shadow-panel"
           >
-            <h3 className="text-brand font-semibold text-white/90">{entry.term}</h3>
+            <h3 className="text-brand font-semibold text-fg">{entry.term}</h3>
 
             {entry.paragraphs.map((paragraph, index) => (
-              <p key={index} className="mt-[10px] text-body text-white/60">
+              <p key={index} className="mt-[10px] text-body text-fg-2">
                 <Prose text={paragraph} />
               </p>
             ))}
 
             <div className="mt-[14px] flex flex-wrap items-baseline gap-[6px]">
-              <span className="text-meta text-white/32">See also</span>
+              <span className="text-meta text-fg-3">See also</span>
               {entry.related.map((related) => (
                 <TermButton
                   key={related}
                   term={related}
                   selected={false}
                   onSelect={setTermId}
-                  className="bg-white/6 py-[3px]"
+                  className="bg-raised py-[3px]"
                 >
                   {glossaryEntry(related).term}
                 </TermButton>
@@ -217,11 +214,10 @@ function GlossarySheet({ initialTerm }: { readonly initialTerm: GlossaryTermId }
             </div>
 
             {/* The long form is the authority; this is its abstract. */}
-            <p className="mt-[10px] text-meta leading-[16px] text-white/45">
-              Full treatment in <code className="font-mono text-white/60">docs/jvm-primer.md</code>{' '}
-              §{entry.primer.section} — <Prose text={entry.primer.title} />, with the worked
-              examples and the <code className="font-mono text-white/60">javap</code> output to
-              check it against.
+            <p className="mt-[10px] text-meta leading-[16px] text-fg-3">
+              Full treatment in <code className="font-mono text-fg-2">docs/jvm-primer.md</code> §
+              {entry.primer.section} — <Prose text={entry.primer.title} />, with the worked examples
+              and the <code className="font-mono text-fg-2">javap</code> output to check it against.
             </p>
           </article>
         </div>

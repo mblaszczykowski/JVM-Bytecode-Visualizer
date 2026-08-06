@@ -197,6 +197,6 @@ export const TOKEN_CLASS: Record<TokenKind, string> = {
   method: 'text-syntax-method',
   type: 'text-syntax-type',
   number: 'text-syntax-number',
-  comment: 'text-white/32',
+  comment: 'text-fg-3',
   text: '',
 };

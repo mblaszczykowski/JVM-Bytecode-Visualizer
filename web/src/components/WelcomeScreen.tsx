@@ -51,7 +51,7 @@ function DepthSparkline({ preview }: { readonly preview: RunPreview }) {
         <span
           key={bucket}
           data-testid="welcome-sparkline-bar"
-          className="min-h-px flex-1 rounded-[1px] bg-white/25 transition-colors group-hover:bg-accent/70"
+          className="min-h-px flex-1 rounded-[1px] bg-fg-dim transition-colors group-hover:bg-accent"
           style={{ height: `${String((depth / scale) * 100)}%` }}
         />
       ))}
@@ -86,33 +86,36 @@ export function WelcomeScreen({
           The 18px band the padding reserves is what the `fade-y` mask eats when nothing is
           clipped. */}
       <div className="m-auto flex w-full max-w-[1080px] flex-col gap-[18px] py-[18px]">
-        <header className="max-w-[680px]">
-          <h2 className="text-display font-semibold tracking-[-0.02em] text-white/95">
+        <header className="max-w-[820px]">
+          <h2 className="text-display font-semibold tracking-[-0.028em] text-fg">
             Watch a Java program run,
             <br />
             one bytecode instruction at a time.
           </h2>
-          <p className="mt-[12px] text-body text-white/55">
-            A <code className="font-mono text-white/75">.class</code> file is parsed, disassembled
-            and executed here in the browser — no server, no upload. The whole run is recorded, so
-            you can play it back like a video and watch the call stack, the operand stack and every
+          {/* Its own measure rather than the header's: 38px type wants a wide column and 13px
+              prose does not, and one width for both leaves the paragraph too long to track. */}
+          <p className="mt-[14px] max-w-[64ch] text-body text-fg-2">
+            A <code className="font-mono text-fg">.class</code> file is parsed, disassembled and
+            executed here in the browser — no server, no upload. The whole run is recorded, so you
+            can play it back like a video and watch the call stack, the operand stack and every
             local variable slot change.
           </p>
         </header>
 
-        <ul className="grid gap-[10px] sm:grid-cols-3">
-          {STEPS.map((step, index) => (
-            <li
-              key={step.head}
-              className="rounded-row bg-white/[0.035] px-[14px] py-[11px] shadow-panel"
-            >
-              <span className="flex items-baseline gap-2">
-                <span className="font-mono text-micro text-white/28">
-                  {String(index + 1).padStart(2, '0')}
-                </span>
-                <span className="text-label font-semibold text-white/85">{step.head}</span>
-              </span>
-              <span className="mt-[3px] block text-meta text-white/50">{step.body}</span>
+        {/*
+          The pipeline, as a band divided by hairlines rather than as three numbered cards.
+
+          Parse → Disassemble → Execute is a real sequence, so the order carries information and
+          has to survive. What does not have to survive is printing `01 02 03` beside it: reading
+          left to right across a divided band already says "in this order", and the numerals were
+          decoration standing in for structure. Below `sm` the band stacks and the rules lie down
+          with it, which is the same statement rotated.
+        */}
+        <ul className="grid divide-y divide-line border-y border-line sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+          {STEPS.map((step) => (
+            <li key={step.head} className="py-[12px] sm:px-[16px] sm:first:pl-0 sm:last:pr-0">
+              <span className="block text-label font-medium text-fg">{step.head}</span>
+              <span className="mt-[3px] block text-meta text-fg-3">{step.body}</span>
             </li>
           ))}
         </ul>
@@ -120,14 +123,14 @@ export function WelcomeScreen({
         <section aria-label="Example programs">
           {/* On the heading's own line, so the invitation costs the cards no vertical room. */}
           <div className="flex items-baseline justify-between gap-3">
-            <h3 className="text-label font-semibold text-white/50">Start with an example</h3>
+            <h3 className="text-label font-medium text-fg-2">Start with an example</h3>
             <button
               type="button"
               data-testid="welcome-glossary"
               onClick={() => {
                 openGlossary();
               }}
-              className="focus-ring shrink-0 rounded-full bg-white/6 px-[10px] py-[4px] text-meta text-white/55 transition-colors hover:bg-white/12 hover:text-white/85"
+              className="focus-ring shrink-0 rounded-control px-[8px] py-[4px] text-meta text-fg-2 transition-colors duration-150 hover:bg-raised hover:text-fg"
             >
               New to the JVM? What these words mean
             </button>
@@ -141,14 +144,14 @@ export function WelcomeScreen({
                   onClick={() => {
                     onExampleSelected(example.id);
                   }}
-                  className="focus-ring group flex w-full flex-col gap-[8px] rounded-panel bg-panel/[0.045] px-[16px] py-[14px] text-left shadow-panel transition-colors hover:bg-panel/[0.09]"
+                  className="focus-ring group flex w-full flex-col gap-[7px] rounded-panel bg-panel px-[14px] py-[12px] text-left shadow-panel transition-colors duration-150 hover:bg-raised"
                 >
-                  <span className="text-title font-semibold text-white/90">{example.title}</span>
-                  <span className="grow text-meta text-white/55">{example.tagline}</span>
+                  <span className="text-title font-medium text-fg">{example.title}</span>
+                  <span className="grow text-meta text-fg-2">{example.tagline}</span>
                   {example.preview === undefined ? null : (
                     <>
                       <DepthSparkline preview={example.preview} />
-                      <span className="font-mono text-micro text-white/40 tabular-nums">
+                      <span className="font-mono text-micro text-fg-3 tabular-nums">
                         {example.preview.steps.toLocaleString('en-US')} steps · depth{' '}
                         {example.preview.maxDepth}
                       </span>
@@ -179,12 +182,12 @@ export function WelcomeScreen({
               type="button"
               data-testid="welcome-write-java"
               onClick={onWriteJava}
-              className="focus-ring flex flex-col items-center justify-center gap-2 rounded-panel bg-white/[0.03] px-6 py-7 text-label text-white/75 shadow-panel transition-colors hover:bg-white/[0.07] lg:w-[300px]"
+              className="focus-ring flex flex-wrap items-center justify-center gap-x-3 gap-y-1 rounded-panel bg-panel px-5 py-4 text-label text-fg-2 shadow-panel transition-colors duration-150 hover:bg-raised lg:w-[300px]"
             >
-              <span className="rounded-full bg-white/9 px-3 py-1.5 text-white/80 shadow-control-raised">
+              <span className="rounded-control bg-raised px-[10px] py-[5px] text-fg shadow-control-raised">
                 Write Java…
               </span>
-              <span className="text-meta text-white/55">compile a small class and run it here</span>
+              <span className="text-meta text-fg-3">compile a small class and run it here</span>
             </button>
           )}
         </div>

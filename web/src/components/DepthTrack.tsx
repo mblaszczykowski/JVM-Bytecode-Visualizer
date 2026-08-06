@@ -24,8 +24,12 @@ interface DepthTrackProps {
 /**
  * A run can reach twenty thousand steps, so bars are bucketed down to something a track can
  * actually show — one bar per step would be both invisible and slow.
+ *
+ * 220 rather than 120: across a ~900px track that is a bar every four pixels, which reads as a
+ * continuous profile. At 120 each bar was six or seven pixels wide and the trace came out as a
+ * row of blocks — a chart of the run rather than the shape of it.
  */
-const MAX_BARS = 120;
+const MAX_BARS = 220;
 
 const NO_EVENTS: readonly TimelineEvent[] = [];
 
@@ -49,11 +53,11 @@ function bucketDepths(depths: readonly number[], buckets: readonly StepBucket[])
  * can observe sits above the control flow the bars already draw.
  */
 const MARK_STYLES: Readonly<Record<TimelineEventKind, string>> = {
-  print: 'h-[5px] bg-white/55',
-  'heap-write': 'h-[5px] bg-white/42',
-  call: 'h-[3px] bg-white/30',
-  return: 'h-[3px] bg-white/30',
-  branch: 'h-[3px] bg-white/20',
+  print: 'h-[5px] bg-fg-2',
+  'heap-write': 'h-[5px] bg-fg-3',
+  call: 'h-[3px] bg-fg-dim',
+  return: 'h-[3px] bg-fg-dim',
+  branch: 'h-[3px] bg-line-strong',
 };
 
 interface FrameSpans {
@@ -171,23 +175,44 @@ export function DepthTrack({
         </div>
       ) : null}
 
-      {/* Loud enough to read the shape of the recursion through the glass, still not chrome. */}
+      {/*
+        The trace itself, on two axes at once.
+
+        Colour carries progress: everything already run is accent, everything ahead is grey, and
+        the boundary between them is the playhead. Brightness carries the frame — the span the
+        frame currently on top is alive for is the stronger of the two shades on whichever side
+        of the playhead it falls.
+
+        Progress has to be the axis that owns the hue, not the frame span. A program that makes
+        one call keeps that frame alive for almost the whole history, so a frame-coloured track
+        is a track that is entirely one colour and says nothing; progress moves every step.
+      */}
       <div
         aria-hidden="true"
-        className={`absolute inset-x-0 bottom-[6px] flex items-end gap-px opacity-70 ${
+        className={`absolute inset-x-0 bottom-px flex items-end gap-px ${
           hasMarks ? 'top-[7px]' : 'top-0'
         }`}
       >
         {bars.map((bar) => {
           const inCurrentFrame =
             span !== undefined && bar.lastStep >= span.from && bar.firstStep <= span.to;
+          const played = bar.firstStep <= stepIndex;
 
           return (
             <span
               key={bar.firstStep}
               data-testid="depth-bar"
-              className={`min-h-[2px] flex-1 rounded-[1px] ${
-                inCurrentFrame ? 'bg-[rgb(108_178_255/0.65)]' : 'bg-white/22'
+              // The frame span is reported rather than inferred from a colour, so the test for
+              // `frameSpansOf` asserts the lifetime it computed and not the shade it got.
+              data-frame={inCurrentFrame ? 'true' : undefined}
+              className={`min-h-px flex-1 ${
+                played
+                  ? inCurrentFrame
+                    ? 'bg-accent'
+                    : 'bg-accent/40'
+                  : inCurrentFrame
+                    ? 'bg-fg-dim'
+                    : 'bg-line-strong'
               }`}
               style={{ height: `${String((bar.depth / maxDepth) * 100)}%` }}
             />
@@ -195,23 +220,22 @@ export function DepthTrack({
         })}
       </div>
 
-      <div
+      {/* The floor the trace stands on. The 6px rounded progress bar that used to be here said
+          a second time what the played bars already say, in the vocabulary of a media player. */}
+      <div aria-hidden="true" className="absolute inset-x-0 bottom-0 h-px bg-line" />
+
+      {/*
+        The playhead is a one-pixel rule through the trace — a cursor, the way a scope or an
+        editor marks position, rather than the 18px shadowed puck it replaces. Nothing is lost
+        by making it thin: the control is the transparent range input covering the whole track,
+        so the hit area never depended on the size of the thing being dragged.
+      */}
+      <span
         aria-hidden="true"
-        className="absolute inset-x-0 bottom-0 h-[6px] rounded-full bg-white/12"
-      >
-        <div
-          className="h-full rounded-full bg-accent shadow-scrubber"
-          style={{ width: `${String(progress)}%` }}
-        />
-        {/*
-          The handle is 18px wide, so its centre has to travel between 9px and 9px-from-the-end
-          rather than 0–100%; otherwise it hangs over both ends of the track.
-        */}
-        <span
-          className="absolute top-1/2 h-[18px] w-[18px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow-handle"
-          style={{ left: `calc(9px + (100% - 18px) * ${String(progress / 100)})` }}
-        />
-      </div>
+        data-testid="scrubber-playhead"
+        className="absolute inset-y-0 w-px bg-accent"
+        style={{ left: `calc(${String(progress)}% - ${String(progress / 100)}px)` }}
+      />
 
       <input
         type="range"

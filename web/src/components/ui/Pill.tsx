@@ -3,10 +3,10 @@ import type { ReactNode } from 'react';
 export type PillTone = 'neutral' | 'accent' | 'error' | 'warn';
 
 const TONE: Record<PillTone, string> = {
-  neutral: 'bg-white/10 text-white/55',
-  accent: 'bg-accent/[0.28] text-accent-soft',
-  error: 'bg-error/[0.12] text-error',
-  warn: 'bg-warn/[0.14] text-warn',
+  neutral: 'bg-raised text-fg-3',
+  accent: 'bg-accent/25 text-accent-text',
+  error: 'bg-error/12 text-error',
+  warn: 'bg-warn/15 text-warn',
 };
 
 interface PillProps {
@@ -24,7 +24,7 @@ export function Pill({ tone = 'neutral', title, className = '', children }: Pill
   return (
     <span
       title={title}
-      className={`shrink-0 self-center rounded-full px-2 py-px text-micro leading-none ${TONE[tone]} ${className}`}
+      className={`shrink-0 self-center rounded-[4px] px-[6px] py-px text-micro leading-none ${TONE[tone]} ${className}`}
     >
       {children}
     </span>

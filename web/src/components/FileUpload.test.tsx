@@ -43,17 +43,17 @@ describe('FileUpload', () => {
     expect(onFileSelected).not.toHaveBeenCalled();
   });
 
-  it('keeps a drop hint in both variants', () => {
+  it('spends words on the drop hint only where there is something to explain', () => {
     const { rerender } = render(<FileUpload onFileSelected={vi.fn()} />);
 
-    // The toolbar variant hides its hint below `lg`; it is a breakpoint, not a casualty of
-    // the row running out of width.
-    const compact = screen.getByText('or drop it here');
-    expect(compact.className).toContain('hidden');
-    expect(compact.className).toContain('lg:inline');
+    // The toolbar variant says nothing: it is on screen in every state of the application,
+    // the whole window takes a drop, and the welcome screen has already said so once.
+    expect(screen.getByText('Open .class…')).toBeVisible();
+    expect(screen.queryByText(/or drop/)).toBeNull();
 
     rerender(<FileUpload onFileSelected={vi.fn()} variant="zone" />);
 
+    // The zone is the one place someone is deciding what to do with a file they brought.
     expect(screen.getByText(/or drop a \.class file here/)).toBeVisible();
   });
 

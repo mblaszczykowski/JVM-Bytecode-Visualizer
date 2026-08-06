@@ -101,10 +101,10 @@ export function HeapArrayRow({ array, handle, focus, pulses }: HeapArrayRowProps
   return (
     <li data-testid="heap-array" data-handle={handle} className="px-[3px]">
       <div className="flex items-baseline gap-2 pb-[6px]">
-        <span className="font-mono text-meta text-white/55">{objectLabel(array, handle)}</span>
+        <span className="font-mono text-meta text-fg-3">{objectLabel(array, handle)}</span>
         <span className="grow" />
         {focus === undefined ? (
-          <span className="shrink-0 font-mono text-micro text-white/32">length {array.length}</span>
+          <span className="shrink-0 font-mono text-micro text-fg-3">length {array.length}</span>
         ) : (
           <Pill tone="accent">
             {focus.mode === 'write' ? 'writes' : 'reads'} index {focus.index}
@@ -125,9 +125,7 @@ export function HeapArrayRow({ array, handle, focus, pulses }: HeapArrayRowProps
                 data-current={isFocused ? 'true' : undefined}
                 aria-current={isFocused ? 'true' : undefined}
                 className={`${CELL} ${
-                  isFocused
-                    ? 'bg-accent/[0.22] text-accent-text shadow-current'
-                    : 'bg-white/5 text-white/75'
+                  isFocused ? 'now-row text-accent-text' : 'bg-raised text-fg-2'
                 }`}
               >
                 {/*
@@ -142,14 +140,14 @@ export function HeapArrayRow({ array, handle, focus, pulses }: HeapArrayRowProps
                     initial={{ opacity: 1 }}
                     animate={{ opacity: 0 }}
                     transition={{ duration: reduced ? 0 : 0.4, ease: 'easeOut' }}
-                    className="pointer-events-none absolute inset-0 -z-10 rounded-code bg-accent/[0.22]"
+                    className="pointer-events-none absolute inset-0 -z-10 rounded-code bg-accent/25"
                   />
                 )}
                 {value}
               </span>
               <span
                 className={`mt-[3px] text-center text-legend tracking-[0.1em] ${
-                  isFocused ? 'text-accent-dim' : 'text-white/24'
+                  isFocused ? 'text-accent-dim' : 'text-fg-dim'
                 }`}
               >
                 {index}
@@ -181,9 +179,9 @@ export function HeapInstanceRow({ instance, handle, pulses }: HeapInstanceRowPro
   return (
     <li data-testid="heap-instance" data-handle={handle} className="px-[3px]">
       <div className="flex items-baseline gap-2 pb-[6px]">
-        <span className="font-mono text-meta text-white/55">{objectLabel(instance, handle)}</span>
+        <span className="font-mono text-meta text-fg-3">{objectLabel(instance, handle)}</span>
         <span className="grow" />
-        <span className="shrink-0 font-mono text-micro text-white/32">
+        <span className="shrink-0 font-mono text-micro text-fg-3">
           {instance.fields.length === 1 ? '1 field' : `${String(instance.fields.length)} fields`}
         </span>
       </div>
@@ -197,7 +195,7 @@ export function HeapInstanceRow({ instance, handle, pulses }: HeapInstanceRowPro
               key={field.name}
               data-testid="heap-field"
               data-field={field.name}
-              className={`${CELL} justify-between gap-3 bg-white/5 px-2 text-white/75`}
+              className={`${CELL} justify-between gap-3 bg-raised px-2 text-fg-2`}
             >
               {pulse === 0 ? null : (
                 <motion.span
@@ -207,10 +205,10 @@ export function HeapInstanceRow({ instance, handle, pulses }: HeapInstanceRowPro
                   initial={{ opacity: 1 }}
                   animate={{ opacity: 0 }}
                   transition={{ duration: reduced ? 0 : 0.4, ease: 'easeOut' }}
-                  className="pointer-events-none absolute inset-0 -z-10 rounded-code bg-accent/[0.22]"
+                  className="pointer-events-none absolute inset-0 -z-10 rounded-code bg-accent/25"
                 />
               )}
-              <span className="truncate text-white/55">{field.name}</span>
+              <span className="truncate text-fg-3">{field.name}</span>
               <span>{field.kind === 'ref' && field.value < 0 ? 'null' : field.value}</span>
             </li>
           );

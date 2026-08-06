@@ -3,6 +3,7 @@ import { FileUpload } from './FileUpload';
 import { GlossaryDialog } from './GlossaryDialog';
 import { openGlossary } from './glossary-store';
 import { KeyboardHelp, type ShortcutGroup } from './KeyboardHelp';
+import { ThemeToggle } from './ThemeToggle';
 import { Segment, SegmentedControl } from './ui/SegmentedControl';
 
 /** `hidden` until a compile backend is configured and reachable. */
@@ -53,11 +54,11 @@ function HealthBadge({ status }: { readonly status: Exclude<CompilerStatus, 'hid
       data-testid="compiler-health"
       data-status={status}
       title={online ? 'Compile service reachable' : 'Compile service unreachable'}
-      className="text-meta flex shrink-0 items-center gap-[6px] rounded-full bg-white/6 px-[10px] py-[5px] text-white/55"
+      className="text-meta flex shrink-0 items-center gap-[6px] rounded-control px-[8px] py-[5px] text-fg-3"
     >
       <span
         aria-hidden="true"
-        className={`h-1.5 w-1.5 rounded-full ${online ? 'bg-ok shadow-glow-ok' : 'bg-white/25'}`}
+        className={`h-1.5 w-1.5 rounded-full ${online ? 'bg-ok shadow-glow-ok' : 'bg-fg-dim'}`}
       />
       Compiler
     </div>
@@ -65,9 +66,12 @@ function HealthBadge({ status }: { readonly status: Exclude<CompilerStatus, 'hid
 }
 
 /**
- * Floats on the glass with no hairline beneath it — only the gap separates it from the grid.
- * Deliberately no window chrome: this is a web app, and fake traffic lights would be an
- * unclickable prop and an accessibility trap.
+ * A hairline separates it from the grid; nothing else does. Deliberately no window chrome:
+ * this is a web app, and fake traffic lights would be an unclickable prop and an
+ * accessibility trap.
+ *
+ * Everything here recedes. The header is the one fixture on screen in every state of the
+ * application, so every pixel it takes is a pixel the disassembly never gets.
  */
 export function Toolbar({
   appName,
@@ -81,7 +85,7 @@ export function Toolbar({
   shortcuts,
 }: ToolbarProps) {
   return (
-    <header className="shrink-0 px-[18px] py-[13px]">
+    <header className="shrink-0 border-b border-line px-[14px] py-[9px]">
       {/*
         Three zones rather than one wrapping row. Only the middle zone may shrink, so an
         example list too long for the width can no longer drag the actions onto a second line:
@@ -93,7 +97,7 @@ export function Toolbar({
         reading order is the visual order everywhere the three share a line.
       */}
       <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 md:grid-cols-[auto_minmax(0,1fr)_auto]">
-        <h1 className="text-brand col-start-1 col-end-2 row-start-1 min-w-0 truncate font-semibold tracking-[-0.015em] text-white/95">
+        <h1 className="text-brand col-start-1 col-end-2 row-start-1 min-w-0 truncate font-semibold tracking-[-0.02em] text-fg">
           {appName}
         </h1>
 
@@ -105,7 +109,7 @@ export function Toolbar({
           />
         </div>
 
-        <div className="col-start-2 col-end-3 row-start-1 flex items-center gap-3 md:col-start-3 md:col-end-4">
+        <div className="col-start-2 col-end-3 row-start-1 flex items-center gap-[6px] md:col-start-3 md:col-end-4">
           {/* The way in that does not depend on which panel is on screen. */}
           <button
             type="button"
@@ -113,16 +117,17 @@ export function Toolbar({
             onClick={() => {
               openGlossary();
             }}
-            className="focus-ring text-meta shrink-0 rounded-full bg-white/6 px-[10px] py-[5px] text-white/55 transition-colors hover:bg-white/12 hover:text-white/85"
+            className="focus-ring text-meta shrink-0 rounded-control px-[8px] py-[5px] text-fg-2 transition-colors duration-150 hover:bg-raised hover:text-fg"
           >
             Glossary
           </button>
           {shortcuts === undefined ? null : <KeyboardHelp groups={shortcuts} />}
+          <ThemeToggle />
           {onWriteJava === undefined ? null : (
             <button
               type="button"
               onClick={onWriteJava}
-              className="focus-ring text-label shrink-0 rounded-full bg-white/9 px-3 py-1.5 text-white/80 shadow-control-raised transition-colors hover:bg-white/15"
+              className="focus-ring text-label shrink-0 rounded-control bg-raised px-[10px] py-[5px] text-fg shadow-control-raised transition-colors duration-150 hover:bg-raised-hover"
             >
               Write Java…
             </button>

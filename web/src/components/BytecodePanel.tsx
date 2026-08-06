@@ -108,10 +108,10 @@ function ConstantLink({
   onSelect,
 }: ConstantLinkProps) {
   const tone = isFollowed
-    ? 'bg-accent/[0.28] text-accent-soft'
+    ? 'bg-accent/25 text-accent-text'
     : isCurrentRow
-      ? 'hover:bg-white/15'
-      : 'text-accent-dim hover:bg-white/10';
+      ? 'hover:bg-raised-active'
+      : 'text-accent-dim hover:bg-raised-active';
 
   return (
     <button
@@ -153,7 +153,7 @@ function StackEffectCell({ effect, isCurrent }: StackEffectCellProps) {
       aria-hidden="true"
       data-testid="stack-effect"
       className={`flex shrink-0 gap-[4px] text-micro select-none ${
-        isCurrent ? 'opacity-60' : 'text-white/26'
+        isCurrent ? 'opacity-70' : 'text-fg-3'
       }`}
     >
       {effect === 'varies' ? (
@@ -309,11 +309,7 @@ export function BytecodePanel({
                   pointAt(index);
                 }}
                 className={`${CODE_ROW} ${
-                  isCurrent
-                    ? 'text-accent-text'
-                    : isLinked
-                      ? 'bg-white/[0.055] text-white/80'
-                      : 'text-white/60'
+                  isCurrent ? 'text-accent-text' : isLinked ? 'bg-raised text-fg' : 'text-fg-2'
                 } ${isUnsupported ? 'opacity-75' : isDead ? 'opacity-50' : ''}`}
               >
                 {isCurrent ? (
@@ -321,7 +317,7 @@ export function BytecodePanel({
                 ) : null}
                 <span
                   className={`w-7 shrink-0 text-right select-none ${
-                    isCurrent ? 'text-accent-dim' : isLinked ? 'text-white/45' : 'text-white/24'
+                    isCurrent ? 'text-accent-dim' : isLinked ? 'text-fg-3' : 'text-fg-dim'
                   }`}
                 >
                   {instruction.offset}
@@ -335,7 +331,7 @@ export function BytecodePanel({
                     {operandTokens(instruction).map((token, position) => (
                       // Operands are positional; the index is the only stable key they have.
                       <Fragment key={`${String(position)}:${token.text}`}>
-                        {position === 0 ? null : <span className="text-white/32">, </span>}
+                        {position === 0 ? null : <span className="text-fg-3">, </span>}
                         {/*
                           Blue means "current state", so only operands that point elsewhere in
                           the class file are coloured — a slot or an immediate is just a number.
@@ -366,7 +362,7 @@ export function BytecodePanel({
                   </span>
                 )}
                 {comment === undefined ? null : (
-                  <span className={isCurrent ? 'opacity-70' : 'text-white/32'}>{comment}</span>
+                  <span className={isCurrent ? 'opacity-70' : 'text-fg-3'}>{comment}</span>
                 )}
                 <span className="grow" />
                 {isUnsupported ? <Pill tone="error">unsupported</Pill> : null}
@@ -407,7 +403,7 @@ export function BytecodePanel({
           })}
 
           {truncatedAtOffset === undefined ? null : (
-            <li className={`${CODE_ROW} text-white/55`}>… not decoded</li>
+            <li className={`${CODE_ROW} text-fg-3`}>… not decoded</li>
           )}
         </ol>
       </div>

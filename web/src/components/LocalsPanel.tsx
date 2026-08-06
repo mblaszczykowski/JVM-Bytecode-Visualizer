@@ -42,7 +42,7 @@ const NO_HEAP: readonly HeapObject[] = [];
  * the change pulse (design §12).
  */
 const ORIGIN_BUTTON =
-  'focus-ring shrink-0 rounded-[4px] px-[4px] text-micro text-white/45 transition-colors hover:bg-white/12 hover:text-white/85';
+  'focus-ring shrink-0 rounded-[4px] px-[4px] text-micro text-fg-3 transition-colors duration-150 hover:bg-raised-active hover:text-fg';
 
 interface Tracked {
   readonly frameIndex: number;
@@ -134,7 +134,7 @@ export function LocalsPanel({
       ) : (
         // Ordered: a slot is a numbered position, and the roving tabindex finds its siblings
         // by looking for the `ol` they share.
-        <ol className="flex flex-col gap-[5px] px-[10px] pb-[2px]">
+        <ol className="flex flex-col gap-[3px] px-[8px] pb-[2px]">
           {locals.map((value, slot) => {
             // Names come from the LocalVariableTable (javac -g); without it only the slot is left.
             const name = localNames[slot] ?? `slot ${String(slot)}`;
@@ -150,8 +150,8 @@ export function LocalsPanel({
                 key={slot}
                 data-testid="local-slot"
                 data-slot={slot}
-                className={`relative isolate flex items-center gap-2 rounded-row px-[13px] py-[8px] text-label ${
-                  isInitialised ? 'bg-white/5' : 'shadow-row-outline'
+                className={`relative isolate flex items-center gap-2 rounded-row px-[10px] py-[5px] text-label ${
+                  isInitialised ? 'bg-raised' : 'shadow-row-outline'
                 }`}
               >
                 {/*
@@ -166,14 +166,14 @@ export function LocalsPanel({
                     initial={{ opacity: 1 }}
                     animate={{ opacity: 0 }}
                     transition={{ duration: reduced ? 0 : 0.4, ease: 'easeOut' }}
-                    className="pointer-events-none absolute inset-0 -z-10 rounded-row bg-accent/[0.22]"
+                    className="pointer-events-none absolute inset-0 -z-10 rounded-row bg-accent/25"
                   />
                 )}
-                <span className="w-3 shrink-0 font-mono text-micro text-white/32">{slot}</span>
-                <span className={isInitialised ? 'text-white/75' : 'text-white/30'}>{name}</span>
+                <span className="w-3 shrink-0 font-mono text-micro text-fg-3">{slot}</span>
+                <span className={isInitialised ? 'text-fg-2' : 'text-fg-dim'}>{name}</span>
                 {/* The subset models two kinds of slot: an int, and a reference to an int array. */}
                 {isInitialised ? (
-                  <span className="font-mono text-meta text-white/55">
+                  <span className="font-mono text-meta text-fg-3">
                     {isReference ? ': int[]' : ': I'}
                   </span>
                 ) : null}
@@ -207,9 +207,7 @@ export function LocalsPanel({
                   <ReferenceChip heap={heap} handle={value} />
                 ) : (
                   <span
-                    className={`font-mono text-body ${
-                      isInitialised ? 'text-white/90' : 'text-white/30'
-                    }`}
+                    className={`font-mono text-body ${isInitialised ? 'text-fg' : 'text-fg-dim'}`}
                   >
                     {isInitialised ? value : UNINITIALISED}
                   </span>

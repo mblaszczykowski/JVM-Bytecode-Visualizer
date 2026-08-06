@@ -43,15 +43,15 @@ export function ConstantPoolTable({ rows, selectedIndex, onSelectIndex }: Consta
           <>
             <span
               className={`w-9 shrink-0 text-right select-none ${
-                isSelected ? 'text-accent-dim' : 'text-white/24'
+                isSelected ? 'text-accent-dim' : 'text-fg-dim'
               }`}
             >
               #{row.index}
             </span>
-            <span className={`w-[104px] shrink-0 ${isSelected ? '' : 'text-white/55'}`}>
+            <span className={`w-[104px] shrink-0 ${isSelected ? '' : 'text-fg-3'}`}>
               {row.tagName}
             </span>
-            <span className={isSelected ? '' : 'text-white/75'}>{row.text}</span>
+            <span className={isSelected ? '' : 'text-fg-2'}>{row.text}</span>
           </>
         );
 
@@ -104,7 +104,7 @@ export function ConstantPoolTable({ rows, selectedIndex, onSelectIndex }: Consta
                       onClick={() => {
                         onSelectIndex(reference);
                       }}
-                      className={`focus-ring ${REFERENCE} hover:bg-white/12`}
+                      className={`focus-ring ${REFERENCE} hover:bg-raised-active`}
                     >
                       #{reference}
                     </button>
@@ -121,7 +121,7 @@ export function ConstantPoolTable({ rows, selectedIndex, onSelectIndex }: Consta
 
 /** The chip a constant pool reference is drawn as, matching the resolution chain in `Next`. */
 const REFERENCE =
-  'shrink-0 rounded-md bg-white/6 px-[7px] py-0.5 text-micro leading-none text-accent-soft';
+  'shrink-0 rounded-md bg-raised px-[7px] py-0.5 text-micro leading-none text-accent-soft';
 
 /**
  * Keeps the selected row inside the middle third of whichever ancestor scrolls.

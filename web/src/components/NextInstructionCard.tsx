@@ -26,12 +26,9 @@ export interface NextInstructionCardProps {
  */
 export function NextInstructionCard({ effects, explanation, cpChain }: NextInstructionCardProps) {
   return (
-    <div
-      data-testid="next-instruction-card"
-      className="rounded-card bg-white/5 px-[14px] py-[11px] shadow-panel"
-    >
+    <div data-testid="next-instruction-card" className="rounded-card bg-raised px-[12px] py-[9px]">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-title font-medium text-white/80">Next</span>
+        <span className="text-title font-medium text-fg">Next</span>
         {effects.map((effect) => (
           <Pill key={effect.label} tone="accent">
             {effect.label}
@@ -39,7 +36,7 @@ export function NextInstructionCard({ effects, explanation, cpChain }: NextInstr
         ))}
       </div>
 
-      <p className="mt-[7px] text-label leading-[17px] text-white/60">{explanation}</p>
+      <p className="mt-[7px] text-label leading-[17px] text-fg-2">{explanation}</p>
 
       {cpChain === undefined || cpChain.length === 0 ? null : (
         <div
@@ -49,11 +46,13 @@ export function NextInstructionCard({ effects, explanation, cpChain }: NextInstr
           {cpChain.map((link, index) => (
             <Fragment key={link}>
               {index === 0 ? null : (
-                <span aria-hidden="true" className="text-white/28">
+                <span aria-hidden="true" className="text-fg-dim">
                   →
                 </span>
               )}
-              <span className="rounded-md bg-white/6 px-[7px] py-0.5 text-accent-soft">{link}</span>
+              <span className="rounded-[4px] bg-raised-active px-[6px] py-0.5 text-accent-soft">
+                {link}
+              </span>
             </Fragment>
           ))}
         </div>

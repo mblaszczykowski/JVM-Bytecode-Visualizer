@@ -46,7 +46,7 @@ interface StateColumnProps {
 
 /**
  * Sections are separated by a hairline that is shorter than the surface, not by a border —
- * hierarchy inside the glass comes from background opacity and hairlines, never from shadows.
+ * hierarchy inside the pane comes from hairlines and from the row fills, never from shadows.
  *
  * On the tablet layout the column lies down as a band under the code panels, so between `md`
  * and `lg` the hairline stands up with it.
@@ -55,7 +55,7 @@ function Hairline() {
   return (
     <div
       aria-hidden="true"
-      className="mx-[18px] h-px shrink-0 bg-white/9 md:mx-0 md:my-[18px] md:h-auto md:w-px lg:mx-[18px] lg:my-0 lg:h-px lg:w-auto"
+      className="mx-[12px] h-px shrink-0 bg-line md:mx-0 md:my-[12px] md:h-auto md:w-px lg:mx-[12px] lg:my-0 lg:h-px lg:w-auto"
     />
   );
 }
@@ -142,7 +142,7 @@ export function StateColumn({
   return (
     <div
       data-testid="state-column"
-      className={`flex max-h-full min-h-0 flex-col rounded-panel bg-panel/[0.065] shadow-panel-raised md:flex-row lg:flex-col ${className}`}
+      className={`flex max-h-full min-h-0 flex-col rounded-panel bg-panel shadow-panel-raised md:flex-row lg:flex-col ${className}`}
     >
       {noRunNote !== undefined ? (
         <div className={`${SECTION} ${LAST_SECTION}`}>

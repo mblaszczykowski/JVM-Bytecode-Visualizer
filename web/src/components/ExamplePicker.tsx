@@ -16,8 +16,13 @@ interface ExamplePickerProps {
   readonly onExampleSelected: (id: string) => void;
 }
 
-const SELECTED = 'bg-white/[0.18] text-white/95 shadow-control-raised';
-const RESTING = 'text-white/52 hover:text-white/85';
+/*
+ * Picking an example is navigation, and navigation recedes. Only the loaded one carries a
+ * surface; the rest are text. Eight filled pills in a recessed rail used to be the loudest
+ * object on the screen, which put the emphasis on the menu rather than on the program.
+ */
+const SELECTED = 'bg-raised-active text-fg';
+const RESTING = 'text-fg-2 hover:bg-raised hover:text-fg';
 
 /**
  * The bundled programs, one of them loaded: that is a single value with as many options as
@@ -51,13 +56,13 @@ export function ExamplePicker({ examples, selectedId, onExampleSelected }: Examp
 
   return (
     /*
-     * A rail that scrolls at every width, not only below `md`. Eight examples are some 700px
-     * of pills, and letting them lay themselves out above `md` is what used to push the
-     * toolbar into a second and a third row between 768px and 1300px. The cost is the pills
+     * A rail that scrolls at every width, not only below `md`. Eight examples are some 600px
+     * of options, and letting them lay themselves out above `md` is what used to push the
+     * toolbar into a second and a third row between 768px and 1300px. The cost is the options
      * that fall off the end, and the fade is what says they are there.
      *
-     * The mask stays honest: the rail carries no surface of its own, so where the pills fit
-     * it falls on empty space and nothing reads as cut off. `pr-7` is the room the last pill
+     * The mask stays honest: the rail carries no surface of its own, so where the options fit
+     * it falls on empty space and nothing reads as cut off. `pr-7` is the room the last option
      * needs to clear the mask at the end of the scroll — the rail has to be a flex container
      * for Chrome to count that padding as scrollable overflow at all — and `scroll-pr-7`
      * keeps the focus ring inside it when the arrow keys reach the last option.
@@ -69,7 +74,7 @@ export function ExamplePicker({ examples, selectedId, onExampleSelected }: Examp
         ref={groupRef}
         role="radiogroup"
         aria-label="Example programs"
-        className="inline-flex shrink-0 items-center gap-[3px] rounded-full bg-white/7 p-[3px] shadow-control-inset"
+        className="inline-flex shrink-0 items-center gap-px"
       >
         {examples.map((example, index) => {
           const isSelected = example.id === selectedId;
@@ -88,7 +93,7 @@ export function ExamplePicker({ examples, selectedId, onExampleSelected }: Examp
               onKeyDown={(event) => {
                 handleKeyDown(event, index);
               }}
-              className={`focus-ring text-label flex shrink-0 snap-start items-center justify-center rounded-full px-3 py-1 transition-colors ${
+              className={`focus-ring text-meta flex shrink-0 snap-start items-center justify-center rounded-control px-[10px] py-[5px] transition-colors duration-150 ${
                 isSelected ? SELECTED : RESTING
               }`}
             >

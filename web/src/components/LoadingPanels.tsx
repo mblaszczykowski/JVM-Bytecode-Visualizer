@@ -36,7 +36,7 @@ function SkeletonPanel({ seed, raised = false, className = '', children }: Skele
         {Array.from({ length: FILL_ROWS }, (_, index) => (
           <div
             key={index}
-            className="shrink-0 animate-pulse rounded-code bg-white/5"
+            className="shrink-0 animate-pulse rounded-code bg-raised"
             // Same rhythm as a code row, so the layout does not jump once the run arrives.
             style={{ height: ROW_HEIGHT, width: `${String(42 + (((index + seed) * 17) % 52))}%` }}
           />
@@ -66,14 +66,14 @@ export function LoadingPanels({ label, steps, onCancel }: LoadingPanelsProps) {
     <>
       <SkeletonPanel seed={0}>
         <div className="flex shrink-0 items-baseline gap-3 pb-[8px]">
-          <p role="status" className="grow truncate text-label font-semibold text-white/70">
+          <p role="status" className="grow truncate text-label font-semibold text-fg-2">
             {label}
           </p>
           {steps === undefined ? null : (
             <span
               aria-hidden="true"
               data-testid="loading-steps"
-              className="shrink-0 font-mono text-meta tabular-nums text-white/40"
+              className="shrink-0 font-mono text-meta tabular-nums text-fg-3"
             >
               {steps.toLocaleString('en-US')} steps
             </span>
@@ -82,7 +82,7 @@ export function LoadingPanels({ label, steps, onCancel }: LoadingPanelsProps) {
             <button
               type="button"
               onClick={onCancel}
-              className="focus-ring shrink-0 rounded-full bg-white/10 px-[10px] py-[3px] text-meta text-white/75 transition-colors hover:bg-white/20 hover:text-white/95"
+              className="focus-ring shrink-0 rounded-control bg-raised-active px-[10px] py-[3px] text-meta text-fg-2 transition-colors hover:bg-raised-active hover:text-fg"
             >
               Cancel
             </button>

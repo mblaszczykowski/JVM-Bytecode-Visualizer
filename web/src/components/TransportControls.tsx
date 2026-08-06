@@ -92,8 +92,8 @@ function PauseIcon() {
 }
 
 /**
- * Fully controlled: index, play state and speed all live above this component. It sits
- * directly on the glass — no background of its own and no hairline above it.
+ * Fully controlled: index, play state and speed all live above this component. A hairline
+ * along the top edge separates it from the grid, the way the toolbar's separates the header.
  */
 export function TransportControls({
   stepIndex,
@@ -120,7 +120,7 @@ export function TransportControls({
       is its own value rather than the 14px that separates the clusters. The bottom padding
       clears the home indicator: the footer is the last thing above the edge of the screen.
     */
-    <div className="flex shrink-0 flex-wrap items-center gap-x-[14px] gap-y-[10px] px-[18px] pt-[14px] pb-[calc(18px+env(safe-area-inset-bottom))] md:pb-[18px]">
+    <div className="flex shrink-0 flex-wrap items-center gap-x-[12px] gap-y-[10px] border-t border-line bg-app px-[14px] pt-[9px] pb-[calc(12px+env(safe-area-inset-bottom))] md:pb-[10px]">
       <SegmentedControl label="Playback" className="p-1">
         <Segment
           label="Step back"
@@ -191,7 +191,7 @@ export function TransportControls({
         onClick={() => {
           onSpeedChange(nextSpeed(speed));
         }}
-        className="focus-ring h-11 shrink-0 rounded-full bg-white/9 px-[11px] font-mono text-label text-white/80 shadow-control-raised md:h-auto md:py-[6px]"
+        className="focus-ring h-11 shrink-0 rounded-control bg-raised px-[10px] font-mono text-label text-fg shadow-control-raised transition-colors duration-150 hover:bg-raised-hover md:h-auto md:py-[6px]"
       >
         {speed}×
       </button>
@@ -216,7 +216,7 @@ export function TransportControls({
         <output
           data-testid="step-counter"
           aria-live={isPlaying ? 'off' : 'polite'}
-          className="shrink-0 font-mono text-label text-white/60 tabular-nums"
+          className="shrink-0 font-mono text-label text-fg-2 tabular-nums"
         >
           step {stepIndex + 1} / {stepCount}
         </output>

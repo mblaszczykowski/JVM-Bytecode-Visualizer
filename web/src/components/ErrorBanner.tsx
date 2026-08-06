@@ -29,7 +29,7 @@ interface ErrorBannerProps {
 const SEVERITY_STYLE: Record<BannerSeverity, string> = {
   error: 'bg-error/[0.13] text-[#ffe0dd] shadow-[inset_0_0_0_1px_rgb(255_69_58/0.42)]',
   warning: 'bg-warn/[0.10] text-[#fff1ba] shadow-[inset_0_0_0_1px_rgb(255_214_10/0.40)]',
-  info: 'bg-white/[0.05] text-white/70 shadow-[inset_0_0_0_1px_rgb(255_255_255/0.10)]',
+  info: 'bg-raised text-fg-2 shadow-[inset_0_0_0_1px_rgb(255_255_255/0.10)]',
 };
 
 const SEVERITY_LABEL: Record<BannerSeverity, string> = {
@@ -58,7 +58,7 @@ export function ErrorBanner({ message, severity, action, onDismiss }: ErrorBanne
         <button
           type="button"
           onClick={action.onAction}
-          className="focus-ring shrink-0 rounded-full bg-white/12 px-[11px] py-[4px] text-meta transition-colors hover:bg-white/22"
+          className="focus-ring shrink-0 rounded-control bg-raised-active px-[11px] py-[4px] text-meta transition-colors hover:bg-raised-active"
         >
           {action.label}
         </button>
@@ -68,7 +68,7 @@ export function ErrorBanner({ message, severity, action, onDismiss }: ErrorBanne
           type="button"
           aria-label="Dismiss this message"
           onClick={onDismiss}
-          className="focus-ring -my-1 shrink-0 self-center rounded-full px-[7px] py-[3px] text-body leading-none opacity-70 transition-opacity hover:bg-white/10 hover:opacity-100"
+          className="focus-ring -my-1 shrink-0 self-center rounded-control px-[7px] py-[3px] text-body leading-none opacity-70 transition-opacity hover:bg-raised-active hover:opacity-100"
         >
           <span aria-hidden="true">×</span>
         </button>

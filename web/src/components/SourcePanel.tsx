@@ -69,7 +69,7 @@ export function SourcePanel({
         </Pill>
       )}
       {lineMappingNote === undefined ? null : (
-        <span className="font-mono text-micro text-white/55">{lineMappingNote}</span>
+        <span className="font-mono text-micro text-fg-3">{lineMappingNote}</span>
       )}
     </div>
   );
@@ -115,11 +115,7 @@ export function SourcePanel({
                 onLinkedLineChange?.(lineNumber);
               }}
               className={`${CODE_ROW} ${
-                isCurrent
-                  ? 'text-accent-text'
-                  : isLinked
-                    ? 'bg-white/[0.055] text-white/80'
-                    : 'text-white/60'
+                isCurrent ? 'text-accent-text' : isLinked ? 'bg-raised text-fg' : 'text-fg-2'
               }`}
             >
               {isCurrent ? (
@@ -127,7 +123,7 @@ export function SourcePanel({
               ) : null}
               <span
                 className={`w-7 shrink-0 text-right select-none ${
-                  isCurrent ? 'text-accent-dim' : isLinked ? 'text-white/45' : 'text-white/24'
+                  isCurrent ? 'text-accent-dim' : isLinked ? 'text-fg-3' : 'text-fg-dim'
                 }`}
               >
                 {lineNumber}

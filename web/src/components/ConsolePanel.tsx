@@ -57,9 +57,7 @@ export function ConsolePanel({ lines }: ConsolePanelProps) {
                   // The highlight is not carried by colour alone, so the newest line is
                   // announced as the current one too.
                   aria-current={isNewest ? 'true' : undefined}
-                  className={`${LINE} ${
-                    isNewest ? 'bg-accent/[0.22] text-accent-text shadow-current' : 'text-white/60'
-                  }`}
+                  className={`${LINE} ${isNewest ? 'now-row text-accent-text' : 'text-fg-2'}`}
                 >
                   {line}
                 </li>

@@ -29,9 +29,12 @@ interface OperandStackPanelProps {
   readonly onSeekToStep?: ((step: number) => void) | undefined;
 }
 
-/** Without a visible floor the list reads as cut off rather than as a stack. */
-const BASE_LINE =
-  'h-px flex-1 bg-[repeating-linear-gradient(90deg,rgb(255_255_255/0.16)_0_5px,transparent_5px_11px)]';
+/**
+ * Without a visible floor the list reads as cut off rather than as a stack. A solid hairline
+ * rather than the dashed rule that was here: the dashes were the fussiest three pixels on the
+ * screen, and a floor does not need to be decorated to be understood as a floor.
+ */
+const BASE_LINE = 'h-px flex-1 bg-line';
 
 const LABEL_COLUMN = 'w-[30px] shrink-0 text-legend tracking-[0.1em]';
 
@@ -42,7 +45,7 @@ const LABEL_COLUMN = 'w-[30px] shrink-0 text-legend tracking-[0.1em]';
  * read as a second accent (design §12).
  */
 const ORIGIN_BUTTON =
-  'focus-ring shrink-0 rounded-[4px] px-[4px] font-ui text-micro text-white/50 transition-colors hover:bg-white/12 hover:text-white/85';
+  'focus-ring shrink-0 rounded-[4px] px-[4px] font-ui text-micro text-fg-3 transition-colors duration-150 hover:bg-raised-active hover:text-fg';
 
 /** Stable identity for the int-only runs, which never hand the panel a heap of their own. */
 const NO_HEAP: readonly HeapObject[] = [];
@@ -95,7 +98,7 @@ export function OperandStackPanel({
       className="grow"
     >
       {/* The list stays mounted even when empty: unmounting it would cut the exit short. */}
-      <ol className="flex flex-col gap-[5px] px-[10px]">
+      <ol className="flex flex-col gap-[3px] px-[8px]">
         {/* `popLayout` takes the leaving cell out of flow, so the rows below never jump. */}
         <AnimatePresence initial={false} mode="popLayout">
           {operandStack
@@ -123,16 +126,14 @@ export function OperandStackPanel({
                 >
                   <span className={`${LABEL_COLUMN} text-accent-dim`}>{isTop ? 'TOP' : ''}</span>
                   <span
-                    className={`flex flex-1 items-center gap-3 rounded-row px-[13px] py-[9px] ${
-                      isTop
-                        ? 'bg-accent/[0.22] text-accent-text shadow-current'
-                        : 'bg-white/5 text-white/75'
+                    className={`flex flex-1 items-center gap-3 rounded-row px-[10px] py-[6px] ${
+                      isTop ? 'now-row text-accent-text' : 'bg-raised text-fg-2'
                     }`}
                   >
                     {isReference ? (
                       <ReferenceChip heap={heap} handle={value} onAccent={isTop} />
                     ) : (
-                      <span className="font-mono text-brand">{value}</span>
+                      <span className="font-mono text-body">{value}</span>
                     )}
                     <span className="grow" />
                     {/* Left of the annotation, so the annotations keep their column at the
@@ -164,7 +165,7 @@ export function OperandStackPanel({
                     {annotation === undefined ? null : (
                       <span
                         className={`shrink-0 font-ui text-micro ${
-                          isTop ? 'text-accent-soft' : 'text-white/55'
+                          isTop ? 'text-accent-soft' : 'text-fg-3'
                         }`}
                       >
                         {annotation}
@@ -183,8 +184,8 @@ export function OperandStackPanel({
         />
       ) : null}
 
-      <div className="flex items-center gap-2 px-[10px] pt-2">
-        <span className={`${LABEL_COLUMN} text-white/25`}>BASE</span>
+      <div className="flex items-center gap-2 px-[8px] pt-[6px]">
+        <span className={`${LABEL_COLUMN} text-fg-dim`}>BASE</span>
         <span className={BASE_LINE} />
       </div>
     </Panel>

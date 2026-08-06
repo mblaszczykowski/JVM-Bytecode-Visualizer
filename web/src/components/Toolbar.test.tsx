@@ -110,11 +110,13 @@ describe('Toolbar', () => {
     expect(examplesZone?.className).toContain('md:row-start-1');
   });
 
-  it('keeps the drop hint next to the file picker', () => {
+  it('offers the file picker without explaining the drop target', () => {
     renderToolbar();
 
-    // Hidden on narrow screens, but by a breakpoint rather than by falling out of a row.
-    expect(screen.getByText('or drop it here').className).toContain('lg:inline');
+    // The picker is the action; the hint that used to sit beside it was a permanent fixture
+    // repeating what the welcome screen says once, so the header no longer carries it.
+    expect(screen.getByText('Open .class…')).toBeVisible();
+    expect(screen.queryByText(/or drop/)).toBeNull();
   });
 
   it('takes a line of its own for the panel switch, and only while the panels share a cell', () => {

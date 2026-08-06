@@ -87,7 +87,10 @@ export function BranchGutter({ instructions, currentIndex, hoveredIndex }: Branc
               data-testid="branch-arc"
               data-from-index={arc.fromIndex}
               data-to-index={arc.toIndex}
-              className="absolute left-[10px] w-[11px] rounded-l-[5px] border border-r-0 border-[rgb(108_178_255/0.45)]"
+              // Structure, not position: an arc says where a jump goes, which is true of the
+              // method whatever step the run is on. The accent is reserved for "you are here",
+              // so the arcs are drawn in the hairline the rest of the layout is divided by.
+              className="absolute left-[10px] w-[11px] rounded-l-[5px] border border-r-0 border-line-strong"
               style={{
                 top: (first + 0.5) * ROW_HEIGHT,
                 height: span * ROW_HEIGHT,
@@ -95,7 +98,7 @@ export function BranchGutter({ instructions, currentIndex, hoveredIndex }: Branc
             />
             <div
               data-testid="branch-arrow"
-              className="absolute left-[17px] h-1.5 w-1.5 border-r border-b border-[rgb(108_178_255/0.6)]"
+              className="absolute left-[17px] h-1.5 w-1.5 border-r border-b border-fg-dim"
               style={{
                 top: (arc.toIndex + 0.5) * ROW_HEIGHT - 4,
                 transform: forward ? 'rotate(-45deg)' : 'rotate(135deg)',

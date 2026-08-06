@@ -24,11 +24,11 @@ export interface ClassPanelProps {
 
 /** Hierarchy inside the glass comes from opacity and hairlines, never from a border. */
 function Hairline() {
-  return <div aria-hidden="true" className="mx-[18px] h-px shrink-0 bg-white/9" />;
+  return <div aria-hidden="true" className="mx-[18px] h-px shrink-0 bg-line" />;
 }
 
 function SectionHeading({ children }: { readonly children: ReactNode }) {
-  return <h3 className="px-[18px] pb-[8px] text-meta font-semibold text-white/45">{children}</h3>;
+  return <h3 className="px-[18px] pb-[8px] text-meta font-semibold text-fg-3">{children}</h3>;
 }
 
 /**
@@ -73,12 +73,12 @@ export function ClassPanel({
               data-fact={fact.label}
               className="flex items-baseline gap-3"
             >
-              <dt className="w-[86px] shrink-0 font-mono text-meta text-white/50">{fact.label}</dt>
+              <dt className="w-[86px] shrink-0 font-mono text-meta text-fg-3">{fact.label}</dt>
               <dd className="min-w-0">
-                <span className="font-mono text-label break-all text-white/75">{fact.value}</span>
+                <span className="font-mono text-label break-all text-fg-2">{fact.value}</span>
                 {/* `65.0` is a number; `class file format of Java 21` is what it means. */}
                 {fact.note === undefined ? null : (
-                  <span className="pl-2 text-meta text-white/50">{fact.note}</span>
+                  <span className="pl-2 text-meta text-fg-3">{fact.note}</span>
                 )}
               </dd>
             </div>
@@ -97,16 +97,16 @@ export function ClassPanel({
                     key={`${field.name}:${field.descriptor}`}
                     data-testid="field-row"
                     title={`descriptor ${field.descriptor}`}
-                    className="flex items-center gap-2 rounded-row bg-white/5 px-[13px] py-[8px] text-label"
+                    className="flex items-center gap-2 rounded-row bg-raised px-[13px] py-[8px] text-label"
                   >
                     {field.modifiers.length === 0 ? null : (
-                      <span className="shrink-0 font-mono text-meta text-white/55">
+                      <span className="shrink-0 font-mono text-meta text-fg-3">
                         {field.modifiers.join(' ')}
                       </span>
                     )}
-                    <span className="truncate text-white/85">{field.name}</span>
+                    <span className="truncate text-fg">{field.name}</span>
                     <span className="grow" />
-                    <span className="shrink-0 font-mono text-meta text-white/55">{field.type}</span>
+                    <span className="shrink-0 font-mono text-meta text-fg-3">{field.type}</span>
                   </li>
                 ))}
               </ul>

@@ -13,9 +13,7 @@ const runDepths = depths();
 
 /** Bars of the frame that is on top at the given step are drawn in the accent colour. */
 function accentBars(): number {
-  return screen
-    .getAllByTestId('depth-bar')
-    .filter((bar) => bar.className.includes('rgb(108_178_255/0.65)')).length;
+  return screen.getAllByTestId('depth-bar').filter((bar) => bar.dataset.frame === 'true').length;
 }
 
 describe('DepthTrack', () => {
@@ -48,7 +46,7 @@ describe('DepthTrack', () => {
     const long = Array.from({ length: 5000 }, (_, step) => (step % 7) + 1);
     render(<DepthTrack depths={long} stepIndex={0} onSeek={vi.fn()} label={LABEL} />);
 
-    expect(screen.getAllByTestId('depth-bar')).toHaveLength(120);
+    expect(screen.getAllByTestId('depth-bar')).toHaveLength(220);
   });
 
   it('keeps a run of equally deep steps together as one frame', () => {
@@ -102,7 +100,7 @@ describe('DepthTrack', () => {
       <DepthTrack depths={long} events={events} stepIndex={0} onSeek={vi.fn()} label={LABEL} />,
     );
 
-    expect(screen.getAllByTestId('timeline-mark')).toHaveLength(120);
+    expect(screen.getAllByTestId('timeline-mark')).toHaveLength(220);
   });
 
   it('names the event at the current step on the slider', () => {

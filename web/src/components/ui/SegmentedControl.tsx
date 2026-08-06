@@ -21,7 +21,7 @@ export function SegmentedControl({
     <div
       role="group"
       aria-label={label}
-      className={`inline-flex shrink-0 items-center gap-[3px] rounded-full bg-white/7 shadow-control-inset ${className}`}
+      className={`inline-flex shrink-0 items-center gap-[2px] rounded-control bg-sunken shadow-control-inset ${className}`}
     >
       {children}
     </div>
@@ -56,9 +56,10 @@ interface SegmentProps {
   readonly children: ReactNode;
 }
 
-const RAISED = 'bg-white/[0.18] text-white/95 shadow-control-raised';
-const INVERTED = 'bg-white/[0.92] text-[#10131b] shadow-control-raised';
-const RESTING = 'text-white/52 hover:text-white/85';
+const RAISED = 'bg-raised-active text-fg shadow-control-raised';
+/** The playing state of the transport: a light fill and a dark glyph, from the type tokens. */
+const INVERTED = 'bg-fg text-app';
+const RESTING = 'text-fg-2 hover:bg-raised hover:text-fg';
 
 export function Segment({
   selected,
@@ -87,7 +88,7 @@ export function Segment({
           onClick();
         }
       }}
-      className={`focus-ring flex items-center justify-center rounded-full text-label transition-colors aria-disabled:cursor-default aria-disabled:opacity-30 ${active} ${className}`}
+      className={`focus-ring flex items-center justify-center rounded-[4px] text-label transition-colors duration-150 aria-disabled:cursor-default aria-disabled:text-fg-dim ${active} ${className}`}
     >
       {children}
     </button>

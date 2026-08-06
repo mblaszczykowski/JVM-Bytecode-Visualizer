@@ -21,7 +21,7 @@ interface KeyboardHelpProps {
 
 function Keycap({ label }: { readonly label: string }) {
   return (
-    <kbd className="rounded-[5px] bg-white/10 px-[6px] py-[2px] font-mono text-micro text-white/80 shadow-control-raised">
+    <kbd className="rounded-[5px] bg-raised-active px-[6px] py-[2px] font-mono text-micro text-fg shadow-control-raised">
       {label}
     </kbd>
   );
@@ -63,7 +63,7 @@ function HelpSheet({ groups, onClose }: KeyboardHelpProps & { readonly onClose: 
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-[16px] sm:p-[28px]">
-      <div aria-hidden="true" onClick={onClose} className="absolute inset-0 bg-black/60" />
+      <div aria-hidden="true" onClick={onClose} className="absolute inset-0 bg-scrim" />
 
       <div
         ref={sheetRef}
@@ -72,16 +72,16 @@ function HelpSheet({ groups, onClose }: KeyboardHelpProps & { readonly onClose: 
         aria-labelledby="shortcuts-title"
         data-testid="keyboard-help"
         tabIndex={-1}
-        className="relative flex max-h-full w-full max-w-[520px] flex-col overflow-hidden rounded-shell bg-app/95 shadow-shell outline-none"
+        className="relative flex max-h-full w-full max-w-[520px] flex-col overflow-hidden rounded-panel bg-overlay shadow-overlay outline-none"
       >
         <header className="flex shrink-0 items-baseline justify-between gap-3 px-[18px] pt-[16px] pb-[12px]">
-          <h2 id="shortcuts-title" className="text-title font-semibold text-white/95">
+          <h2 id="shortcuts-title" className="text-title font-semibold text-fg">
             Keyboard
           </h2>
           <button
             type="button"
             onClick={onClose}
-            className="focus-ring shrink-0 rounded-full bg-white/9 px-3 py-1 text-label text-white/70 transition-colors hover:bg-white/15"
+            className="focus-ring shrink-0 rounded-control bg-raised px-3 py-1 text-label text-fg-2 transition-colors hover:bg-raised-active"
           >
             Close
           </button>
@@ -90,16 +90,14 @@ function HelpSheet({ groups, onClose }: KeyboardHelpProps & { readonly onClose: 
         <div className="scroll-slim min-h-0 flex-1 overflow-auto px-[14px] pb-[14px]">
           {groups.map((group) => (
             <section key={group.title} className="mt-[4px] mb-[12px] last:mb-0">
-              <h3 className="px-[4px] pb-[6px] text-meta font-semibold text-white/45">
-                {group.title}
-              </h3>
-              <ul className="rounded-panel bg-white/[0.045] px-[14px] py-[6px] shadow-panel">
+              <h3 className="px-[4px] pb-[6px] text-meta font-semibold text-fg-3">{group.title}</h3>
+              <ul className="rounded-panel bg-raised px-[14px] py-[6px] shadow-panel">
                 {group.shortcuts.map((shortcut) => (
                   <li
                     key={shortcut.label}
                     className="flex items-center justify-between gap-4 py-[7px]"
                   >
-                    <span className="text-body text-white/70">{shortcut.label}</span>
+                    <span className="text-body text-fg-2">{shortcut.label}</span>
                     <span className="flex shrink-0 items-center gap-[4px]">
                       {shortcut.keys.map((key) => (
                         <Keycap key={key} label={key} />
@@ -158,7 +156,7 @@ export function KeyboardHelp({ groups }: KeyboardHelpProps) {
         onClick={() => {
           setIsOpen(true);
         }}
-        className="focus-ring flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-full bg-white/6 font-mono text-label text-white/45 transition-colors hover:bg-white/15 hover:text-white/85"
+        className="focus-ring flex h-[24px] min-w-[24px] shrink-0 items-center justify-center rounded-control font-mono text-label text-fg-2 transition-colors duration-150 hover:bg-raised hover:text-fg"
       >
         <span aria-hidden="true">?</span>
       </button>

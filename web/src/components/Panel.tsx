@@ -37,9 +37,9 @@ interface PanelProps {
 }
 
 /**
- * Content is ink, chrome is glass. A listing sits on a matte surface darker than the sheet it
- * floats on, so it reads as the thing being looked at rather than as one more translucent card;
- * the toolbar and the transport keep the glass and stay light.
+ * A listing sits on a surface fractionally darker than the sidebar beside it, so it reads as
+ * the thing being looked at rather than as one more card. `state` carries no surface at all:
+ * the State column owns one pane for all of its sections and divides them with hairlines.
  */
 const SURFACE: Record<PanelVariant, string> = {
   code: 'rounded-panel bg-ink shadow-panel-ink',
@@ -77,21 +77,25 @@ export function Panel({
       aria-label={title}
       className={`flex min-h-0 flex-col ${SURFACE[variant]} ${className}`}
     >
+      {/*
+        This header repeats five times down the State column, so its padding is multiplied by
+        five before anything has been said. Tight enough that the sections read as one list.
+      */}
       <header
-        className={`flex shrink-0 justify-between gap-3 px-[18px] pt-[14px] pb-[10px] ${
+        className={`flex shrink-0 justify-between gap-3 px-[12px] pt-[10px] pb-[6px] ${
           titleControl === undefined ? 'items-baseline' : 'items-center'
         }`}
       >
         <h2 className="sr-only">{title}</h2>
         <span className="flex min-w-0 items-center gap-[6px]">
           {titleControl ?? (
-            <span aria-hidden="true" className="text-title font-medium text-white/80">
+            <span aria-hidden="true" className="text-title font-medium text-fg">
               {title}
             </span>
           )}
           {term === undefined ? null : <GlossaryButton term={term} />}
         </span>
-        <span className="truncate font-mono text-meta text-white/32">{meta}</span>
+        <span className="truncate font-mono text-meta text-fg-3">{meta}</span>
       </header>
 
       <div
@@ -103,7 +107,7 @@ export function Panel({
       </div>
 
       {footer === undefined ? null : (
-        <div className="shrink-0 px-[14px] pt-[10px] pb-[14px]">{footer}</div>
+        <div className="shrink-0 px-[12px] pt-[8px] pb-[10px]">{footer}</div>
       )}
     </section>
   );
@@ -123,10 +127,10 @@ interface EmptyStateProps {
  */
 export function EmptyState({ status, detail }: EmptyStateProps) {
   return (
-    <div className="px-[10px] pb-[2px]">
-      <div className="rounded-row px-[13px] py-[11px] shadow-row-outline">
-        <p className="text-label text-white/65">{status}</p>
-        <p className="mt-[3px] text-body text-white/45">{detail}</p>
+    <div className="px-[8px] pb-[2px]">
+      <div className="rounded-row bg-raised px-[10px] py-[8px]">
+        <p className="text-label text-fg-2">{status}</p>
+        <p className="mt-[2px] text-body text-fg-3">{detail}</p>
       </div>
     </div>
   );
