@@ -170,7 +170,7 @@ export function LocalsPanel({
                   />
                 )}
                 <span className="w-3 shrink-0 font-mono text-micro text-fg-3">{slot}</span>
-                <span className={isInitialised ? 'text-fg-2' : 'text-fg-dim'}>{name}</span>
+                <span className={isInitialised ? 'text-fg-2' : 'text-fg-3'}>{name}</span>
                 {/* The subset models two kinds of slot: an int, and a reference to an int array. */}
                 {isInitialised ? (
                   <span className="font-mono text-meta text-fg-3">
@@ -207,7 +207,7 @@ export function LocalsPanel({
                   <ReferenceChip heap={heap} handle={value} />
                 ) : (
                   <span
-                    className={`font-mono text-body ${isInitialised ? 'text-fg' : 'text-fg-dim'}`}
+                    className={`font-mono text-body ${isInitialised ? 'text-fg' : 'text-fg-3'}`}
                   >
                     {isInitialised ? value : UNINITIALISED}
                   </span>

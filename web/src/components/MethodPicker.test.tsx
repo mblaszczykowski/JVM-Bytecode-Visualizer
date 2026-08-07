@@ -138,7 +138,10 @@ describe('MethodPicker', () => {
 
     const selected = rowOf('step(I)I');
     expect(selected).toHaveAttribute('aria-current', 'true');
-    expect(selected.className).toContain('bg-accent/[0.22]');
+    // A raised surface, not the accent: picking which method to look at is navigation, and the
+    // accent means "the machine is here now". It also failed contrast — metadata on an accent
+    // wash is unreadable in both palettes, which is what enforcing axe at `moderate` surfaced.
+    expect(selected.className).toContain('bg-raised-active');
 
     // The entry is a fact about the run, not a current state, so it stays neutral.
     const entry = rowOf('count()I');

@@ -123,7 +123,7 @@ export function SourcePanel({
               ) : null}
               <span
                 className={`w-7 shrink-0 text-right select-none ${
-                  isCurrent ? 'text-accent-dim' : isLinked ? 'text-fg-3' : 'text-fg-dim'
+                  isCurrent ? 'text-accent-dim' : isLinked ? 'text-fg-3' : 'text-fg-3'
                 }`}
               >
                 {lineNumber}

@@ -147,7 +147,7 @@ export function HeapArrayRow({ array, handle, focus, pulses }: HeapArrayRowProps
               </span>
               <span
                 className={`mt-[3px] text-center text-legend tracking-[0.1em] ${
-                  isFocused ? 'text-accent-dim' : 'text-fg-dim'
+                  isFocused ? 'text-accent-dim' : 'text-fg-3'
                 }`}
               >
                 {index}

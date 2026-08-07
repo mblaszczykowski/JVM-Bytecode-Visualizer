@@ -148,7 +148,7 @@ function GlossarySheet({ initialTerm }: { readonly initialTerm: GlossaryTermId }
         tabIndex={-1}
         className="relative flex max-h-full w-full max-w-[860px] flex-col overflow-hidden rounded-panel bg-overlay shadow-overlay outline-none"
       >
-        <header className="flex shrink-0 items-baseline justify-between gap-3 px-[18px] pt-[16px] pb-[12px]">
+        <div className="flex shrink-0 items-baseline justify-between gap-3 px-[18px] pt-[16px] pb-[12px]">
           <h2 id="glossary-title" className="text-title font-semibold tracking-[-0.015em] text-fg">
             Glossary
           </h2>
@@ -164,7 +164,7 @@ function GlossarySheet({ initialTerm }: { readonly initialTerm: GlossaryTermId }
               Close
             </button>
           </div>
-        </header>
+        </div>
 
         {/* One row of terms on a phone, a column beside the entry from `md` up. */}
         <div className="flex min-h-0 flex-1 flex-col gap-[10px] px-[14px] pb-[14px] md:flex-row md:gap-[14px]">

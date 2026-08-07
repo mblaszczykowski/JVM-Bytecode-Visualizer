@@ -185,7 +185,7 @@ export function OperandStackPanel({
       ) : null}
 
       <div className="flex items-center gap-2 px-[8px] pt-[6px]">
-        <span className={`${LABEL_COLUMN} text-fg-dim`}>BASE</span>
+        <span className={`${LABEL_COLUMN} text-fg-3`}>BASE</span>
         <span className={BASE_LINE} />
       </div>
     </Panel>

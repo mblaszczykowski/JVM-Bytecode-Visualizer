@@ -56,6 +56,11 @@
   --color-ink: light-dark(#ffffff, #0b0c0e);
   --color-raised: light-dark(#f1f2f5, #17181b);
   --color-raised-hover: light-dark(#e8eaee, #1e1f24);
+  /*
+   * A selected or pressed control. It is the one surface `fg-3` may not sit on — at 4.0:1 in
+   * light and 3.9:1 in dark it is the deepest interactive fill in the ramp, and the metadata
+   * on a selected row steps up to `fg-2` with the row. `theme.spec.ts` enforces exactly that.
+   */
   --color-raised-active: light-dark(#dee1e7, #26272d);
   --color-sunken: light-dark(#eceef1, #0a0b0d);
   --color-overlay: light-dark(#ffffff, #131417);
@@ -71,17 +76,22 @@
   --color-line-strong: light-dark(rgb(0 0 0 / 0.17), rgb(255 255 255 / 0.12));
 
   /*
-   * Four text steps, measured rather than picked. On their own theme's panel surface: 16.5:1,
-   * 7.3:1 and 5.0:1 in dark; 16.1:1, 7.0:1 and 4.8:1 in light. Every one clears AA at the sizes
-   * it is used at. `dim` is under that on purpose and is only ever worn by a disabled control,
-   * where WCAG stops asking.
+   * Four text steps, measured rather than picked. The three readable ones clear AA against
+   * every surface text is set on — ground, panel, code and row — in both palettes, and
+   * `tests/e2e/theme.spec.ts` does that arithmetic in a real browser rather than leaving it to
+   * a comment nobody re-checks. `fg-3`'s light half is the binding constraint: it has to hold
+   * 4.5:1 against the grey ground, which is lighter than any panel sitting on it.
+   *
+   * `fg-dim` is deliberately under AA and is only ever worn by a disabled control, where WCAG
+   * stops asking. Anything a reader has to actually read — a line number, a heap index, an
+   * uninitialised slot — is content, and content is never dimmer than `fg-3`.
    *
    * They replace twenty-two ad-hoc `text-white/NN` values. Eight shades of grey with no rule
    * behind them is what "amateur" looks like from across the room.
    */
   --color-fg: light-dark(#16181c, #edeef0);
   --color-fg-2: light-dark(#585e67, #9aa0a8);
-  --color-fg-3: light-dark(#71777f, #7c828b);
+  --color-fg-3: light-dark(#676d75, #7c828b);
   --color-fg-dim: light-dark(#a2a7ae, #565b63);
 
   /*
@@ -94,7 +104,7 @@
    */
   --color-accent: light-dark(#4f5bd5, #5b6cf0);
   --color-accent-soft: light-dark(#4a55c9, #a8b2ff);
-  --color-accent-dim: light-dark(#6b76dd, #7d8bf5);
+  --color-accent-dim: light-dark(#5661cf, #7d8bf5);
   /* Text sitting on the accent wash, which is far too faint to invert the type against. */
   --color-accent-text: light-dark(#2f379e, #c3caff);
   /* The wash itself. Heavier in light: 10% over near-black reads clearly, over paper it does not. */
@@ -149,6 +159,9 @@
   --shadow-current-strong: inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 50%, transparent);
   /* A ring, not a bloom: the health dot says "reachable", not "radioactive". */
   --shadow-glow-ok: 0 0 0 3px color-mix(in srgb, var(--color-ok) 18%, transparent);
+  /* Banners wear the same ring grammar as everything else, tinted by their own severity. */
+  --shadow-banner-error: inset 0 0 0 1px color-mix(in srgb, var(--color-error) 42%, transparent);
+  --shadow-banner-warn: inset 0 0 0 1px color-mix(in srgb, var(--color-warn) 42%, transparent);
   --shadow-handle: 0 1px 3px light-dark(rgb(0 0 0 / 0.25), rgb(0 0 0 / 0.6));
   --shadow-overlay:
     light-dark(0 16px 48px rgb(0 0 0 / 0.16), 0 16px 48px rgb(0 0 0 / 0.6)),
@@ -292,6 +305,26 @@
 @utility now-row {
   background-color: var(--color-now);
   box-shadow: inset 2px 0 0 0 var(--color-accent);
+}
+
+/*
+ * Two states of a code row that are about the row as a whole rather than about its text.
+ *
+ * These are the one legitimate use of opacity in this interface, and they are utilities rather
+ * than a loose `opacity-50` for exactly that reason: a disassembly row is a composition of
+ * spans that set their own syntax colours, so a text token applied to the row would dim the
+ * mnemonic and leave the operands at full strength. Opacity is the only thing that reaches all
+ * of them at once — and naming it is what stops it becoming a general-purpose dimmer again.
+ */
+
+/* The run never reached this instruction. It is still part of the method, so it stays legible. */
+@utility row-unreached {
+  opacity: 0.5;
+}
+
+/* The machine does not implement this opcode. Dimmed less: it is the reason a run stopped. */
+@utility row-unsupported {
+  opacity: 0.72;
 }
 
 /* A one-pixel ring in the accent, offset so it never sits on the control's own hairline. */

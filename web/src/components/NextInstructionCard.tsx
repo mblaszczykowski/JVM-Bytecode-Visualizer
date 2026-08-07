@@ -46,7 +46,7 @@ export function NextInstructionCard({ effects, explanation, cpChain }: NextInstr
           {cpChain.map((link, index) => (
             <Fragment key={link}>
               {index === 0 ? null : (
-                <span aria-hidden="true" className="text-fg-dim">
+                <span aria-hidden="true" className="text-fg-3">
                   →
                 </span>
               )}

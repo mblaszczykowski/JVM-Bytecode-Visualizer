@@ -88,7 +88,7 @@ export function CompileEditor({
       data-testid="compile-editor"
       className="col-span-full row-span-full flex min-h-0 flex-col rounded-panel bg-panel/[0.045] shadow-panel"
     >
-      <header className="flex shrink-0 items-baseline justify-between gap-3 px-[18px] pt-[14px] pb-[10px]">
+      <div className="flex shrink-0 items-baseline justify-between gap-3 px-[18px] pt-[14px] pb-[10px]">
         <h2 className="text-title font-medium text-fg">Write Java</h2>
         <div className="flex items-baseline gap-3">
           <span className="hidden font-mono text-meta text-fg-3 sm:inline">
@@ -102,7 +102,7 @@ export function CompileEditor({
             Close
           </button>
         </div>
-      </header>
+      </div>
 
       <div className="flex min-h-0 flex-1 flex-col gap-[10px] px-[14px] pb-[14px]">
         <textarea

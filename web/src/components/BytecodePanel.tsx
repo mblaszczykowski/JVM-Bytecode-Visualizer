@@ -153,7 +153,7 @@ function StackEffectCell({ effect, isCurrent }: StackEffectCellProps) {
       aria-hidden="true"
       data-testid="stack-effect"
       className={`flex shrink-0 gap-[4px] text-micro select-none ${
-        isCurrent ? 'opacity-70' : 'text-fg-3'
+        isCurrent ? 'text-accent-dim' : 'text-fg-3'
       }`}
     >
       {effect === 'varies' ? (
@@ -310,14 +310,14 @@ export function BytecodePanel({
                 }}
                 className={`${CODE_ROW} ${
                   isCurrent ? 'text-accent-text' : isLinked ? 'bg-raised text-fg' : 'text-fg-2'
-                } ${isUnsupported ? 'opacity-75' : isDead ? 'opacity-50' : ''}`}
+                } ${isUnsupported ? 'row-unsupported' : isDead ? 'row-unreached' : ''}`}
               >
                 {isCurrent ? (
                   <CurrentRowHighlight layoutId="pc-highlight" animate={animateHighlight} />
                 ) : null}
                 <span
                   className={`w-7 shrink-0 text-right select-none ${
-                    isCurrent ? 'text-accent-dim' : isLinked ? 'text-fg-3' : 'text-fg-dim'
+                    isCurrent ? 'text-accent-dim' : isLinked ? 'text-fg-3' : 'text-fg-3'
                   }`}
                 >
                   {instruction.offset}
@@ -362,7 +362,7 @@ export function BytecodePanel({
                   </span>
                 )}
                 {comment === undefined ? null : (
-                  <span className={isCurrent ? 'opacity-70' : 'text-fg-3'}>{comment}</span>
+                  <span className={isCurrent ? 'text-accent-dim' : 'text-fg-3'}>{comment}</span>
                 )}
                 <span className="grow" />
                 {isUnsupported ? <Pill tone="error">unsupported</Pill> : null}

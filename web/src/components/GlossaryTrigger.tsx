@@ -22,6 +22,8 @@ export function GlossaryButton({ term }: { readonly term: GlossaryTermId }) {
       onClick={() => {
         openGlossary(term);
       }}
+      // A 16px disc holding a single `?` — the only thing on screen shaped like a question.
+      // eslint-disable-next-line no-restricted-syntax -- genuinely circular
       className="focus-ring flex h-4 w-4 shrink-0 items-center justify-center self-center rounded-full bg-raised text-micro leading-none text-fg-3 transition-colors duration-150 hover:bg-raised-active hover:text-fg"
     >
       <span aria-hidden="true">?</span>

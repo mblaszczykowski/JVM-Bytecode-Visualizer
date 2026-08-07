@@ -86,7 +86,9 @@ export function WelcomeScreen({
           The 18px band the padding reserves is what the `fade-y` mask eats when nothing is
           clipped. */}
       <div className="m-auto flex w-full max-w-[1080px] flex-col gap-[18px] py-[18px]">
-        <header className="max-w-[820px]">
+        {/* Not a <header>: the toolbar is this document's banner landmark, and a second
+            one makes both of them ambiguous to a screen reader working by landmark. */}
+        <div className="max-w-[820px]">
           <h2 className="text-display font-semibold tracking-[-0.028em] text-fg">
             Watch a Java program run,
             <br />
@@ -100,7 +102,7 @@ export function WelcomeScreen({
             can play it back like a video and watch the call stack, the operand stack and every
             local variable slot change.
           </p>
-        </header>
+        </div>
 
         {/*
           The pipeline, as a band divided by hairlines rather than as three numbered cards.

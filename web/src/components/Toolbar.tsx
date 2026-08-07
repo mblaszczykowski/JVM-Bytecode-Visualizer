@@ -58,6 +58,7 @@ function HealthBadge({ status }: { readonly status: Exclude<CompilerStatus, 'hid
     >
       <span
         aria-hidden="true"
+        // eslint-disable-next-line no-restricted-syntax -- genuinely circular: a 6px status dot.
         className={`h-1.5 w-1.5 rounded-full ${online ? 'bg-ok shadow-glow-ok' : 'bg-fg-dim'}`}
       />
       Compiler

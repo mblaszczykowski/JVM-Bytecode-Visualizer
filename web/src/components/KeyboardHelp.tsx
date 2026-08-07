@@ -74,7 +74,7 @@ function HelpSheet({ groups, onClose }: KeyboardHelpProps & { readonly onClose: 
         tabIndex={-1}
         className="relative flex max-h-full w-full max-w-[520px] flex-col overflow-hidden rounded-panel bg-overlay shadow-overlay outline-none"
       >
-        <header className="flex shrink-0 items-baseline justify-between gap-3 px-[18px] pt-[16px] pb-[12px]">
+        <div className="flex shrink-0 items-baseline justify-between gap-3 px-[18px] pt-[16px] pb-[12px]">
           <h2 id="shortcuts-title" className="text-title font-semibold text-fg">
             Keyboard
           </h2>
@@ -85,7 +85,7 @@ function HelpSheet({ groups, onClose }: KeyboardHelpProps & { readonly onClose: 
           >
             Close
           </button>
-        </header>
+        </div>
 
         <div className="scroll-slim min-h-0 flex-1 overflow-auto px-[14px] pb-[14px]">
           {groups.map((group) => (

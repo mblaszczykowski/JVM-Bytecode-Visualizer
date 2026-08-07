@@ -4,17 +4,29 @@ import { expect, test, type Page } from '@playwright/test';
 import { bundledExamples, fixturePath } from './fixtures';
 
 /**
- * Axe on the three screens a reader actually lands on. Only `serious` and `critical` are
- * enforced: the lighter impacts are dominated by contrast readings on translucent glass,
- * where axe has to guess at the composited background.
+ * Axe on the screens a reader actually lands on, in both palettes.
+ *
+ * `moderate` is enforced now, and that is a change the redesign paid for. It used to be
+ * excluded because the lighter impacts were dominated by contrast readings on translucent
+ * glass, where axe has to composite a blurred backdrop and ends up guessing. There is no glass
+ * left: every surface is flat and opaque, so axe reads the real background and its contrast
+ * numbers are as good as the ones in `theme.spec.ts`. Excluding the category that catches
+ * unreadable text, on a tool whose entire job is to be read, was only ever a workaround.
  */
-const ENFORCED_IMPACTS = new Set(['serious', 'critical']);
+const ENFORCED_IMPACTS = new Set(['moderate', 'serious', 'critical']);
 
 interface Violation {
   readonly id: string;
   readonly impact: string;
   readonly nodes: readonly string[];
 }
+
+/**
+ * Both palettes, because a contrast failure is a property of a colour pair and this interface
+ * now has two of every pair. A token that only ever got checked against near-black is a token
+ * nobody checked.
+ */
+const PALETTES = ['light', 'dark'] as const;
 
 async function seriousViolations(page: Page): Promise<Violation[]> {
   const results = await new AxeBuilder({ page })
@@ -30,40 +42,51 @@ async function seriousViolations(page: Page): Promise<Violation[]> {
     }));
 }
 
-test('the welcome screen has no serious accessibility violations', async ({ page }) => {
-  await page.goto('/');
-  await expect(page.getByTestId('welcome-example')).toHaveCount(bundledExamples().length);
+for (const palette of PALETTES) {
+  test.describe(`in the ${palette} palette`, () => {
+    test.beforeEach(async ({ page }) => {
+      await page.emulateMedia({ colorScheme: palette });
+    });
 
-  expect(await seriousViolations(page)).toEqual([]);
-});
+    test('the welcome screen has no serious accessibility violations', async ({ page }) => {
+      await page.goto('/');
+      await expect(page.getByTestId('welcome-example')).toHaveCount(bundledExamples().length);
 
-test('the loaded program has no serious accessibility violations', async ({ page }) => {
-  await page.goto('/');
-  await page.getByRole('radio', { name: 'Factorial', exact: true }).click();
-  await expect(page.getByTestId('step-counter')).toHaveText('step 1 / 40');
+      expect(await seriousViolations(page)).toEqual([]);
+    });
 
-  expect(await seriousViolations(page)).toEqual([]);
-});
+    test('the loaded program has no serious accessibility violations', async ({ page }) => {
+      await page.goto('/');
+      await page.getByRole('radio', { name: 'Factorial', exact: true }).click();
+      await expect(page.getByTestId('step-counter')).toHaveText('step 1 / 40');
 
-test('the explorer has no serious accessibility violations', async ({ page }) => {
-  await page.goto('/');
-  // A class with no method the interpreter can enter: no run, and every panel still on screen.
-  await page.locator('input[type="file"]').first().setInputFiles(fixturePath('Library.class'));
-  await expect(page.getByTestId('class-panel')).toBeVisible();
+      expect(await seriousViolations(page)).toEqual([]);
+    });
 
-  expect(await seriousViolations(page)).toEqual([]);
-});
+    test('the explorer has no serious accessibility violations', async ({ page }) => {
+      await page.goto('/');
+      // A class with no method the interpreter can enter: no run, every panel still on screen.
+      await page.locator('input[type="file"]').first().setInputFiles(fixturePath('Library.class'));
+      await expect(page.getByTestId('class-panel')).toBeVisible();
 
-test('the glossary has no serious accessibility violations', async ({ page }) => {
-  await page.goto('/');
-  await page.getByRole('radio', { name: 'Factorial', exact: true }).click();
-  await expect(page.getByTestId('step-counter')).toBeVisible();
+      expect(await seriousViolations(page)).toEqual([]);
+    });
 
-  await page.getByRole('region', { name: 'Operand stack' }).getByTestId('glossary-trigger').click();
-  await expect(page.getByRole('dialog', { name: 'Glossary' })).toBeVisible();
+    test('the glossary has no serious accessibility violations', async ({ page }) => {
+      await page.goto('/');
+      await page.getByRole('radio', { name: 'Factorial', exact: true }).click();
+      await expect(page.getByTestId('step-counter')).toBeVisible();
 
-  expect(await seriousViolations(page)).toEqual([]);
-});
+      await page
+        .getByRole('region', { name: 'Operand stack' })
+        .getByTestId('glossary-trigger')
+        .click();
+      await expect(page.getByRole('dialog', { name: 'Glossary' })).toBeVisible();
+
+      expect(await seriousViolations(page)).toEqual([]);
+    });
+  });
+}
 
 test('tabbing runs toolbar, then panels, then transport', async ({ page }) => {
   await page.goto('/');

@@ -77,7 +77,9 @@ describe('ErrorBanner', () => {
     const banner = screen.getByTestId('error-banner');
 
     expect(banner.className).toContain('rounded-panel');
-    expect(banner.className).toMatch(/shadow-\[inset_0_0_0_1px_rgb\(255_69_58/);
+    // The ring is a token now, tinted from `--color-error` so it themes with everything else;
+    // the raw rgb() literal it replaced could only ever be right in one of the two palettes.
+    expect(banner.className).toContain('shadow-banner-error');
   });
 
   it('renders the informational variant', () => {

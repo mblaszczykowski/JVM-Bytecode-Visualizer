@@ -43,6 +43,10 @@ export function MethodPicker({ methods, selected, onSelect, onRun, entry }: Meth
       {methods.map((method) => {
         const signature = signatureOf(method);
         const isSelected = signature === selectedSignature;
+        // Every scrap of metadata in the row moves together. A selected row sits on
+        // `raised-active`, which is the one surface `fg-3` may not sit on (see index.css),
+        // so the row's own emphasis has to reach its metadata too.
+        const META = isSelected ? 'text-fg-2' : 'text-fg-3';
         const reason = method.notRunnable;
         const modifiers = methodModifiersOf(method.accessFlags).join(' ');
         const count = method.instructions.length;
@@ -59,7 +63,7 @@ export function MethodPicker({ methods, selected, onSelect, onRun, entry }: Meth
               reason === undefined ? undefined : `Listing only — ${describeNotRunnable(reason)}`
             }
             className={`flex items-center gap-2 rounded-row px-[13px] py-[8px] text-label ${
-              isSelected ? 'bg-accent/[0.22] text-accent-text shadow-current' : 'bg-raised'
+              isSelected ? 'bg-raised-active text-fg shadow-control-raised' : 'bg-raised'
             }`}
           >
             <button
@@ -71,27 +75,15 @@ export function MethodPicker({ methods, selected, onSelect, onRun, entry }: Meth
             >
               {/* The name is what the reader is looking for, so it never gives way; the
                   descriptor is the widest thing in the row and is what has to. */}
-              <span className={`shrink-0 font-medium ${isSelected ? '' : 'text-fg'}`}>
-                {method.name}
-              </span>
-              <span
-                className={`min-w-0 grow truncate font-mono text-meta ${
-                  isSelected ? 'text-accent-soft' : 'text-fg-3'
-                }`}
-              >
+              <span className="shrink-0 font-medium text-fg">{method.name}</span>
+              <span className={`min-w-0 grow truncate font-mono text-meta ${META}`}>
                 {method.descriptor}
               </span>
               {modifiers === '' ? null : (
-                <span
-                  className={`shrink-0 font-mono text-meta ${
-                    isSelected ? 'text-accent-soft' : 'text-fg-3'
-                  }`}
-                >
-                  {modifiers}
-                </span>
+                <span className={`shrink-0 font-mono text-meta ${META}`}>{modifiers}</span>
               )}
               {count === 0 ? null : (
-                <span className="shrink-0 font-mono text-meta text-fg-3">
+                <span className={`shrink-0 font-mono text-meta ${META}`}>
                   {count === 1 ? '1 instruction' : `${String(count)} instructions`}
                 </span>
               )}

@@ -43,7 +43,7 @@ export function ConstantPoolTable({ rows, selectedIndex, onSelectIndex }: Consta
           <>
             <span
               className={`w-9 shrink-0 text-right select-none ${
-                isSelected ? 'text-accent-dim' : 'text-fg-dim'
+                isSelected ? 'text-accent-dim' : 'text-fg-3'
               }`}
             >
               #{row.index}

@@ -75,10 +75,12 @@ test.describe('tablet', () => {
 test.describe('laptop', () => {
   test.use({ viewport: { width: 1100, height: 800 } });
 
-  test('narrows the State column to 280px and keeps the three columns', async ({ page }) => {
+  test('narrows the State column to 296px and keeps the three columns', async ({ page }) => {
     await openFactorial(page);
 
-    expect(await widthOf(page.getByTestId('state-column'))).toBeCloseTo(280, 0);
+    // 296 rather than the old 280: the frame gave up its 28px outer margin, and the width
+    // that bought went to the column that actually runs out of room first.
+    expect(await widthOf(page.getByTestId('state-column'))).toBeCloseTo(296, 0);
     const source = await page.getByRole('region', { name: 'Source' }).boundingBox();
     const state = await page.getByTestId('state-column').boundingBox();
     expect(state?.y).toBeCloseTo(source?.y ?? 0, 0);
@@ -91,7 +93,7 @@ test.describe('phone', () => {
   test('shows one panel at a time and keeps the transport within reach', async ({ page }) => {
     await openFactorial(page);
 
-    // Full bleed: the glass gives up its margin and its corners.
+    // Full bleed at every width now, not only on a phone.
     const shell = page.getByTestId('app-shell');
     await expect(shell).toHaveCSS('border-top-left-radius', '0px');
     expect(await widthOf(shell)).toBe(390);
