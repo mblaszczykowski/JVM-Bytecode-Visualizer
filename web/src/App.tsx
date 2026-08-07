@@ -12,6 +12,7 @@ import { SourcePanel } from './components/SourcePanel';
 import { StateColumn } from './components/StateColumn';
 import type { ShortcutGroup } from './components/KeyboardHelp';
 import { Toolbar, type CompilerStatus, type PanelName } from './components/Toolbar';
+import { TourStrip } from './components/TourStrip';
 import { TransportControls } from './components/TransportControls';
 import { Segment, SegmentedControl } from './components/ui/SegmentedControl';
 import { WelcomeScreen, type WelcomeExample } from './components/WelcomeScreen';
@@ -47,7 +48,7 @@ import {
   describeOperandRoles,
   explainMnemonic,
 } from './services/derivations';
-import { parseDeepLink, writeDeepLink } from './services/deep-link';
+import { parseDeepLink, writeDeepLink, writeTourLink } from './services/deep-link';
 import { describeAppError, describeCompileFailure, toAppError } from './services/errors';
 import { fetchExampleManifest, shortTitleOf } from './services/examples';
 import {
@@ -70,6 +71,7 @@ import {
   type MethodListing,
 } from './services/program';
 import type { ProgramContext } from './services/telemetry';
+import { resolveTour, tourFor, toursFor, type Tour } from './services/tours';
 import {
   defaultProgramRunner,
   isRunCancelled,
@@ -92,6 +94,9 @@ const APP_NAME = 'JVM Bytecode Visualizer';
 const NO_SNAPSHOTS: readonly Snapshot[] = [];
 
 const NO_DIAGNOSTICS: readonly CompileDiagnostic[] = [];
+
+/** Same reason as the other empty constants: a fresh `[]` prop is a new value every render. */
+const NO_TOURS: readonly Tour[] = [];
 
 /** Same reason as NO_SNAPSHOTS: a literal `[]` prop is a new value on every render. */
 const NO_FRAMES: readonly StackFrame[] = [];
@@ -271,6 +276,10 @@ export function App({
   /** Both halves of the link are honoured once — the example, then the step inside its run. */
   const pendingExample = useRef(openedAt?.exampleId);
   const pendingStep = useRef(openedAt?.stepIndex);
+  const pendingTour = useRef(openedAt?.tour);
+  /** The tour being walked, if any, and where in it. */
+  const [tourId, setTourId] = useState<string | undefined>(undefined);
+  const [tourStop, setTourStop] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -470,11 +479,74 @@ export function App({
     }
   }, [loadedExampleId, openedAt, stepCount, seekTo]);
 
-  useEffect(() => {
-    if (loadedExampleId !== undefined) {
-      writeDeepLink(loadedExampleId, stepCount === 0 ? undefined : player.stepIndex);
+  const availableTours = loadedExampleId === undefined ? NO_TOURS : toursFor(loadedExampleId);
+  /**
+   * Stops become steps only once the run exists, and a stop that no longer resolves is dropped
+   * by `resolveTour` — so a tour with nothing left to point at is not a tour.
+   */
+  const activeTour = useMemo(() => {
+    if (loadedExampleId === undefined || tourId === undefined) {
+      return undefined;
     }
-  }, [loadedExampleId, player.stepIndex, stepCount]);
+    const tour = tourFor(loadedExampleId, tourId);
+    if (tour === undefined) {
+      return undefined;
+    }
+    const stops = resolveTour(tour, snapshots);
+    return stops.length === 0 ? undefined : { tour, stops };
+  }, [loadedExampleId, tourId, snapshots]);
+
+  /** Walking to a stop is seeking; the strip is a second way to drive the same transport. */
+  const goToStop = (index: number) => {
+    const stop = activeTour?.stops[index];
+    if (stop === undefined) {
+      return;
+    }
+    setTourStop(index);
+    seekTo(stop.step);
+  };
+
+  const startTour = (id: string) => {
+    setTourId(id);
+    setTourStop(0);
+  };
+
+  const leaveTour = () => {
+    setTourId(undefined);
+    setTourStop(0);
+  };
+
+  // A tour named in the link waits for its run exactly as a step does.
+  useEffect(() => {
+    const link = pendingTour.current;
+    if (link === undefined || stepCount === 0 || loadedExampleId !== openedAt?.exampleId) {
+      return;
+    }
+    pendingTour.current = undefined;
+    setTourId(link.tourId);
+    setTourStop(link.stopIndex);
+  }, [loadedExampleId, openedAt, stepCount]);
+
+  // Entering a tour, or arriving on one from a link, puts the run on the stop being read.
+  useEffect(() => {
+    const stop = activeTour?.stops[tourStop];
+    if (stop !== undefined) {
+      seekTo(stop.step);
+    }
+  }, [activeTour, tourStop, seekTo]);
+
+  useEffect(() => {
+    if (loadedExampleId === undefined) {
+      return;
+    }
+    // While a tour is being walked the hash names the tour, not the step: what is worth sharing
+    // is the argument, and the step is wherever the argument currently stands.
+    if (activeTour !== undefined) {
+      writeTourLink(loadedExampleId, activeTour.tour.id, tourStop);
+      return;
+    }
+    writeDeepLink(loadedExampleId, stepCount === 0 ? undefined : player.stepIndex);
+  }, [loadedExampleId, activeTour, tourStop, player.stepIndex, stepCount]);
 
   useTransportShortcuts({
     enabled: snapshots.length > 0,
@@ -721,6 +793,16 @@ export function App({
       isDropTarget={isDropTarget}
       footer={
         <>
+          {!canReplay ? null : (
+            <TourStrip
+              available={availableTours}
+              active={activeTour}
+              stopIndex={tourStop}
+              onStart={startTour}
+              onGoToStop={goToStop}
+              onLeave={leaveTour}
+            />
+          )}
           {footerNotice === undefined ? null : (
             <div className="px-[18px] pt-[14px]">
               <ErrorBanner
