@@ -53,8 +53,21 @@ interface SegmentProps {
 }
 
 const RAISED = 'bg-raised-active text-fg shadow-control-raised';
-/** The playing state of the transport: a light fill and a dark glyph, from the type tokens. */
-const INVERTED = 'bg-fg text-app';
+/**
+ * The primary action of the screen: a solid fill of the type colour with the glyph knocked out
+ * of it.
+ *
+ * This is how a primary button has to be built here, because the obvious device is unavailable
+ * — the accent means "the machine is here now" and nothing else may borrow it. A full-strength
+ * fill of the foreground colour outranks every other control on screen without spending any
+ * hue at all, and it is the same move Linear and Vercel make for the same reason.
+ *
+ * It is worn at rest as well as while playing: play is the primary action *before* it is
+ * pressed, and a control that only looks important once you have already found it is not
+ * signposting anything. Pause and play differ by their glyph, which is what a transport has
+ * always done.
+ */
+const INVERTED = 'bg-fg text-app hover:bg-fg-2';
 const RESTING = 'text-fg-2 hover:bg-raised hover:text-fg';
 
 export function Segment({
@@ -69,8 +82,13 @@ export function Segment({
   onClick,
   children,
 }: SegmentProps) {
+  const inverted = tone === 'inverted';
   const active =
-    selected === true ? (tone === 'inverted' ? INVERTED : RAISED) : prominent ? RAISED : RESTING;
+    inverted && (prominent || selected === true)
+      ? INVERTED
+      : selected === true || prominent
+        ? RAISED
+        : RESTING;
 
   return (
     <button

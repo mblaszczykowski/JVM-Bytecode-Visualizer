@@ -64,7 +64,9 @@ export function Panel({
 }: PanelProps) {
   // The body takes the section it is given and no more. How much that is belongs one level up:
   // in the column, which hands each section the height its content asks for.
-  const body = scrolls ? 'focus-ring scroll-visible min-h-0 flex-1 overflow-auto' : 'shrink-0';
+  const body = scrolls
+    ? 'focus-ring scroll-visible min-h-0 flex-initial overflow-auto'
+    : 'shrink-0';
   /**
    * The moment someone asks what the operand stack is, they are looking at the panel headed
    * "Operand stack" — so the way to the explanation is in that header, not only in a menu.
@@ -125,11 +127,9 @@ interface EmptyStateProps {
  */
 export function EmptyState({ status, detail }: EmptyStateProps) {
   return (
-    <div className="px-2 pb-0.5">
-      <div className="rounded-row bg-raised px-2.5 py-2">
-        <p className="text-label text-fg-2">{status}</p>
-        <p className="mt-0.5 text-body text-fg-3">{detail}</p>
-      </div>
+    <div className="px-2.5 pb-0.5">
+      <p className="text-label text-fg-2">{status}</p>
+      <p className="mt-0.5 max-w-[46ch] text-body text-fg-3">{detail}</p>
     </div>
   );
 }
