@@ -126,6 +126,31 @@ The interpreter is the part that has to be right, so it is pinned from four dire
   point in the explorer, rejects a non-class file and keeps the app usable afterwards — and a second
   end-to-end job that runs the editor against the compile service built from its own Dockerfile.
 
+## What it costs
+
+Recording every step is the central bet of this design, so the cost of recording is measured
+rather than assumed, and the measurements are budgets that fail a build when they move.
+
+- **~600,000 steps a second.** A 20,007-step counting loop is parsed, disassembled, executed and
+  recorded in 33 ms. Measured under Node 20 on one core with `vitest`, which is a development
+  machine and not a benchmark rig — the figure is there to catch an order of magnitude, not to be
+  compared against a JIT.
+- **A frame is copied once per change, not once per step it survives.** Two hundred nested calls
+  produce 1,608 frozen frames where copying the whole call stack per step would have produced
+  142,911 — 89× fewer. That reuse is what makes [ADR-0001](docs/adr/0001-snapshot-history.md)
+  affordable rather than theoretical, and
+  `web/src/core/interpreter/performance.test.ts` asserts the ratio instead of trusting it.
+- **The history has a ceiling, and it is a number in a file.** 8M live array elements and 24M
+  recorded ones, both surfaced as `OutOfMemoryError` exactly as a real JVM would, so a program
+  that asks for more stops with its history intact rather than taking the tab with it.
+- **The bundle has one too.** `npm run size -w web` fails when a shipped chunk outgrows its
+  gzipped budget. Raising a budget is a normal thing to do; doing it in a commit that says why is
+  the point.
+
+Only the wall-clock figure is a smoke ceiling — timing on a shared CI runner is not evidence. The
+assertions that matter are the ones about shape: frames shared, budgets enforced, nothing
+quadratic.
+
 ## Running it in the open
 
 Two things a deployed build needs that a local one does not.
