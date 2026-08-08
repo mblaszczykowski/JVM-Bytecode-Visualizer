@@ -42,7 +42,7 @@ const NO_HEAP: readonly HeapObject[] = [];
  * the change pulse (design §12).
  */
 const ORIGIN_BUTTON =
-  'focus-ring shrink-0 rounded-[4px] px-[4px] text-micro text-fg-3 transition-colors duration-150 hover:bg-raised-active hover:text-fg';
+  'focus-ring shrink-0 rounded-[4px] px-1 text-micro text-fg-3 transition-colors duration-150 hover:bg-raised-active hover:text-fg';
 
 interface Tracked {
   readonly frameIndex: number;
@@ -134,7 +134,7 @@ export function LocalsPanel({
       ) : (
         // Ordered: a slot is a numbered position, and the roving tabindex finds its siblings
         // by looking for the `ol` they share.
-        <ol className="flex flex-col gap-[3px] px-[8px] pb-[2px]">
+        <ol className="flex flex-col gap-0.5 px-2 pb-0.5">
           {locals.map((value, slot) => {
             // Names come from the LocalVariableTable (javac -g); without it only the slot is left.
             const name = localNames[slot] ?? `slot ${String(slot)}`;
@@ -150,7 +150,7 @@ export function LocalsPanel({
                 key={slot}
                 data-testid="local-slot"
                 data-slot={slot}
-                className={`relative isolate flex items-center gap-2 rounded-row px-[10px] py-[5px] text-label ${
+                className={`relative isolate flex items-center gap-2 rounded-row px-2.5 py-1 text-label ${
                   isInitialised ? 'bg-raised' : 'shadow-row-outline'
                 }`}
               >

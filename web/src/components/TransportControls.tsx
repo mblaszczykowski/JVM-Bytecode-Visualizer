@@ -120,7 +120,7 @@ export function TransportControls({
       is its own value rather than the 14px that separates the clusters. The bottom padding
       clears the home indicator: the footer is the last thing above the edge of the screen.
     */
-    <div className="flex shrink-0 flex-wrap items-center gap-x-[12px] gap-y-[10px] border-t border-line bg-app px-[14px] pt-[9px] pb-[calc(12px+env(safe-area-inset-bottom))] md:pb-[10px]">
+    <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2.5 border-t border-line bg-app px-3.5 pt-2 pb-[calc(12px+env(safe-area-inset-bottom))] md:pb-2.5">
       <SegmentedControl label="Playback" className="p-1">
         <Segment
           label="Step back"
@@ -191,7 +191,7 @@ export function TransportControls({
         onClick={() => {
           onSpeedChange(nextSpeed(speed));
         }}
-        className="focus-ring h-11 shrink-0 rounded-control bg-raised px-[10px] font-mono text-label text-fg shadow-control-raised transition-colors duration-150 hover:bg-raised-hover md:h-auto md:py-[6px]"
+        className="focus-ring h-11 shrink-0 rounded-control bg-raised px-2.5 font-mono text-label text-fg shadow-control-raised transition-colors duration-150 hover:bg-raised-hover md:h-auto md:py-1.5"
       >
         {speed}×
       </button>
@@ -200,7 +200,7 @@ export function TransportControls({
         Track and counter travel together: on a phone they are the second line, which keeps
         the transport two lines tall instead of three now that stepping has its own cluster.
       */}
-      <div className="order-last flex basis-full items-center gap-[14px] md:order-none md:basis-auto md:grow">
+      <div className="order-last flex basis-full items-center gap-3.5 md:order-none md:basis-auto md:grow">
         <DepthTrack
           depths={depths}
           events={events}

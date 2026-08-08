@@ -32,14 +32,14 @@ function signatureOf(method: MethodListing): string {
  */
 export function MethodPicker({ methods, selected, onSelect, onRun, entry }: MethodPickerProps) {
   if (methods.length === 0) {
-    return <p className="px-[23px] py-2 text-label text-fg-3">This class declares no methods.</p>;
+    return <p className="px-6 py-2 text-label text-fg-3">This class declares no methods.</p>;
   }
 
   const selectedSignature = selected === undefined ? undefined : signatureOf(selected);
   const entrySignature = entry === undefined ? undefined : signatureOf(entry);
 
   return (
-    <ol className="flex flex-col gap-[5px] px-[10px]">
+    <ol className="flex flex-col gap-1 px-2.5">
       {methods.map((method) => {
         const signature = signatureOf(method);
         const isSelected = signature === selectedSignature;
@@ -62,7 +62,7 @@ export function MethodPicker({ methods, selected, onSelect, onRun, entry }: Meth
             title={
               reason === undefined ? undefined : `Listing only — ${describeNotRunnable(reason)}`
             }
-            className={`flex items-center gap-2 rounded-row px-[13px] py-[8px] text-label ${
+            className={`flex items-center gap-2 rounded-row px-3 py-2 text-label ${
               isSelected ? 'bg-raised-active text-fg shadow-control-raised' : 'bg-raised'
             }`}
           >
@@ -109,7 +109,7 @@ export function MethodPicker({ methods, selected, onSelect, onRun, entry }: Meth
                   onClick={() => {
                     onRun(method);
                   }}
-                  className="focus-ring shrink-0 rounded-control bg-raised px-[10px] py-[3px] text-meta text-fg shadow-control-raised hover:bg-raised-active"
+                  className="focus-ring shrink-0 rounded-control bg-raised px-2.5 py-0.5 text-meta text-fg shadow-control-raised hover:bg-raised-active"
                 >
                   Run
                 </button>

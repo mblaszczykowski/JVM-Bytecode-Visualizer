@@ -62,7 +62,7 @@ export function SourcePanel({
 
   // Anything that does not fit on a code row goes to the footer rather than growing the row.
   const footer = !isMapped ? undefined : (
-    <div className="flex flex-wrap items-center gap-[10px]">
+    <div className="flex flex-wrap items-center gap-2.5">
       {pcRange === undefined ? null : (
         <Pill tone="accent">
           pc {pcRange.from}–{pcRange.to}
@@ -88,7 +88,7 @@ export function SourcePanel({
     >
       {/* `isolate` keeps the highlight's negative z-index from sinking below the panel. */}
       <ol
-        className="isolate px-[10px]"
+        className="isolate px-2.5"
         onMouseLeave={() => {
           onLinkedLineChange?.(undefined);
         }}

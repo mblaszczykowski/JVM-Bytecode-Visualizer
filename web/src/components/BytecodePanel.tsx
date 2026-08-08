@@ -126,7 +126,7 @@ function ConstantLink({
       onKeyDown={(event) => {
         navigation.onKeyDown(event, position);
       }}
-      className={`focus-ring relative z-10 -mx-[4px] rounded-[4px] px-[4px] transition-colors ${tone}`}
+      className={`focus-ring relative z-10 -mx-1 rounded-[4px] px-1 transition-colors duration-150 ${tone}`}
     >
       {token.text}
     </button>
@@ -152,7 +152,7 @@ function StackEffectCell({ effect, isCurrent }: StackEffectCellProps) {
     <span
       aria-hidden="true"
       data-testid="stack-effect"
-      className={`flex shrink-0 gap-[4px] text-micro select-none ${
+      className={`flex shrink-0 gap-1 text-micro select-none ${
         isCurrent ? 'text-accent-dim' : 'text-fg-3'
       }`}
     >
@@ -269,7 +269,7 @@ export function BytecodePanel({
       </p>
 
       <div
-        className="relative px-[10px]"
+        className="relative px-2.5"
         onMouseLeave={() => {
           pointAt(undefined);
         }}
@@ -282,7 +282,7 @@ export function BytecodePanel({
         />
 
         {/* `isolate` keeps the highlight's negative z-index from sinking below the panel. */}
-        <ol className="isolate pl-[26px]">
+        <ol className="isolate pl-6">
           {instructions.map((instruction, index) => {
             const isCurrent = index === currentIndex;
             const isUnsupported = instruction.unsupported === true;

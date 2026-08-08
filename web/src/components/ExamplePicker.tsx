@@ -93,7 +93,7 @@ export function ExamplePicker({ examples, selectedId, onExampleSelected }: Examp
               onKeyDown={(event) => {
                 handleKeyDown(event, index);
               }}
-              className={`focus-ring text-meta flex shrink-0 snap-start items-center justify-center rounded-control px-[10px] py-[5px] transition-colors duration-150 ${
+              className={`focus-ring text-meta flex shrink-0 snap-start items-center justify-center rounded-control px-2.5 py-1 transition-colors duration-150 ${
                 isSelected ? SELECTED : RESTING
               }`}
             >

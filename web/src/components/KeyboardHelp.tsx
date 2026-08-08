@@ -21,7 +21,7 @@ interface KeyboardHelpProps {
 
 function Keycap({ label }: { readonly label: string }) {
   return (
-    <kbd className="rounded-[5px] bg-raised-active px-[6px] py-[2px] font-mono text-micro text-fg shadow-control-raised">
+    <kbd className="rounded-[5px] bg-raised-active px-1.5 py-0.5 font-mono text-micro text-fg shadow-control-raised">
       {label}
     </kbd>
   );
@@ -62,7 +62,7 @@ function HelpSheet({ groups, onClose }: KeyboardHelpProps & { readonly onClose: 
   }, [onClose]);
 
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-[16px] sm:p-[28px]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-7">
       <div aria-hidden="true" onClick={onClose} className="absolute inset-0 bg-scrim" />
 
       <div
@@ -74,31 +74,31 @@ function HelpSheet({ groups, onClose }: KeyboardHelpProps & { readonly onClose: 
         tabIndex={-1}
         className="relative flex max-h-full w-full max-w-[520px] flex-col overflow-hidden rounded-panel bg-overlay shadow-overlay outline-none"
       >
-        <div className="flex shrink-0 items-baseline justify-between gap-3 px-[18px] pt-[16px] pb-[12px]">
-          <h2 id="shortcuts-title" className="text-title font-semibold text-fg">
+        <div className="flex shrink-0 items-baseline justify-between gap-3 px-4 pt-4 pb-3">
+          <h2 id="shortcuts-title" className="text-title font-medium text-fg">
             Keyboard
           </h2>
           <button
             type="button"
             onClick={onClose}
-            className="focus-ring shrink-0 rounded-control bg-raised px-3 py-1 text-label text-fg-2 transition-colors hover:bg-raised-active"
+            className="focus-ring shrink-0 rounded-control bg-raised px-3 py-1 text-label text-fg-2 transition-colors duration-150 hover:bg-raised-active"
           >
             Close
           </button>
         </div>
 
-        <div className="scroll-slim min-h-0 flex-1 overflow-auto px-[14px] pb-[14px]">
+        <div className="scroll-slim min-h-0 flex-1 overflow-auto px-3.5 pb-3.5">
           {groups.map((group) => (
-            <section key={group.title} className="mt-[4px] mb-[12px] last:mb-0">
-              <h3 className="px-[4px] pb-[6px] text-meta font-semibold text-fg-3">{group.title}</h3>
-              <ul className="rounded-panel bg-raised px-[14px] py-[6px] shadow-panel">
+            <section key={group.title} className="mt-1 mb-3 last:mb-0">
+              <h3 className="px-1 pb-1.5 text-meta font-medium text-fg-3">{group.title}</h3>
+              <ul className="rounded-panel bg-raised px-3.5 py-1.5 shadow-panel">
                 {group.shortcuts.map((shortcut) => (
                   <li
                     key={shortcut.label}
-                    className="flex items-center justify-between gap-4 py-[7px]"
+                    className="flex items-center justify-between gap-4 py-1.5"
                   >
                     <span className="text-body text-fg-2">{shortcut.label}</span>
-                    <span className="flex shrink-0 items-center gap-[4px]">
+                    <span className="flex shrink-0 items-center gap-1">
                       {shortcut.keys.map((key) => (
                         <Keycap key={key} label={key} />
                       ))}

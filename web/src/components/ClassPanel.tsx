@@ -24,11 +24,11 @@ export interface ClassPanelProps {
 
 /** Hierarchy inside the glass comes from opacity and hairlines, never from a border. */
 function Hairline() {
-  return <div aria-hidden="true" className="mx-[18px] h-px shrink-0 bg-line" />;
+  return <div aria-hidden="true" className="mx-4 h-px shrink-0 bg-line" />;
 }
 
 function SectionHeading({ children }: { readonly children: ReactNode }) {
-  return <h3 className="px-[18px] pb-[8px] text-meta font-semibold text-fg-3">{children}</h3>;
+  return <h3 className="px-4 pb-2 text-meta font-medium text-fg-3">{children}</h3>;
 }
 
 /**
@@ -64,8 +64,8 @@ export function ClassPanel({
       meta={`${simpleNameOf(classFile.thisClassName)} · ${String(constants.length)} constants`}
       className={className}
     >
-      <div data-testid="class-panel" className="flex flex-col gap-[14px] pb-[14px]">
-        <dl className="flex flex-col gap-[6px] px-[18px]">
+      <div data-testid="class-panel" className="flex flex-col gap-3.5 pb-3.5">
+        <dl className="flex flex-col gap-1.5 px-4">
           {facts.map((fact) => (
             <div
               key={fact.label}
@@ -91,13 +91,13 @@ export function ClassPanel({
             <Hairline />
             <div>
               <SectionHeading>Fields</SectionHeading>
-              <ul className="flex flex-col gap-[5px] px-[10px]">
+              <ul className="flex flex-col gap-1 px-2.5">
                 {fields.map((field) => (
                   <li
                     key={`${field.name}:${field.descriptor}`}
                     data-testid="field-row"
                     title={`descriptor ${field.descriptor}`}
-                    className="flex items-center gap-2 rounded-row bg-raised px-[13px] py-[8px] text-label"
+                    className="flex items-center gap-2 rounded-row bg-raised px-3 py-2 text-label"
                   >
                     {field.modifiers.length === 0 ? null : (
                       <span className="shrink-0 font-mono text-meta text-fg-3">

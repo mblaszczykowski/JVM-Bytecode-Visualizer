@@ -31,7 +31,7 @@ export function AppShell({ toolbar, children, footer, isDropTarget = false }: Ap
           aria-hidden="true"
           className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-app/80 shadow-[inset_0_0_0_1px_var(--color-accent)]"
         >
-          <p className="rounded-card bg-accent/12 px-[16px] py-[10px] text-body text-accent-text shadow-current-strong">
+          <p className="rounded-card bg-accent/12 px-4 py-2.5 text-body text-accent-text shadow-current-strong">
             Drop a .class file to run it
           </p>
         </div>
@@ -44,7 +44,7 @@ export function AppShell({ toolbar, children, footer, isDropTarget = false }: Ap
         source or a wide disassembly row sizes its column to its content and pushes the grid
         past the frame in both directions instead of scrolling inside the panel.
       */}
-      <main className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,1fr)] gap-[10px] px-[10px] pt-[10px] md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] md:grid-rows-[minmax(0,1fr)_minmax(0,34%)] lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_296px] lg:grid-rows-1 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_340px]">
+      <main className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,1fr)] gap-2.5 px-2.5 pt-2.5 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] md:grid-rows-[minmax(0,1fr)_minmax(0,34%)] lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_296px] lg:grid-rows-1 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_340px]">
         {children}
       </main>
 

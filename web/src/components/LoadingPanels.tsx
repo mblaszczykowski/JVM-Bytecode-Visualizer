@@ -21,7 +21,7 @@ function SkeletonPanel({ seed, raised = false, className = '', children }: Skele
   return (
     <div
       data-testid="panel-skeleton"
-      className={`flex min-h-0 flex-col overflow-hidden rounded-panel px-[18px] py-[16px] ${
+      className={`flex min-h-0 flex-col overflow-hidden rounded-panel px-4 py-4 ${
         // The two surfaces of the ready screen, so settling into it does not flash a change:
         // `raised` is the State column, the default is a code panel's ink.
         raised ? 'bg-panel/[0.065] shadow-panel-raised' : 'bg-ink shadow-panel-ink'
@@ -32,7 +32,7 @@ function SkeletonPanel({ seed, raised = false, className = '', children }: Skele
         The fade is on the rows, not on the panel: masking the panel itself would dissolve its
         hairline and its bottom corners along with the last row.
       */}
-      <div aria-hidden="true" className="fade-y-end flex min-h-0 flex-1 flex-col gap-[6px]">
+      <div aria-hidden="true" className="fade-y-end flex min-h-0 flex-1 flex-col gap-1.5">
         {Array.from({ length: FILL_ROWS }, (_, index) => (
           <div
             key={index}
@@ -65,8 +65,8 @@ export function LoadingPanels({ label, steps, onCancel }: LoadingPanelsProps) {
   return (
     <>
       <SkeletonPanel seed={0}>
-        <div className="flex shrink-0 items-baseline gap-3 pb-[8px]">
-          <p role="status" className="grow truncate text-label font-semibold text-fg-2">
+        <div className="flex shrink-0 items-baseline gap-3 pb-2">
+          <p role="status" className="grow truncate text-label font-medium text-fg-2">
             {label}
           </p>
           {steps === undefined ? null : (
@@ -82,7 +82,7 @@ export function LoadingPanels({ label, steps, onCancel }: LoadingPanelsProps) {
             <button
               type="button"
               onClick={onCancel}
-              className="focus-ring shrink-0 rounded-control bg-raised-active px-[10px] py-[3px] text-meta text-fg-2 transition-colors hover:bg-raised-active hover:text-fg"
+              className="focus-ring shrink-0 rounded-control bg-raised-active px-2.5 py-0.5 text-meta text-fg-2 transition-colors duration-150 hover:bg-raised-active hover:text-fg"
             >
               Cancel
             </button>

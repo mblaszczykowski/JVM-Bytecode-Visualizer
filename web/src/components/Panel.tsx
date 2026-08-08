@@ -82,12 +82,12 @@ export function Panel({
         five before anything has been said. Tight enough that the sections read as one list.
       */}
       <header
-        className={`flex shrink-0 justify-between gap-3 px-[12px] pt-[10px] pb-[6px] ${
+        className={`flex shrink-0 justify-between gap-3 px-3 pt-2.5 pb-1.5 ${
           titleControl === undefined ? 'items-baseline' : 'items-center'
         }`}
       >
         <h2 className="sr-only">{title}</h2>
-        <span className="flex min-w-0 items-center gap-[6px]">
+        <span className="flex min-w-0 items-center gap-1.5">
           {titleControl ?? (
             <span aria-hidden="true" className="text-title font-medium text-fg">
               {title}
@@ -106,9 +106,7 @@ export function Panel({
         {children}
       </div>
 
-      {footer === undefined ? null : (
-        <div className="shrink-0 px-[12px] pt-[8px] pb-[10px]">{footer}</div>
-      )}
+      {footer === undefined ? null : <div className="shrink-0 px-3 pt-2 pb-2.5">{footer}</div>}
     </section>
   );
 }
@@ -127,10 +125,10 @@ interface EmptyStateProps {
  */
 export function EmptyState({ status, detail }: EmptyStateProps) {
   return (
-    <div className="px-[8px] pb-[2px]">
-      <div className="rounded-row bg-raised px-[10px] py-[8px]">
+    <div className="px-2 pb-0.5">
+      <div className="rounded-row bg-raised px-2.5 py-2">
         <p className="text-label text-fg-2">{status}</p>
-        <p className="mt-[2px] text-body text-fg-3">{detail}</p>
+        <p className="mt-0.5 text-body text-fg-3">{detail}</p>
       </div>
     </div>
   );

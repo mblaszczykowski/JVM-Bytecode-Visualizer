@@ -71,6 +71,15 @@ const BANNED_CLASSNAMES = [
     message:
       'Hierarchy comes from the four text steps and the surface ramp, not from opacity. To dim a whole composed row use the row-unreached / row-unsupported utilities; opacity itself is for something fading in or out.',
   },
+  {
+    // Spacing had the same disease the greys did: 237 declarations across twenty values, every
+    // integer from 2 to 16 present, no rule behind any of them. It is a scale now —
+    // 2/4/6/8/10/12/14/16/20/24/28, written as Tailwind's own steps so the scale is legible in
+    // the markup. Widths, heights and offsets are untouched; those answer to geometry.
+    pattern: String.raw`\b(?:gap-x|gap-y|gap|px|py|pt|pb|pl|pr|p|mx|my|mt|mb|ml|mr|m)-\[\d`,
+    message:
+      'Spacing is on a scale: use Tailwind steps (p-0.5 … p-7 = 2px … 28px), not an arbitrary pixel value.',
+  },
 ];
 
 /**

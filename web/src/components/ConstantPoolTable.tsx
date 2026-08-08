@@ -32,7 +32,7 @@ export function ConstantPoolTable({ rows, selectedIndex, onSelectIndex }: Consta
   const listRef = useFollowSelected(selectedIndex);
 
   return (
-    <ol ref={listRef} className="isolate px-[10px]">
+    <ol ref={listRef} className="isolate px-2.5">
       {rows.map((row, position) => {
         const isSelected = row.index === selectedIndex;
         // The row and its references share the row's single tab stop, so reaching a reference
@@ -87,7 +87,7 @@ export function ConstantPoolTable({ rows, selectedIndex, onSelectIndex }: Consta
             )}
 
             {row.references.length === 0 ? null : (
-              <span className="flex shrink-0 items-center gap-[5px] pl-3">
+              <span className="flex shrink-0 items-center gap-1 pl-3">
                 {row.references.map((reference, order) =>
                   onSelectIndex === undefined ? (
                     // Without a handler the references are still worth showing: they are what
@@ -121,7 +121,7 @@ export function ConstantPoolTable({ rows, selectedIndex, onSelectIndex }: Consta
 
 /** The chip a constant pool reference is drawn as, matching the resolution chain in `Next`. */
 const REFERENCE =
-  'shrink-0 rounded-md bg-raised px-[7px] py-0.5 text-micro leading-none text-accent-soft';
+  'shrink-0 rounded-md bg-raised px-1.5 py-0.5 text-micro leading-none text-accent-soft';
 
 /**
  * Keeps the selected row inside the middle third of whichever ancestor scrolls.

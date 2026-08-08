@@ -45,7 +45,7 @@ const LABEL_COLUMN = 'w-[30px] shrink-0 text-legend tracking-[0.1em]';
  * read as a second accent (design §12).
  */
 const ORIGIN_BUTTON =
-  'focus-ring shrink-0 rounded-[4px] px-[4px] font-ui text-micro text-fg-3 transition-colors duration-150 hover:bg-raised-active hover:text-fg';
+  'focus-ring shrink-0 rounded-[4px] px-1 font-ui text-micro text-fg-3 transition-colors duration-150 hover:bg-raised-active hover:text-fg';
 
 /** Stable identity for the int-only runs, which never hand the panel a heap of their own. */
 const NO_HEAP: readonly HeapObject[] = [];
@@ -98,7 +98,7 @@ export function OperandStackPanel({
       className="grow"
     >
       {/* The list stays mounted even when empty: unmounting it would cut the exit short. */}
-      <ol className="flex flex-col gap-[3px] px-[8px]">
+      <ol className="flex flex-col gap-0.5 px-2">
         {/* `popLayout` takes the leaving cell out of flow, so the rows below never jump. */}
         <AnimatePresence initial={false} mode="popLayout">
           {operandStack
@@ -126,7 +126,7 @@ export function OperandStackPanel({
                 >
                   <span className={`${LABEL_COLUMN} text-accent-dim`}>{isTop ? 'TOP' : ''}</span>
                   <span
-                    className={`flex flex-1 items-center gap-3 rounded-row px-[10px] py-[6px] ${
+                    className={`flex flex-1 items-center gap-3 rounded-row px-2.5 py-1.5 ${
                       isTop ? 'now-row text-accent-text' : 'bg-raised text-fg-2'
                     }`}
                   >
@@ -184,7 +184,7 @@ export function OperandStackPanel({
         />
       ) : null}
 
-      <div className="flex items-center gap-2 px-[8px] pt-[6px]">
+      <div className="flex items-center gap-2 px-2 pt-1.5">
         <span className={`${LABEL_COLUMN} text-fg-3`}>BASE</span>
         <span className={BASE_LINE} />
       </div>

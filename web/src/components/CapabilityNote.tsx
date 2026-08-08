@@ -19,7 +19,7 @@ export function CapabilityNote() {
       data-testid="welcome-capabilities"
       className="group rounded-panel bg-raised shadow-panel"
     >
-      <summary className="focus-ring flex cursor-pointer list-none items-baseline gap-3 rounded-panel px-[16px] py-[12px] text-label text-fg-3 transition-colors hover:text-fg-2 [&::-webkit-details-marker]:hidden">
+      <summary className="focus-ring flex cursor-pointer list-none items-baseline gap-3 rounded-panel px-4 py-3 text-label text-fg-3 transition-colors duration-150 hover:text-fg-2 [&::-webkit-details-marker]:hidden">
         <span className="grow">
           Runs the integer subset of the JVM —{' '}
           <span className="font-mono text-fg-2 tabular-nums">{executable}</span> of{' '}
@@ -38,12 +38,12 @@ export function CapabilityNote() {
 
       {/* A hairline rather than a second surface: the breakdown is the same note continued, and
           §12 rules out reaching for a shadow to say so. */}
-      <div className="grid gap-x-[24px] gap-y-[18px] border-t border-line px-[16px] pt-[14px] pb-[16px] md:grid-cols-2">
+      <div className="grid gap-x-6 gap-y-4 border-t border-line px-4 pt-3.5 pb-4 md:grid-cols-2">
         <section>
-          <h4 className="text-label font-semibold text-fg-2">Executable instructions</h4>
-          <dl className="mt-[10px] flex flex-col gap-[6px]">
+          <h4 className="text-label font-medium text-fg-2">Executable instructions</h4>
+          <dl className="mt-2.5 flex flex-col gap-1.5">
             {families.map((family) => (
-              <div key={family.name} data-testid="capability-family" className="flex gap-[10px]">
+              <div key={family.name} data-testid="capability-family" className="flex gap-2.5">
                 <dt className="w-[136px] shrink-0 text-meta text-fg-3">{family.name}</dt>
                 <dd className="font-mono text-meta text-fg-2">{family.mnemonics.join(' ')}</dd>
               </div>
@@ -52,15 +52,15 @@ export function CapabilityNote() {
         </section>
 
         <section>
-          <h4 className="text-label font-semibold text-fg-2">Not implemented yet</h4>
-          <ul className="mt-[10px] flex flex-col gap-[6px]">
+          <h4 className="text-label font-medium text-fg-2">Not implemented yet</h4>
+          <ul className="mt-2.5 flex flex-col gap-1.5">
             {gaps.map((gap) => (
               <li key={gap.title} data-testid="capability-gap" className="text-meta text-fg-3">
                 {gap.title} <span className="font-mono text-fg-2">{gap.missing.join(' ')}</span>
               </li>
             ))}
           </ul>
-          <p className="mt-[12px] text-meta text-fg-3">{CALL_SCOPE_NOTE}</p>
+          <p className="mt-3 text-meta text-fg-3">{CALL_SCOPE_NOTE}</p>
         </section>
       </div>
     </details>

@@ -89,7 +89,7 @@ export function FileUpload({ onFileSelected, variant = 'compact' }: FileUploadPr
     >
       <label
         htmlFor={inputId}
-        className="text-label cursor-pointer rounded-control bg-raised px-[10px] py-[5px] text-fg shadow-control-raised transition-colors duration-150 hover:bg-raised-hover"
+        className="text-label cursor-pointer rounded-control bg-raised px-2.5 py-1 text-fg shadow-control-raised transition-colors duration-150 hover:bg-raised-hover"
       >
         Open .class…
       </label>

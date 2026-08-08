@@ -12,16 +12,12 @@ interface SegmentedControlProps {
  * selector (examples) and as an action cluster (transport), so it stays a plain container
  * instead of owning a selection model.
  */
-export function SegmentedControl({
-  label,
-  className = 'p-[3px]',
-  children,
-}: SegmentedControlProps) {
+export function SegmentedControl({ label, className = 'p-0.5', children }: SegmentedControlProps) {
   return (
     <div
       role="group"
       aria-label={label}
-      className={`inline-flex shrink-0 items-center gap-[2px] rounded-control bg-sunken shadow-control-inset ${className}`}
+      className={`inline-flex shrink-0 items-center gap-0.5 rounded-control bg-sunken shadow-control-inset ${className}`}
     >
       {children}
     </div>

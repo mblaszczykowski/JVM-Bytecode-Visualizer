@@ -43,8 +43,8 @@ export function CompletionCard({ summary, heap = NO_HEAP }: CompletionCardProps)
 
   return (
     <Panel title="Result" meta="run complete" variant="state" scrolls={false} className="grow">
-      <div data-testid="completion-card" className="px-[10px] pb-[4px]">
-        <div className="rounded-row bg-accent/12 px-[12px] py-[10px] shadow-current">
+      <div data-testid="completion-card" className="px-2.5 pb-1">
+        <div className="rounded-row bg-accent/12 px-3 py-2.5 shadow-current">
           <div className="flex items-baseline gap-2">
             <span className="font-mono text-code text-accent-soft">{resultName}</span>
             <span className="font-mono text-code text-accent-soft/70">=</span>
@@ -56,17 +56,17 @@ export function CompletionCard({ summary, heap = NO_HEAP }: CompletionCardProps)
             </span>
           </div>
           {referenceValue === undefined ? null : (
-            <p className="mt-[7px] text-micro text-accent-soft/85">
+            <p className="mt-1.5 text-micro text-accent-soft/85">
               Matches the value a real JVM computed for this example when the fixtures were built.
             </p>
           )}
         </div>
 
         {heap.length === 0 ? null : (
-          <div className="mt-[10px] rounded-row bg-raised px-[13px] py-[10px]">
-            <p className="pb-[8px] text-meta text-fg-3">Heap as the run left it</p>
+          <div className="mt-2.5 rounded-row bg-raised px-3 py-2.5">
+            <p className="pb-2 text-meta text-fg-3">Heap as the run left it</p>
             {/* The card itself does not scroll, so a heap with a lot on it scrolls here. */}
-            <ol className="scroll-slim flex max-h-[150px] flex-col gap-[12px] overflow-y-auto">
+            <ol className="scroll-slim flex max-h-[150px] flex-col gap-3 overflow-y-auto">
               {heap.map((object, handle) =>
                 object.kind === 'int-array' ? (
                   <HeapArrayRow key={handle} array={object} handle={handle} />
@@ -78,7 +78,7 @@ export function CompletionCard({ summary, heap = NO_HEAP }: CompletionCardProps)
           </div>
         )}
 
-        <div className="mt-[10px] flex flex-col gap-[7px] rounded-row bg-raised px-[13px] py-[10px]">
+        <div className="mt-2.5 flex flex-col gap-1.5 rounded-row bg-raised px-3 py-2.5">
           <Figure label="Steps executed" value={totalSteps.toLocaleString('en-US')} />
           <Figure label="Deepest call stack" value={`${String(maxDepth)} frames`} />
         </div>

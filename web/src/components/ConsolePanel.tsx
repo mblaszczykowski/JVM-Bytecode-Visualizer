@@ -44,7 +44,7 @@ export function ConsolePanel({ lines }: ConsolePanelProps) {
             detail="The first System.out.println the run reaches writes a line here."
           />
         ) : (
-          <ol className="px-[10px] pb-[2px]">
+          <ol className="px-2.5 pb-0.5">
             {lines.map((line, index) => {
               const isNewest = index === newestIndex;
 

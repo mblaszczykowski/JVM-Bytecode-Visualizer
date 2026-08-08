@@ -99,8 +99,8 @@ export function HeapArrayRow({ array, handle, focus, pulses }: HeapArrayRowProps
   const reduced = useReducedMotion() ?? false;
 
   return (
-    <li data-testid="heap-array" data-handle={handle} className="px-[3px]">
-      <div className="flex items-baseline gap-2 pb-[6px]">
+    <li data-testid="heap-array" data-handle={handle} className="px-0.5">
+      <div className="flex items-baseline gap-2 pb-1.5">
         <span className="font-mono text-meta text-fg-3">{objectLabel(array, handle)}</span>
         <span className="grow" />
         {focus === undefined ? (
@@ -112,7 +112,7 @@ export function HeapArrayRow({ array, handle, focus, pulses }: HeapArrayRowProps
         )}
       </div>
 
-      <ol className="scroll-slim flex gap-[5px] overflow-x-auto pb-[2px]">
+      <ol className="scroll-slim flex gap-1 overflow-x-auto pb-0.5">
         {array.elements.map((value, index) => {
           const isFocused = focus?.index === index;
           const pulse = pulses?.[index] ?? 0;
@@ -146,7 +146,7 @@ export function HeapArrayRow({ array, handle, focus, pulses }: HeapArrayRowProps
                 {value}
               </span>
               <span
-                className={`mt-[3px] text-center text-legend tracking-[0.1em] ${
+                className={`mt-0.5 text-center text-legend tracking-[0.1em] ${
                   isFocused ? 'text-accent-dim' : 'text-fg-3'
                 }`}
               >
@@ -177,8 +177,8 @@ export function HeapInstanceRow({ instance, handle, pulses }: HeapInstanceRowPro
   const reduced = useReducedMotion() ?? false;
 
   return (
-    <li data-testid="heap-instance" data-handle={handle} className="px-[3px]">
-      <div className="flex items-baseline gap-2 pb-[6px]">
+    <li data-testid="heap-instance" data-handle={handle} className="px-0.5">
+      <div className="flex items-baseline gap-2 pb-1.5">
         <span className="font-mono text-meta text-fg-3">{objectLabel(instance, handle)}</span>
         <span className="grow" />
         <span className="shrink-0 font-mono text-micro text-fg-3">
@@ -186,7 +186,7 @@ export function HeapInstanceRow({ instance, handle, pulses }: HeapInstanceRowPro
         </span>
       </div>
 
-      <ol className="flex flex-col gap-[3px]">
+      <ol className="flex flex-col gap-0.5">
         {instance.fields.map((field, index) => {
           const pulse = pulses?.[index] ?? 0;
 
@@ -255,7 +255,7 @@ export function HeapPanel({ heap, frame, mnemonic }: HeapPanelProps) {
       variant="state"
       className="grow"
     >
-      <ol className="flex flex-col gap-[12px] px-[10px] pb-[2px]">
+      <ol className="flex flex-col gap-3 px-2.5 pb-0.5">
         {heap.map((object, handle) => (
           <HeapObjectRow
             key={handle}

@@ -54,7 +54,7 @@ function HealthBadge({ status }: { readonly status: Exclude<CompilerStatus, 'hid
       data-testid="compiler-health"
       data-status={status}
       title={online ? 'Compile service reachable' : 'Compile service unreachable'}
-      className="text-meta flex shrink-0 items-center gap-[6px] rounded-control px-[8px] py-[5px] text-fg-3"
+      className="text-meta flex shrink-0 items-center gap-1.5 rounded-control px-2 py-1 text-fg-3"
     >
       <span
         aria-hidden="true"
@@ -86,7 +86,7 @@ export function Toolbar({
   shortcuts,
 }: ToolbarProps) {
   return (
-    <header className="shrink-0 border-b border-line px-[14px] py-[9px]">
+    <header className="shrink-0 border-b border-line px-3.5 py-2">
       {/*
         Three zones rather than one wrapping row. Only the middle zone may shrink, so an
         example list too long for the width can no longer drag the actions onto a second line:
@@ -110,7 +110,7 @@ export function Toolbar({
           />
         </div>
 
-        <div className="col-start-2 col-end-3 row-start-1 flex items-center gap-[6px] md:col-start-3 md:col-end-4">
+        <div className="col-start-2 col-end-3 row-start-1 flex items-center gap-1.5 md:col-start-3 md:col-end-4">
           {/* The way in that does not depend on which panel is on screen. */}
           <button
             type="button"
@@ -118,7 +118,7 @@ export function Toolbar({
             onClick={() => {
               openGlossary();
             }}
-            className="focus-ring text-meta shrink-0 rounded-control px-[8px] py-[5px] text-fg-2 transition-colors duration-150 hover:bg-raised hover:text-fg"
+            className="focus-ring text-meta shrink-0 rounded-control px-2 py-1 text-fg-2 transition-colors duration-150 hover:bg-raised hover:text-fg"
           >
             Glossary
           </button>
@@ -128,7 +128,7 @@ export function Toolbar({
             <button
               type="button"
               onClick={onWriteJava}
-              className="focus-ring text-label shrink-0 rounded-control bg-raised px-[10px] py-[5px] text-fg shadow-control-raised transition-colors duration-150 hover:bg-raised-hover"
+              className="focus-ring text-label shrink-0 rounded-control bg-raised px-2.5 py-1 text-fg shadow-control-raised transition-colors duration-150 hover:bg-raised-hover"
             >
               Write Java…
             </button>

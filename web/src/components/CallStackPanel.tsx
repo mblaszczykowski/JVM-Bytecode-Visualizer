@@ -80,7 +80,7 @@ export function CallStackPanel({ frames }: CallStackPanelProps) {
           detail="Execution finished: returning from the entry method popped the last frame."
         />
       ) : (
-        <ol data-testid="call-frame-list" className="flex flex-col-reverse gap-[3px] px-[8px]">
+        <ol data-testid="call-frame-list" className="flex flex-col-reverse gap-0.5 px-2">
           {/* `popLayout` takes the returning frame out of flow, so the stack below stays put. */}
           <AnimatePresence initial={false} mode="popLayout">
             {rows.map((row) => {
@@ -93,7 +93,7 @@ export function CallStackPanel({ frames }: CallStackPanelProps) {
                       onClick={() => {
                         setExpanded(true);
                       }}
-                      className="focus-ring w-full rounded-row px-[10px] py-[5px] text-left text-meta text-fg-3 transition-colors duration-150 hover:text-fg-2"
+                      className="focus-ring w-full rounded-row px-2.5 py-1 text-left text-meta text-fg-3 transition-colors duration-150 hover:text-fg-2"
                     >
                       … {row.count} more frames
                     </button>
@@ -118,7 +118,7 @@ export function CallStackPanel({ frames }: CallStackPanelProps) {
                   data-frame-index={index}
                   aria-current={isTop ? 'true' : undefined}
                   title={`${frame.methodName}${frame.methodDescriptor}`}
-                  className={`flex items-center gap-2 rounded-row px-[10px] py-[6px] text-label ${
+                  className={`flex items-center gap-2 rounded-row px-2.5 py-1.5 text-label ${
                     isTop ? 'now-row text-accent-text' : 'bg-raised text-fg-2'
                   }`}
                 >

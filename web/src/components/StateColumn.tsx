@@ -55,7 +55,7 @@ function Hairline() {
   return (
     <div
       aria-hidden="true"
-      className="mx-[12px] h-px shrink-0 bg-line md:mx-0 md:my-[12px] md:h-auto md:w-px lg:mx-[12px] lg:my-0 lg:h-px lg:w-auto"
+      className="mx-3 h-px shrink-0 bg-line md:mx-0 md:my-3 md:h-auto md:w-px lg:mx-3 lg:my-0 lg:h-px lg:w-auto"
     />
   );
 }
@@ -79,7 +79,7 @@ const NO_HEAP: readonly HeapObject[] = [];
 const SECTION = 'flex min-h-[84px] flex-col md:min-w-0 md:flex-1 lg:flex-initial';
 
 /** Whichever section ends the column carries the pane's bottom padding. */
-const LAST_SECTION = 'pb-[6px]';
+const LAST_SECTION = 'pb-1.5';
 
 /**
  * Always the last section of the column, in either branch — the console is the one panel whose

@@ -731,7 +731,7 @@ export function App({
    * surface of its own, so nothing new floats on the glass and the column keeps one frame.
    */
   const structureTabs = (
-    <SegmentedControl label="Left panel" className="-my-[3px] p-[2px]">
+    <SegmentedControl label="Left panel" className="-my-0.5 p-0.5">
       {STRUCTURE_VIEWS.map(({ id, label, name }) => (
         <Segment
           key={id}
@@ -740,7 +740,7 @@ export function App({
           onClick={() => {
             selectPanel(id);
           }}
-          className="px-[9px] py-[2px] text-label"
+          className="px-2 py-0.5 text-label"
         >
           {label}
         </Segment>
@@ -804,7 +804,7 @@ export function App({
             />
           )}
           {footerNotice === undefined ? null : (
-            <div className="px-[18px] pt-[14px]">
+            <div className="px-4 pt-3.5">
               <ErrorBanner
                 severity={footerNotice.severity}
                 message={footerNotice.message}

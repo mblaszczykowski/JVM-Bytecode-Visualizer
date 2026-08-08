@@ -51,7 +51,7 @@ function DepthSparkline({ preview }: { readonly preview: RunPreview }) {
         <span
           key={bucket}
           data-testid="welcome-sparkline-bar"
-          className="min-h-px flex-1 rounded-[1px] bg-fg-dim transition-colors group-hover:bg-accent"
+          className="min-h-px flex-1 rounded-[1px] bg-fg-dim transition-colors duration-150 group-hover:bg-accent"
           style={{ height: `${String((depth / scale) * 100)}%` }}
         />
       ))}
@@ -85,7 +85,7 @@ export function WelcomeScreen({
           short viewport loses the drop zone off the bottom, never the headline off the top.
           The 18px band the padding reserves is what the `fade-y` mask eats when nothing is
           clipped. */}
-      <div className="m-auto flex w-full max-w-[1080px] flex-col gap-[18px] py-[18px]">
+      <div className="m-auto flex w-full max-w-[1080px] flex-col gap-4 py-4">
         {/* Not a <header>: the toolbar is this document's banner landmark, and a second
             one makes both of them ambiguous to a screen reader working by landmark. */}
         <div className="max-w-[820px]">
@@ -96,7 +96,7 @@ export function WelcomeScreen({
           </h2>
           {/* Its own measure rather than the header's: 38px type wants a wide column and 13px
               prose does not, and one width for both leaves the paragraph too long to track. */}
-          <p className="mt-[14px] max-w-[64ch] text-body text-fg-2">
+          <p className="mt-3.5 max-w-[64ch] text-body text-fg-2">
             A <code className="font-mono text-fg">.class</code> file is parsed, disassembled and
             executed here in the browser — no server, no upload. The whole run is recorded, so you
             can play it back like a video and watch the call stack, the operand stack and every
@@ -115,9 +115,9 @@ export function WelcomeScreen({
         */}
         <ul className="grid divide-y divide-line border-y border-line sm:grid-cols-3 sm:divide-x sm:divide-y-0">
           {STEPS.map((step) => (
-            <li key={step.head} className="py-[12px] sm:px-[16px] sm:first:pl-0 sm:last:pr-0">
+            <li key={step.head} className="py-3 sm:px-4 sm:first:pl-0 sm:last:pr-0">
               <span className="block text-label font-medium text-fg">{step.head}</span>
-              <span className="mt-[3px] block text-meta text-fg-3">{step.body}</span>
+              <span className="mt-0.5 block text-meta text-fg-3">{step.body}</span>
             </li>
           ))}
         </ul>
@@ -132,12 +132,12 @@ export function WelcomeScreen({
               onClick={() => {
                 openGlossary();
               }}
-              className="focus-ring shrink-0 rounded-control px-[8px] py-[4px] text-meta text-fg-2 transition-colors duration-150 hover:bg-raised hover:text-fg"
+              className="focus-ring shrink-0 rounded-control px-2 py-1 text-meta text-fg-2 transition-colors duration-150 hover:bg-raised hover:text-fg"
             >
               New to the JVM? What these words mean
             </button>
           </div>
-          <ul className="mt-[10px] grid gap-[12px] sm:grid-cols-2 xl:grid-cols-4">
+          <ul className="mt-2.5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             {examples.map((example) => (
               <li key={example.id} className="flex">
                 <button
@@ -146,7 +146,7 @@ export function WelcomeScreen({
                   onClick={() => {
                     onExampleSelected(example.id);
                   }}
-                  className="focus-ring group flex w-full flex-col gap-[7px] rounded-panel bg-panel px-[14px] py-[12px] text-left shadow-panel transition-colors duration-150 hover:bg-raised"
+                  className="focus-ring group flex w-full flex-col gap-1.5 rounded-panel bg-panel px-3.5 py-3 text-left shadow-panel transition-colors duration-150 hover:bg-raised"
                 >
                   <span className="text-title font-medium text-fg">{example.title}</span>
                   <span className="grow text-meta text-fg-2">{example.tagline}</span>
@@ -175,7 +175,7 @@ export function WelcomeScreen({
           />
         )}
 
-        <div className="flex flex-col gap-[10px] lg:flex-row lg:items-stretch">
+        <div className="flex flex-col gap-2.5 lg:flex-row lg:items-stretch">
           <div className="flex-1">
             <FileUpload variant="zone" onFileSelected={onFileSelected} />
           </div>
@@ -186,7 +186,7 @@ export function WelcomeScreen({
               onClick={onWriteJava}
               className="focus-ring flex flex-wrap items-center justify-center gap-x-3 gap-y-1 rounded-panel bg-panel px-5 py-4 text-label text-fg-2 shadow-panel transition-colors duration-150 hover:bg-raised lg:w-[300px]"
             >
-              <span className="rounded-control bg-raised px-[10px] py-[5px] text-fg shadow-control-raised">
+              <span className="rounded-control bg-raised px-2.5 py-1 text-fg shadow-control-raised">
                 Write Java…
               </span>
               <span className="text-meta text-fg-3">compile a small class and run it here</span>
