@@ -12,6 +12,7 @@ import { SourcePanel } from './components/SourcePanel';
 import { StateColumn } from './components/StateColumn';
 import type { ShortcutGroup } from './components/KeyboardHelp';
 import { Toolbar, type CompilerStatus, type PanelName } from './components/Toolbar';
+import { EmbedBar } from './components/EmbedBar';
 import { TourStrip } from './components/TourStrip';
 import { TransportControls } from './components/TransportControls';
 import { Segment, SegmentedControl } from './components/ui/SegmentedControl';
@@ -49,6 +50,7 @@ import {
   explainMnemonic,
 } from './services/derivations';
 import { parseDeepLink, writeDeepLink, writeTourLink } from './services/deep-link';
+import { fullAppUrl, isEmbedded } from './services/embed';
 import { describeAppError, describeCompileFailure, toAppError } from './services/errors';
 import { fetchExampleManifest, shortTitleOf } from './services/examples';
 import {
@@ -273,6 +275,11 @@ export function App({
    * component writes, and re-reading it would fight the transport for the position.
    */
   const [openedAt] = useState(() => parseDeepLink(window.location.hash));
+  /**
+   * Read once, like the hash: how the page is being shown does not change while it is open, and
+   * an embed that could turn itself back into the full application would be a surprise.
+   */
+  const [embedded] = useState(() => isEmbedded(window.location.search));
   /** Both halves of the link are honoured once — the example, then the step inside its run. */
   const pendingExample = useRef(openedAt?.exampleId);
   const pendingStep = useRef(openedAt?.stepIndex);
@@ -384,9 +391,13 @@ export function App({
    * A link opens on the program it names instead of on the welcome screen. It waits for the
    * manifest, because until then there is no entry to load; an id the manifest does not carry
    * is simply dropped, and the reader gets the ordinary first screen.
+   *
+   * An embed with no program named is the one case that picks for itself. A frame in someone
+   * else's page has no business showing a chooser — whoever wrote the embed already chose, and
+   * if they chose nothing the frame should still be a run rather than an invitation.
    */
   useEffect(() => {
-    const id = pendingExample.current;
+    const id = pendingExample.current ?? (embedded ? examples[0]?.id : undefined);
     if (id === undefined || examples.length === 0) {
       return;
     }
@@ -394,7 +405,7 @@ export function App({
     selectExample(id);
     // `selectExample` closes over the freshly loaded `examples`, which is what gates this.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [examples]);
+  }, [examples, embedded]);
 
   const selectFile = (file: File) => {
     void startLoad(`Reading ${file.name}`, (context) => loadUploadState(file, undefined, context));
@@ -776,19 +787,27 @@ export function App({
   return (
     <AppShell
       toolbar={
-        <Toolbar
-          appName={APP_NAME}
-          examples={exampleOptions}
-          selectedExampleId={
-            program?.origin.kind === 'example' ? program.origin.entry.id : undefined
-          }
-          onExampleSelected={selectExample}
-          onFileSelected={selectFile}
-          compilerStatus={compilerStatus}
-          onWriteJava={writeJava}
-          panelSwitch={canExplore ? { selected: visiblePanel, onSelect: selectPanel } : undefined}
-          shortcuts={SHORTCUTS}
-        />
+        embedded ? (
+          <EmbedBar
+            appName={APP_NAME}
+            programName={program?.sourceFileName ?? program?.classFile.thisClassName}
+            fullUrl={fullAppUrl(window.location.href)}
+          />
+        ) : (
+          <Toolbar
+            appName={APP_NAME}
+            examples={exampleOptions}
+            selectedExampleId={
+              program?.origin.kind === 'example' ? program.origin.entry.id : undefined
+            }
+            onExampleSelected={selectExample}
+            onFileSelected={selectFile}
+            compilerStatus={compilerStatus}
+            onWriteJava={writeJava}
+            panelSwitch={canExplore ? { selected: visiblePanel, onSelect: selectPanel } : undefined}
+            shortcuts={SHORTCUTS}
+          />
+        )
       }
       isDropTarget={isDropTarget}
       footer={

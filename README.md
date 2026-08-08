@@ -178,6 +178,26 @@ and this makes the hundredth kilobyte a decision instead of an accident.
 ✓ run-program.worker.js      12.2 kB gzip /  16 kB  parser + interpreter
 ```
 
+**A run can be shown somewhere else.** Adding `?embed` puts the application in embedded mode: the
+toolbar is replaced by the name of what is loaded and a way out to the full application, and the
+frame shows one run rather than an invitation to pick one. The flag is a query parameter and the
+moment is a hash, so the two compose without knowing about each other.
+
+```html
+<iframe
+  src="https://your-deployment/?embed#/bubble-sort/tour/the-swap/2"
+  width="1100"
+  height="700"
+  title="A swap, one instruction at a time"
+  loading="lazy"
+></iframe>
+```
+
+Anything from about 1000×640 gets all three panels; below that the State column folds into a band
+under the code, as it does on a tablet, and a short frame starts costing rows of the listing. An
+embed that names no program loads the first example, because a frame in someone else's page has no
+business showing a chooser.
+
 Coverage thresholds are enforced by CI rather than by review: `web/src/core/**` must stay at 90%
 lines, branches and functions, configured in `web/vite.config.ts`.
 
