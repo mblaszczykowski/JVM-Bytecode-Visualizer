@@ -119,17 +119,31 @@ describe('Toolbar', () => {
     expect(screen.queryByText(/or drop/)).toBeNull();
   });
 
-  it('takes a line of its own for the panel switch, and only while the panels share a cell', () => {
+  it('shares one line between the panel switch and the folded example picker', () => {
     const onSelect = vi.fn();
     renderToolbar('hidden', undefined, { selected: 'bytecode', onSelect });
 
+    // Which program and which panel are the two navigations a phone needs beside the transport.
+    // They used to take a row each at the top, which cost the disassembly more height than
+    // either was worth; they share the second row of the header grid now, and vanish at `md`.
     const panelSwitch = screen.getByTestId('panel-switch');
     expect(panelSwitch.className).toContain('md:hidden');
-    expect(panelSwitch.parentElement).toBe(screen.getByRole('banner'));
+    expect(panelSwitch.className).toContain('row-start-2');
+
+    const trigger = screen.getByTestId('example-picker-trigger');
+    expect(trigger.closest('[class*="row-start-2"]')).not.toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: 'State' }));
 
     expect(onSelect).toHaveBeenCalledWith('state');
+  });
+
+  it('keeps exactly one example radiogroup, folded or not', () => {
+    // Two copies — one of them merely `hidden` — would put two "which example" controls in the
+    // accessibility tree, and a screen reader would reach whichever came first.
+    renderToolbar('hidden', undefined, { selected: 'bytecode', onSelect: vi.fn() });
+
+    expect(screen.getAllByRole('radiogroup', { name: 'Example programs' })).toHaveLength(1);
   });
 
   it('leaves the panel switch out while one view owns the whole width', () => {

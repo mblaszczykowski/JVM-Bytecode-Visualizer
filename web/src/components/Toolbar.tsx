@@ -97,18 +97,57 @@ export function Toolbar({
         would leave the rail nothing. DOM order stays name → examples → actions, so the
         reading order is the visual order everywhere the three share a line.
       */}
-      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 md:grid-cols-[auto_minmax(0,1fr)_auto]">
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 gap-y-2 md:grid-cols-[auto_minmax(0,1fr)_auto]">
         <h1 className="text-brand col-start-1 col-end-2 row-start-1 min-w-0 truncate font-semibold tracking-[-0.02em] text-fg">
           {appName}
         </h1>
 
-        <div className="col-start-1 col-end-3 row-start-2 flex min-w-0 md:col-start-2 md:col-end-3 md:row-start-1">
+        {/*
+          One picker, moved rather than duplicated. Below `md` it sits on the second row and,
+          once a program is loaded, shares that row with the panel switch as a folded trigger;
+          with nothing loaded it takes the whole row as a rail. At `md` it moves up beside the
+          name and is a rail again. Rendering a second copy and hiding one with `hidden` would
+          put two "which example" radiogroups in the accessibility tree, which is a lie to a
+          screen reader whichever one it happens to reach first.
+        */}
+        <div
+          className={`row-start-2 flex min-w-0 md:col-start-2 md:col-end-3 md:row-start-1 ${
+            panelSwitch === undefined ? 'col-start-1 col-end-3' : 'col-start-1 col-end-2'
+          }`}
+        >
           <ExamplePicker
             examples={examples}
             selectedId={selectedExampleId}
             onExampleSelected={onExampleSelected}
+            collapsible={panelSwitch !== undefined}
           />
         </div>
+
+        {/*
+          Which panel is on screen, on the same line as which program. These are the two
+          navigations a phone needs beside the transport, and giving them a row each was costing
+          the disassembly more height than either of them was worth.
+        */}
+        {panelSwitch === undefined ? null : (
+          <div data-testid="panel-switch" className="col-start-2 col-end-3 row-start-2 md:hidden">
+            <SegmentedControl label="Visible panel" className="w-full p-1">
+              {PANEL_NAMES.map(({ id, label }) => (
+                <Segment
+                  key={id}
+                  label={label}
+                  labelIsVisible
+                  selected={panelSwitch.selected === id}
+                  onClick={() => {
+                    panelSwitch.onSelect(id);
+                  }}
+                  className="h-11 flex-1"
+                >
+                  {label}
+                </Segment>
+              ))}
+            </SegmentedControl>
+          </div>
+        )}
 
         <div className="col-start-2 col-end-3 row-start-1 flex items-center gap-1.5 md:col-start-3 md:col-end-4">
           {/* The way in that does not depend on which panel is on screen. */}
@@ -137,28 +176,6 @@ export function Toolbar({
           {compilerStatus === 'hidden' ? null : <HealthBadge status={compilerStatus} />}
         </div>
       </div>
-
-      {/* A line of its own: at this width the panels are one cell and this is what picks it. */}
-      {panelSwitch === undefined ? null : (
-        <div data-testid="panel-switch" className="mt-3 md:hidden">
-          <SegmentedControl label="Visible panel" className="w-full p-1">
-            {PANEL_NAMES.map(({ id, label }) => (
-              <Segment
-                key={id}
-                label={label}
-                labelIsVisible
-                selected={panelSwitch.selected === id}
-                onClick={() => {
-                  panelSwitch.onSelect(id);
-                }}
-                className="h-11 flex-1"
-              >
-                {label}
-              </Segment>
-            ))}
-          </SegmentedControl>
-        </div>
-      )}
 
       {/* Mounted here because the toolbar is on screen in every state of the application; it
           renders nothing until something asks for a term. */}
