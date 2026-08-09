@@ -1,25 +1,3 @@
-/**
- * The application state machine and the two load paths that feed it.
- *
- * One discriminated union, no boolean flags: a view is a function of `status`, and every
- * outcome that still has something to show keeps the program next to it, so the grid stays
- * alive. `vm-error` and `step-limit` keep a playable history (ADR-0001); `no-entry-point`
- * keeps a class file with nothing to play, which is the explorer and not a dead end. The
- * outcome is a property of the program, never a gate on whether there is one.
- *
- * `AppModel` holds that lifecycle together with the three things that live alongside it —
- * the editor, the compile service and the examples — under one reducer, because they are not
- * independent: a load closes the editor, a compile answer revives the service badge, and a
- * manifest that never arrived must not erase a program the reader already opened.
- *
- * Every load below runs its program through a `ProgramRunner` rather than calling `execute()`
- * itself, because a run is the one part of a load that can take long enough to be worth
- * abandoning. That makes `loading` a state the reader can act on and not only wait through:
- * it carries how far the run has got, whether giving up would really stop it, and — since a
- * reader who changes their mind about "Raise the limit" wants the run they were reading, not
- * an empty screen — the state it goes back to if they do.
- */
-
 import { parseClassFile } from '../core/classfile';
 import { DEFAULT_MAX_STEPS } from '../core/interpreter';
 
@@ -35,69 +13,39 @@ export type AppState =
   | {
       readonly status: 'loading';
       readonly label: string;
-      /** Steps recorded so far; absent until the run starts handing its history over. */
       readonly steps: number | undefined;
-      /** Whether "Cancel" would stop the work or only stop its answer being used. */
       readonly cancellable: boolean;
-      /** Where giving up lands: the reader abandons the new run, not the one they had. */
       readonly resume: AppState;
     }
   | { readonly status: 'ready'; readonly program: LoadedProgram }
   | {
       readonly status: 'error';
       readonly error: AppError;
-      /** Present whenever the class file parsed — with or without a run behind it. */
       readonly program: LoadedProgram | undefined;
     };
 
-/** Anything larger is not hand-written Java, and parsing it would block the tab. */
 export const MAX_UPLOAD_BYTES = 512 * 1024;
 
-/** Ceiling for "Raise the limit"; beyond this the history costs more memory than it is worth. */
 export const MAX_STEP_LIMIT = 500_000;
 
 const STEP_LIMIT_FACTOR = 5;
 
-/**
- * Roughly what one recorded step costs, from the ~275 MB a run at `MAX_STEP_LIMIT` holds
- * (see `workers/run-protocol`).
- */
 const BYTES_PER_STEP = 550;
 
-/**
- * Share of the device's memory the history may claim. The page still has to paint, and the
- * browser is not the only thing running, so a fraction rather than a majority.
- */
 const MEMORY_SHARE = 1 / 8;
 
-/**
- * The recording exists twice at its peak: the worker holds it while it streams, and this side
- * is assembling its own copy. The share above has to cover both.
- */
 const CONCURRENT_COPIES = 2;
 
-/**
- * The ceiling as this device can afford it.
- *
- * `MAX_STEP_LIMIT` was chosen against a laptop. On a 1 GB phone the same button raises the
- * limit to a history the tab cannot hold, and the run dies somewhere with no result — the
- * worst of the outcomes, because nothing is left on screen to read. `deviceMemory` is
- * Chromium-only and deliberately coarse; where it is missing the full ceiling stands, which
- * is the behaviour this application always had.
- */
 export function affordableStepLimit(): number {
   const gigabytes = reportedDeviceMemory();
   if (gigabytes === undefined) {
     return MAX_STEP_LIMIT;
   }
   const affordable = (gigabytes * 1024 ** 3 * MEMORY_SHARE) / (BYTES_PER_STEP * CONCURRENT_COPIES);
-  // Never below the default: a device that cannot replay one ordinary example is not a
-  // device this application can do anything useful on anyway.
   return Math.max(DEFAULT_MAX_STEPS, Math.min(MAX_STEP_LIMIT, Math.floor(affordable)));
 }
 
 function reportedDeviceMemory(): number | undefined {
-  // Not in lib.dom: the Device Memory API ships in Chromium only.
   const reported = (navigator as Navigator & { deviceMemory?: number }).deviceMemory;
   return typeof reported === 'number' && Number.isFinite(reported) && reported > 0
     ? reported
@@ -110,10 +58,8 @@ export function failedState(error: AppError): AppState {
   return { status: 'error', error, program: undefined };
 }
 
-/** Runs on this thread and cannot be stopped once started — the shape every caller defaults to. */
 const INLINE_LOAD: LoadContext = { runner: inlineRunner };
 
-/** The program a state can still display, if any. */
 export function programOf(state: AppState): LoadedProgram | undefined {
   switch (state.status) {
     case 'ready':
@@ -126,7 +72,6 @@ export function programOf(state: AppState): LoadedProgram | undefined {
   }
 }
 
-/** Next step limit for the banner action, or `undefined` once the ceiling is reached. */
 export function raisedStepLimit(current: number): number | undefined {
   const ceiling = affordableStepLimit();
   if (current >= ceiling) {
@@ -135,10 +80,6 @@ export function raisedStepLimit(current: number): number | undefined {
   return Math.min(current * STEP_LIMIT_FACTOR, ceiling);
 }
 
-/**
- * A finished run is `ready`; anything else carries a message about the run — and the program
- * with it, because the class file is worth reading in all three cases.
- */
 export function stateFor(program: LoadedProgram): AppState {
   switch (program.outcome.kind) {
     case 'completed':
@@ -160,11 +101,6 @@ export function stateFor(program: LoadedProgram): AppState {
   }
 }
 
-/**
- * The single funnel every load comes through. Anything that goes wrong ends as a banner
- * rather than as a skeleton that never goes away — except an abandoned run, which is not a
- * failure and has no state to show: `load-cancelled` has already put the screen back.
- */
 async function settled(build: () => Promise<LoadedProgram>): Promise<AppState> {
   try {
     return stateFor(await build());
@@ -235,11 +171,9 @@ export async function loadUploadState(
 export interface CompiledClass {
   readonly className: string;
   readonly classBytes: ArrayBuffer;
-  /** The `.java` that produced the bytes — the source panel shows exactly what was written. */
   readonly source: string;
 }
 
-/** The compile editor lands on the same path as an upload, only with its source in hand. */
 export function loadCompiledState(
   compiled: CompiledClass,
   maxSteps: number = DEFAULT_MAX_STEPS,
@@ -258,7 +192,6 @@ export function loadCompiledState(
   );
 }
 
-/** Same class file and source, a different step limit — the "Raise the limit" action. */
 export function rerunState(
   program: LoadedProgram,
   maxSteps: number,
@@ -267,7 +200,6 @@ export function rerunState(
   return rebuiltState(program, maxSteps, program.entry?.name, context);
 }
 
-/** Same class file, a different method to start from — the method picker's run action. */
 export function runFromState(
   program: LoadedProgram,
   entryMethod: string,
@@ -296,33 +228,20 @@ function rebuiltState(
   );
 }
 
-/** Uploads have no source — feeding the placeholder lines back would fake one. */
 function sourceOf(program: LoadedProgram): { fileName: string; text: string } | undefined {
   return program.origin.kind === 'upload'
     ? undefined
     : { fileName: program.sourceFileName, text: program.sourceLines.join('\n') };
 }
 
-/**
- * Availability of the optional compile service. `unavailable` is the health check having
- * failed at start-up — the editor never appears and the application looks complete without
- * it; `degraded` is the service dropping out mid-session, which is worth saying out loud
- * because the editor is already open with the reader's source in it.
- */
 export type CompilerAvailability =
   'unconfigured' | 'checking' | 'online' | 'degraded' | 'unavailable';
 
-/**
- * The editor is a view over the grid, not a stage of the program lifecycle, so it stays out
- * of `AppState`: `error` plus an open editor is a legal combination, and folding one into the
- * other would either duplicate every status or make that combination unrepresentable.
- */
 export type EditorView =
   | { readonly kind: 'closed' }
   | { readonly kind: 'editing'; readonly diagnostics: readonly CompileDiagnostic[] }
   | { readonly kind: 'compiling' };
 
-/** Whether the bundled examples can be offered — an availability, not a stage of the run. */
 export type ExamplesStatus =
   | { readonly kind: 'loading' }
   | { readonly kind: 'ready'; readonly entries: readonly ExampleEntry[] }
@@ -339,17 +258,7 @@ export interface AppModel {
   readonly editor: EditorView;
   readonly compiler: CompilerAvailability;
   readonly examples: ExamplesStatus;
-  /** The compile outcome that belongs in the banner rather than next to the source. */
   readonly compileFailure: CompileFailure | undefined;
-  /**
-   * The newest request the reader issued. Loads and compiles run past their own screen —
-   * an answer that comes back carrying an older token lost the race and is dropped, so a
-   * slow compile can never write into an editor that has since closed or moved on.
-   *
-   * Terminating a worker complements this rather than replacing it: the token is what makes
-   * a late answer harmless, and only some runs can be stopped at all. Both are needed, and
-   * cancelling does both — it issues a new token *and* ends the work behind the old one.
-   */
   readonly token: number;
 }
 
@@ -385,7 +294,6 @@ export function initialAppModel(compilerConfigured: boolean): AppModel {
 export function appReducer(model: AppModel, action: AppAction): AppModel {
   switch (action.kind) {
     case 'load-started':
-      // A new program takes the grid back; the draft itself survives outside the model.
       return {
         ...model,
         load: {
@@ -393,8 +301,6 @@ export function appReducer(model: AppModel, action: AppAction): AppModel {
           label: action.label,
           steps: undefined,
           cancellable: action.cancellable,
-          // A load that replaced a load inherits its escape route: giving up on the second
-          // should land where giving up on the first would have, never on a skeleton.
           resume: model.load.status === 'loading' ? model.load.resume : model.load,
         },
         editor: CLOSED_EDITOR,
@@ -406,7 +312,6 @@ export function appReducer(model: AppModel, action: AppAction): AppModel {
         ? { ...model, load: { ...model.load, steps: action.steps } }
         : model;
     case 'load-cancelled':
-      // The new token is what makes the abandoned run's answer harmless if it still arrives.
       return model.load.status === 'loading'
         ? { ...model, load: model.load.resume, token: action.token }
         : model;
@@ -415,8 +320,6 @@ export function appReducer(model: AppModel, action: AppAction): AppModel {
     case 'examples-loaded':
       return { ...model, examples: { kind: 'ready', entries: action.entries } };
     case 'examples-failed':
-      // Whether examples can be offered, not what the application is doing: a manifest that
-      // never arrived leaves a program loaded from anywhere else exactly where it was.
       return { ...model, examples: { kind: 'failed', error: action.error } };
     case 'compiler-checked':
       return { ...model, compiler: action.healthy ? 'online' : 'unavailable' };
@@ -441,7 +344,6 @@ function settleCompile(model: AppModel, result: CompileResult): AppModel {
 
   switch (result.kind) {
     case 'compiled':
-      // The load the caller starts next closes the editor and shows the run instead.
       return { ...model, compiler };
     case 'diagnostics':
       return {
@@ -452,16 +354,10 @@ function settleCompile(model: AppModel, result: CompileResult): AppModel {
       };
     case 'rate-limited':
     case 'unavailable':
-      // The draft stays on screen: the source is fine, the service is not.
       return { ...model, compiler, editor: EDITING, compileFailure: result };
   }
 }
 
-/**
- * Any answer at all — a class file, javac diagnostics, even a rate limit — proves the service
- * is up, so a session that once went `degraded` finds its way back. A service that never
- * answered the health check stays where it is: the editor it hides was never offered.
- */
 function compilerAfter(current: CompilerAvailability, result: CompileResult): CompilerAvailability {
   if (current !== 'online' && current !== 'degraded') {
     return current;
@@ -469,7 +365,6 @@ function compilerAfter(current: CompilerAvailability, result: CompileResult): Co
   return result.kind === 'unavailable' ? 'degraded' : 'online';
 }
 
-/** Examples to offer; a manifest still in flight or refused simply has none. */
 export function exampleEntriesOf(status: ExamplesStatus): readonly ExampleEntry[] {
   switch (status.kind) {
     case 'ready':
@@ -480,7 +375,6 @@ export function exampleEntriesOf(status: ExamplesStatus): readonly ExampleEntry[
   }
 }
 
-/** The failure the examples column has to own up to, if any. */
 export function examplesErrorOf(status: ExamplesStatus): AppError | undefined {
   return status.kind === 'failed' ? status.error : undefined;
 }

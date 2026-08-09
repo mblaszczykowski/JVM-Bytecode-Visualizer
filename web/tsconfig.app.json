@@ -15,7 +15,7 @@
     "skipLibCheck": true,
     "noEmit": true,
 
-    /* Type rigour: the compiler is the first reviewer. */
+    /* Strictness. */
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": true,

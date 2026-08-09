@@ -12,14 +12,11 @@ import {
 import { firstStepOf, frameAt, operandRolesAt, snapshots } from './__fixtures__/factorial-run';
 import { OperandStackPanel } from './OperandStackPanel';
 
-/** factorial(4) just before its `isub`: the stack holds [4, 4, 1] from base to top. */
 const isubStep = firstStepOf('isub');
 const frameWithValues = frameAt(isubStep);
 
-/** The first `iaload` of the sort: an array reference with the index to read on top of it. */
 const arrayReadStep = bubbleSortStepOf('iaload');
 
-/** A reference to nothing — `aconst_null` leaves exactly this on the stack. */
 const nullReferenceFrame: StackFrame = {
   methodName: 'sortedMinimum',
   methodDescriptor: '()I',
@@ -60,7 +57,6 @@ describe('OperandStackPanel', () => {
   });
 
   it('annotates each cell with the role it plays for the current instruction', () => {
-    // The two operands of `isub`, and below them the `n` that `imul` is still waiting for.
     render(<OperandStackPanel frame={frameWithValues} annotations={operandRolesAt(isubStep)} />);
 
     expect(within(cellAt(0)).getByText('→ right')).toBeInTheDocument();
@@ -81,7 +77,6 @@ describe('OperandStackPanel', () => {
 
     expect(screen.queryByTestId('operand-cell')).not.toBeInTheDocument();
     expect(screen.getByText('empty')).toBeInTheDocument();
-    // Step 0 is a frame people screenshot: it says what would put something here.
     expect(screen.getByText(/instructions push them/)).toBeInTheDocument();
     expect(screen.getByText('BASE')).toBeInTheDocument();
   });
@@ -102,7 +97,6 @@ describe('OperandStackPanel', () => {
       />,
     );
 
-    // `…, arrayref, index` — the index is on top, the reference right under it.
     const top = within(cellAt(0));
     const below = within(cellAt(1));
     expect(top.getByText('→ index')).toBeInTheDocument();
@@ -122,7 +116,6 @@ describe('OperandStackPanel', () => {
       const onSeekToStep = vi.fn();
       render(<OperandStackPanel frame={frameWithValues} onSeekToStep={onSeekToStep} />);
 
-      // [4, 4, 1] from base to top, pushed by three consecutive steps.
       expect(frameWithValues?.operandOrigins).toEqual([5, 6, 7]);
       fireEvent.click(within(cellAt(0)).getByRole('button'));
 
@@ -153,7 +146,6 @@ describe('OperandStackPanel', () => {
     });
 
     it('offers nothing on a cell whose origin the frame does not carry', () => {
-      // A frame assembled without provenance — every cell is a value with no history.
       render(<OperandStackPanel frame={nullReferenceFrame} onSeekToStep={vi.fn()} />);
 
       expect(screen.queryByTestId('operand-origin')).not.toBeInTheDocument();
@@ -166,17 +158,11 @@ describe('OperandStackPanel', () => {
       expect(within(screen.getByRole('list')).queryByRole('button')).not.toBeInTheDocument();
     });
 
-    /**
-     * A snapshot is the state before its instruction runs, so nothing on the stack can have
-     * been produced by the step on screen. The affordance therefore never leads to where the
-     * reader already is, and no cell has to be rendered inert.
-     */
     it('never points at the step being viewed', () => {
       for (const [step] of snapshots().entries()) {
         const view = render(<OperandStackPanel frame={frameAt(step)} onSeekToStep={vi.fn()} />);
 
         for (const button of screen.queryAllByTestId('operand-origin')) {
-          // The label is 1-based, like the step counter; the invariant is about the index.
           const target = Number(/from (\d+)/.exec(button.textContent)?.[1]) - 1;
           expect(target).toBeLessThan(step);
         }
@@ -187,7 +173,6 @@ describe('OperandStackPanel', () => {
     it('takes one tab stop and moves the focus down the stack with the arrow keys', () => {
       render(<OperandStackPanel frame={frameWithValues} onSeekToStep={vi.fn()} />);
 
-      // The top of the stack is where attention already is, so it holds the tab stop.
       const top = within(cellAt(0)).getByTestId('operand-origin');
       const below = within(cellAt(1)).getByTestId('operand-origin');
       expect(top).toHaveAttribute('tabindex', '0');

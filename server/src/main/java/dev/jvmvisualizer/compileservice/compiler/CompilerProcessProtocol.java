@@ -4,12 +4,6 @@ import java.util.Base64;
 import java.util.List;
 import javax.tools.Diagnostic;
 
-/**
- * The one JSON document a compiler child process writes to stdout, and the translation to and from
- * {@link CompilationResult}. It mirrors the HTTP response on purpose — the same four pieces of
- * information cross both boundaries — but stays a separate type so the wire format between the two
- * processes can never be changed by an edit to the public API.
- */
 final class CompilerProcessProtocol {
 
     private CompilerProcessProtocol() {

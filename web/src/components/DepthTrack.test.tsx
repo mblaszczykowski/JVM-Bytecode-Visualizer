@@ -8,10 +8,8 @@ import { DepthTrack } from './DepthTrack';
 
 const LABEL = 'Execution history position';
 
-/** Call stack depth per step of the real `factorial(4)` run: 40 steps, five frames deep. */
 const runDepths = depths();
 
-/** Bars of the frame that is on top at the given step are drawn in the accent colour. */
 function accentBars(): number {
   return screen.getAllByTestId('depth-bar').filter((bar) => bar.dataset.frame === 'true').length;
 }
@@ -50,7 +48,6 @@ describe('DepthTrack', () => {
   });
 
   it('keeps a run of equally deep steps together as one frame', () => {
-    // Two separate calls at depth 2, with a return to the caller between them.
     const depths = [1, 2, 2, 1, 2, 1];
     const { rerender } = render(
       <DepthTrack depths={depths} stepIndex={1} onSeek={vi.fn()} label={LABEL} />,
@@ -85,7 +82,6 @@ describe('DepthTrack', () => {
       />,
     );
 
-    // One bar per step at this length, so a mark sits in the column of its own step.
     expect(screen.getAllByTestId('timeline-mark').map((mark) => mark.dataset.kind)).toEqual([
       'call',
       'heap-write',
@@ -137,7 +133,6 @@ describe('DepthTrack', () => {
   });
 
   it('highlights the steps the current frame is alive for', () => {
-    // Steps 26–30 are the only ones with five frames: the lifetime of factorial(1).
     const { rerender } = render(
       <DepthTrack depths={runDepths} stepIndex={28} onSeek={vi.fn()} label={LABEL} />,
     );
@@ -153,7 +148,6 @@ describe('DepthTrack', () => {
       />,
     );
 
-    // The terminal snapshot has no frame at all, so nothing is highlighted.
     expect(accentBars()).toBe(0);
   });
 });

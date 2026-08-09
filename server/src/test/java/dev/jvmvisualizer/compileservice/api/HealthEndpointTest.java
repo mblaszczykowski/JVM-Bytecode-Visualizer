@@ -13,7 +13,6 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
-/** The frontend gates the compile editor on this endpoint, and the container health check uses it. */
 @SpringBootTest
 @AutoConfigureMockMvc
 @TestPropertySource(properties = "compile.rate-limit.requests-per-minute=1000")

@@ -46,14 +46,11 @@ describe('FileUpload', () => {
   it('spends words on the drop hint only where there is something to explain', () => {
     const { rerender } = render(<FileUpload onFileSelected={vi.fn()} />);
 
-    // The toolbar variant says nothing: it is on screen in every state of the application,
-    // the whole window takes a drop, and the welcome screen has already said so once.
     expect(screen.getByText('Open .class…')).toBeVisible();
     expect(screen.queryByText(/or drop/)).toBeNull();
 
     rerender(<FileUpload onFileSelected={vi.fn()} variant="zone" />);
 
-    // The zone is the one place someone is deciding what to do with a file they brought.
     expect(screen.getByText(/or drop a \.class file here/)).toBeVisible();
   });
 
@@ -63,8 +60,6 @@ describe('FileUpload', () => {
     const zone = screen.getByTestId('file-drop-zone');
     const label = screen.getByText('Open .class…');
 
-    // A drag entering a child fires `dragleave` on the parent first; counting the two
-    // against each other is what stops the highlight flickering on every element crossed.
     fireEvent.dragEnter(zone);
     fireEvent.dragEnter(label);
     fireEvent.dragLeave(zone);

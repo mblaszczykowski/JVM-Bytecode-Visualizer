@@ -1,25 +1,17 @@
 /**
- * Naive, branching Fibonacci recursion — an example with an exponential number of calls.
- *
- * <p>Unlike factorial, every frame calls itself <em>twice</em>, so the stack grows and
- * unwinds many times over: {@code fib(7)} is 41 calls and several hundred bytecode steps.
- * That makes this example a good one for scrubbing through the execution history, and for
- * seeing why naive recursion is expensive — the same subproblems are recomputed from scratch.
- *
- * <p>There is no {@code System.out.println} and no static field; the result is stored in the
- * local variable {@code result}.
+ * Naive branching Fibonacci recursion. Every frame calls itself twice, so {@code fib(7)} takes 41
+ * calls and several hundred bytecode steps: long enough to scrub through, and enough to show the
+ * same subproblems being recomputed from scratch. The result is left in the local variable
+ * {@code result}.
  */
 public final class Fibonacci {
 
-    private Fibonacci() {
-        // Utility class — never instantiated.
-    }
+    private Fibonacci() {}
 
     /**
-     * Returns the n-th Fibonacci number computed straight from the definition.
+     * Returns the n-th Fibonacci number, computed straight from the definition.
      *
      * @param n zero-based index of the term ({@code fib(0) == 0}, {@code fib(1) == 1})
-     * @return the value of the n-th term of the sequence
      */
     static int fib(int n) {
         if (n < 2) {
@@ -29,8 +21,8 @@ public final class Fibonacci {
     }
 
     /**
-     * Interpreter entry point. The {@code args} parameter is deliberately unused — slot 0 of
-     * the {@code main} frame holds a sentinel that no supported instruction can read.
+     * Entry point. {@code args} is unused: slot 0 of the frame holds a sentinel that no supported
+     * instruction can read.
      */
     public static void main(String[] args) {
         int result = fib(7); // 13

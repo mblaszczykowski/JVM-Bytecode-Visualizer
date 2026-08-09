@@ -66,8 +66,8 @@
         <artifactId>maven-surefire-plugin</artifactId>
         <configuration>
           <!-- Mockito arrives with spring-boot-starter-test and self-attaches its agent. The
-               @{argLine} prefix is late replacement: an agent-setting plugin (JaCoCo) can prepend
-               to it without this line having to know about it. -->
+               @{argLine} prefix is resolved late, so an agent-setting plugin (JaCoCo) can prepend
+               to it without this line knowing about it. -->
           <argLine>@{argLine} -XX:+EnableDynamicAgentLoading</argLine>
         </configuration>
       </plugin>
@@ -77,8 +77,8 @@
       <plugin>
         <groupId>org.jacoco</groupId>
         <artifactId>jacoco-maven-plugin</artifactId>
-        <!-- Pinned: the parent POM does not manage JaCoCo, and a gate whose version drifts
-             with whatever is newest in the repository is not a gate. -->
+        <!-- Pinned because the parent POM does not manage JaCoCo, and a coverage gate whose
+             version drifts with the newest release available is not a gate. -->
         <version>0.8.15</version>
         <executions>
           <execution>
@@ -104,9 +104,9 @@
               <rules>
                 <!-- Each package is measured on its own. The minima sit just under what the
                      suite reaches today (compiler 75.7% lines / 66.4% branches, config 81.4%
-                     / 63.6%), so the gate catches a regression rather than describing a goal.
-                     CompilerProcessMain runs in the forked JVM, which the agent never sees —
-                     that alone accounts for 13 uncovered lines in the compiler package. -->
+                     / 63.6%), so the gate catches regressions. CompilerProcessMain runs in the
+                     forked JVM, which the agent never sees; that alone accounts for 13 uncovered
+                     lines in the compiler package. -->
                 <rule>
                   <element>PACKAGE</element>
                   <includes>

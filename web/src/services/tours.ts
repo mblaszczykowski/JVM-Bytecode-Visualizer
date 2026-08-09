@@ -1,41 +1,20 @@
-/**
- * A tour is a named sequence of moments in one run, each with something to say.
- *
- * Deep links address a moment; a tour addresses an argument. That is the difference between
- * sending someone a step and being able to teach with the thing.
- *
- * A stop is anchored to a method and a byte offset rather than to a step index. A step index is
- * opaque to write ("step 248"), and it moves the moment a fixture is rebuilt or an instruction
- * is added to the interpreter — silently, still pointing at some step, just the wrong one. An
- * offset says what the stop is about, and when it stops resolving it stops resolving loudly:
- * `tours.test.ts` walks every bundled tour against the real run.
- */
-
 import type { Snapshot } from '../core/interpreter/types';
 
 export interface TourStop {
-  /** Method the stop is in — a tour may cross frames, and offsets are per method. */
   readonly method: string;
-  /** Byte offset of the instruction the stop is about (JVMS §4.7.3). */
   readonly pc: number;
-  /**
-   * Which arrival at that offset, 1-based. A loop reaches the same instruction many times and
-   * a tour usually means one of them; omitted, the first.
-   */
   readonly visit?: number;
   readonly title: string;
   readonly body: string;
 }
 
 export interface Tour {
-  /** Kebab-case, because it goes in the URL — see `deep-link.ts`. */
   readonly id: string;
   readonly exampleId: string;
   readonly title: string;
   readonly stops: readonly TourStop[];
 }
 
-/** A stop once the run has been consulted: the step it points at. */
 export interface ResolvedStop {
   readonly step: number;
   readonly title: string;
@@ -77,7 +56,7 @@ const TOURS: readonly Tour[] = [
         method: 'factorial',
         pc: 14,
         title: 'The multiplications happen on the way back',
-        body: 'imul runs after the callee returned — its result is on the stack next to this frame’s n. Every frame was waiting here the whole time.',
+        body: 'imul runs after the callee returned; its result is on the stack next to this frame’s n. Every frame was waiting here the whole time.',
       },
       {
         method: 'main',
@@ -102,7 +81,7 @@ const TOURS: readonly Tour[] = [
         method: 'sortedMinimum',
         pc: 68,
         title: 'The first write',
-        body: 'iastore takes an array reference, an index and a value off the stack — in that order, bottom to top — and writes to the heap. Watch the heap panel: this is the moment the array changes.',
+        body: 'iastore takes an array reference, an index and a value off the stack, in that order, bottom to top, and writes to the heap. Watch the heap panel: this is the moment the array changes.',
       },
       {
         method: 'sortedMinimum',
@@ -122,16 +101,10 @@ export function tourFor(exampleId: string, tourId: string): Tour | undefined {
   return TOURS.find((tour) => tour.exampleId === exampleId && tour.id === tourId);
 }
 
-/** Every bundled tour, for the test that keeps them honest. */
 export function allTours(): readonly Tour[] {
   return TOURS;
 }
 
-/**
- * Where each stop lands in this run. A stop that no longer resolves is dropped rather than
- * guessed at — a tour pointing at the wrong instruction teaches something false, and the test
- * over the bundled runs is what makes sure that never reaches a reader.
- */
 export function resolveTour(tour: Tour, snapshots: readonly Snapshot[]): readonly ResolvedStop[] {
   const resolved: ResolvedStop[] = [];
   for (const stop of tour.stops) {

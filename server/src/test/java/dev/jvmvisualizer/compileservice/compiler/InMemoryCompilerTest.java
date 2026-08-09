@@ -46,7 +46,7 @@ class InMemoryCompilerTest {
 
             ByteBuffer classFile = ByteBuffer.wrap(success.classBytes());
             assertThat(classFile.getInt()).isEqualTo(CLASS_FILE_MAGIC);
-            classFile.getShort(); // minor version
+            classFile.getShort();
             assertThat(classFile.getShort()).isEqualTo(JAVA_21_MAJOR_VERSION);
         });
     }
@@ -55,7 +55,6 @@ class InMemoryCompilerTest {
     void emitsTheDebugTablesTheVisualizerNeeds() {
         CompilationResult result = compiler.compile(ADDER);
 
-        // -g: the UI highlights source lines and names locals, which needs both tables present.
         assertThat(result).isInstanceOfSatisfying(CompilationResult.Success.class, success ->
                 assertThat(new String(success.classBytes(), StandardCharsets.ISO_8859_1))
                         .contains("LineNumberTable")
@@ -107,7 +106,6 @@ class InMemoryCompilerTest {
                 .contains(InMemoryCompiler.MULTIPLE_CLASSES_MESSAGE);
     }
 
-    /** The client's schema requires at least one diagnostic on a failure; javac may report none. */
     @Test
     void neverFailsWithoutADiagnostic() {
         assertThat(compiler.compile("public class Nothing {").diagnostics()).isNotEmpty();
@@ -131,11 +129,6 @@ class InMemoryCompilerTest {
                 .anyMatch(message -> message.contains("org.springframework"));
     }
 
-    /**
-     * The service compiles and never executes. A static initializer is the one piece of a class
-     * body that would run the moment the class was loaded, so this mirrors the annotation
-     * processor test: the marker must stay unset with the compiler running in this very JVM.
-     */
     @Test
     void neverRunsWhatItCompiles() {
         String withStaticInitializer = """

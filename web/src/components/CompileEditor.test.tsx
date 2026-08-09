@@ -11,7 +11,6 @@ interface Options {
   readonly isCompiling?: boolean;
 }
 
-/** The draft lives above the editor in the application, so the test owns it here too. */
 function renderEditor({ diagnostics = [], isCompiling = false }: Options = {}) {
   const onCompile = vi.fn();
   const onClose = vi.fn();
@@ -47,8 +46,6 @@ describe('CompileEditor', () => {
   });
 
   it('seeds a program the summary can read and the console panel can show', () => {
-    // Both are contracts with panels elsewhere: the run summary reports the local named
-    // `result`, and the console section joins the state column only once something is printed.
     expect(SEED_SOURCE).toMatch(/\bint result\b/);
     expect(SEED_SOURCE).toMatch(/\bSystem\.out\.println\(/);
   });
@@ -57,7 +54,7 @@ describe('CompileEditor', () => {
     renderEditor();
 
     expect(screen.getByText(/Static methods/)).toHaveTextContent(
-      'Static methods called from main — ints, int arrays, Math and System.out, nothing else.',
+      'Static methods called from main: ints, int arrays, Math and System.out, nothing else.',
     );
   });
 

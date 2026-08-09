@@ -8,11 +8,9 @@ import './index.css';
 const rootElement = document.getElementById('root');
 
 if (!rootElement) {
-  throw new Error('No #root element — check index.html.');
+  throw new Error('No #root element. Check index.html.');
 }
 
-// Installed before the first render: an error thrown while mounting is exactly the kind no
-// error boundary sees. A no-op unless this build was given a telemetry endpoint.
 observeUnhandledFailures();
 
 createRoot(rootElement).render(

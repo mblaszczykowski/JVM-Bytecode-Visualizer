@@ -5,7 +5,7 @@
  *
  * Everything here is one class, because that is the boundary: there is no second class file to
  * load, so an instance can only ever be of the class being executed. A linked list of that one
- * class is the smallest program that still exercises the whole of it — a constructor, an int
+ * class is the smallest program that still exercises the whole of it: a constructor, an int
  * field written and read, a reference field pointing at another instance, an instance method
  * called on a receiver, a method returning `this`, and a loop that ends on `null`.
  *
@@ -37,7 +37,7 @@ public class Instances {
         return this;
     }
 
-    /** A walk that ends on null — `ifnonnull` is what makes the loop terminate. */
+    /** A walk that ends on null; `ifnonnull` is what terminates the loop. */
     int sum() {
         int total = 0;
         Instances node = this;

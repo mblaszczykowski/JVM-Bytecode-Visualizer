@@ -7,20 +7,19 @@
     <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f4f5f7" />
     <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#08090a" />
     <!--
-      Applies the stored theme before the first paint. It has to be inline and it has to be
-      here: anything loaded as a module runs after the document has already been painted, and
-      a reader who chose dark would watch a white page flash on the way in.
+      Applies the stored theme before the first paint. It has to be inline and here: a module runs
+      after the document is painted, so a reader who chose dark would see a white flash first.
     -->
     <script>
       try {
         var t = localStorage.getItem('jbv:theme');
         if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
       } catch (e) {
-        /* Site data blocked: the theme falls back to the system preference. */
+        /* Site data blocked; the theme falls back to the system preference. */
       }
     </script>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <title>JVM Bytecode Visualizer — step through Java bytecode</title>
+    <title>JVM Bytecode Visualizer: step through Java bytecode</title>
     <meta
       name="description"
       content="Parse, disassemble and execute a .class file in the browser, then replay the run instruction by instruction: call stack, operand stack and every local variable slot."
@@ -30,12 +29,12 @@
     <meta property="og:title" content="JVM Bytecode Visualizer" />
     <meta
       property="og:description"
-      content="Watch a Java program run, one bytecode instruction at a time — call stack, operand stack and locals, replayable like a video."
+      content="Watch a Java program run one bytecode instruction at a time: call stack, operand stack and locals, with the whole run replayable."
     />
     <!--
-      Root-relative so it resolves under any host. Facebook, X and Slack all require an
-      ABSOLUTE URL here, so replace it with https://<deployed-domain>/og-image.png once the
-      domain is fixed — the preview stays blank until then.
+      Root-relative so it resolves under any host. Facebook, X and Slack all require an absolute
+      URL here, so replace it with https://<deployed-domain>/og-image.png once the domain is
+      fixed. Until then the preview stays blank.
     -->
     <meta property="og:image" content="/og-image.png" />
     <meta name="twitter:card" content="summary_large_image" />

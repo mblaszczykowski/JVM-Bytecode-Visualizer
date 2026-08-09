@@ -9,11 +9,6 @@ import {
   type ThemeChoice,
 } from '../services/theme';
 
-/**
- * Sun, moon, and a half-filled disc for "whatever the system says". One 14px glyph, drawn in
- * `currentColor` so it inherits the button's own hover and focus states rather than carrying
- * a colour of its own — the accent means "you are here", and a theme switch is not that.
- */
 function ThemeIcon({ choice }: { readonly choice: ThemeChoice }) {
   if (choice === 'light') {
     return (
@@ -42,16 +37,6 @@ function ThemeIcon({ choice }: { readonly choice: ThemeChoice }) {
   );
 }
 
-/**
- * Cycles system → light → dark → system.
- *
- * A cycle rather than a menu: there are three values, the current one is drawn, and a menu for
- * three items costs a popover, a focus trap and an outside-click handler to save one press.
- *
- * The initial value is read from storage during the first render rather than in an effect —
- * `index.html` has already applied the same value to `<html>` before paint, so reading it here
- * agrees with what is on screen instead of correcting it a frame later.
- */
 export function ThemeToggle() {
   const [choice, setChoice] = useState<ThemeChoice>(storedTheme);
 
@@ -67,8 +52,6 @@ export function ThemeToggle() {
       type="button"
       data-testid="theme-toggle"
       data-theme-choice={choice}
-      // The visible glyph says which theme is on; the name has to say so in words, and say
-      // that pressing changes it.
       aria-label={`Theme: ${THEME_LABELS[choice]}. Change theme`}
       title={`Theme: ${THEME_LABELS[choice]}`}
       onClick={handleClick}

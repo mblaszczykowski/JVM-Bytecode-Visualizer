@@ -1,8 +1,4 @@
-# Working documents with deliberate manual formatting (aligned tables,
-# annotated code blocks) that Prettier would destroy.
-plan.md
-design.md
-
+.local/
 node_modules/
 dist/
 coverage/

@@ -8,9 +8,7 @@ import { openGlossary } from './glossary-store';
 export interface WelcomeExample {
   readonly id: string;
   readonly title: string;
-  /** One line, written to fit — the long description stays in the toolbar tooltip. */
   readonly tagline: string;
-  /** Length and shape of the run, once it has been measured. */
   readonly preview?: RunPreview | undefined;
 }
 
@@ -24,24 +22,16 @@ interface WelcomeScreenProps {
   readonly examples: readonly WelcomeExample[];
   readonly onExampleSelected: (id: string) => void;
   readonly onFileSelected: (file: File) => void;
-  /** Absent unless a compile service is configured and answered its health check. */
   readonly onWriteJava?: (() => void) | undefined;
-  /** A failed upload or a manifest that never arrived — shown next to what caused it. */
   readonly notice?: WelcomeNotice | undefined;
 }
 
-/** Short answer to "what does this thing actually do", in three beats. */
 const STEPS: readonly { readonly head: string; readonly body: string }[] = [
-  { head: 'Parse', body: 'Constant pool, methods, Code attributes — read byte by byte.' },
+  { head: 'Parse', body: 'Constant pool, methods and Code attributes, read byte by byte.' },
   { head: 'Disassemble', body: 'Every opcode resolved against the real constant pool.' },
   { head: 'Execute', body: 'One frame at a time, with every step recorded for replay.' },
 ];
 
-/**
- * The recursion profile of the whole run in 32 bars — the same chart the scrubber carries,
- * shrunk to a thumbnail. It is the one thing that tells the examples apart at a glance:
- * a flat line is a loop, a staircase is recursion.
- */
 function DepthSparkline({ preview }: { readonly preview: RunPreview }) {
   const scale = Math.max(preview.maxDepth, 1);
 
@@ -59,14 +49,6 @@ function DepthSparkline({ preview }: { readonly preview: RunPreview }) {
   );
 }
 
-/**
- * First screen — and the frame the README, the OG image and every reviewer sees first, so it
- * is composed rather than merely empty.
- *
- * One column read top to bottom: a headline that says what happens here, the pipeline in three
- * words, the bundled programs as a full-width row of real targets, then the drop zone for the
- * file someone brought along, and the honest note about what will happen to it.
- */
 export function WelcomeScreen({
   examples,
   onExampleSelected,
@@ -79,40 +61,23 @@ export function WelcomeScreen({
       data-testid="welcome-screen"
       className="scroll-slim fade-y col-span-full row-span-full flex min-h-0 flex-col overflow-auto"
     >
-      {/* `margin: auto` rather than `justify-center`, and on the column's main axis: with room
-          to spare the auto margins centre the block, and when the content is taller than the
-          cell they resolve to zero instead of splitting the overflow across both edges — so a
-          short viewport loses the drop zone off the bottom, never the headline off the top.
-          The 18px band the padding reserves is what the `fade-y` mask eats when nothing is
-          clipped. */}
+      {}
       <div className="m-auto flex w-full max-w-[1080px] flex-col gap-4 py-4">
-        {/* Not a <header>: the toolbar is this document's banner landmark, and a second
-            one makes both of them ambiguous to a screen reader working by landmark. */}
+        {}
         <div className="max-w-[820px]">
           <h2 className="text-display font-semibold tracking-[-0.028em] text-fg">
             Watch a Java program run,
             <br />
             one bytecode instruction at a time.
           </h2>
-          {/* Its own measure rather than the header's: 38px type wants a wide column and 13px
-              prose does not, and one width for both leaves the paragraph too long to track. */}
           <p className="mt-3.5 max-w-[64ch] text-body text-fg-2">
             A <code className="font-mono text-fg">.class</code> file is parsed, disassembled and
-            executed here in the browser — no server, no upload. The whole run is recorded, so you
+            executed here in the browser. No server, no upload. The whole run is recorded, so you
             can play it back like a video and watch the call stack, the operand stack and every
             local variable slot change.
           </p>
         </div>
 
-        {/*
-          The pipeline, as a band divided by hairlines rather than as three numbered cards.
-
-          Parse → Disassemble → Execute is a real sequence, so the order carries information and
-          has to survive. What does not have to survive is printing `01 02 03` beside it: reading
-          left to right across a divided band already says "in this order", and the numerals were
-          decoration standing in for structure. Below `sm` the band stacks and the rules lie down
-          with it, which is the same statement rotated.
-        */}
         <ul className="grid divide-y divide-line border-y border-line sm:grid-cols-3 sm:divide-x sm:divide-y-0">
           {STEPS.map((step) => (
             <li key={step.head} className="py-3 sm:px-4 sm:first:pl-0 sm:last:pr-0">
@@ -123,7 +88,6 @@ export function WelcomeScreen({
         </ul>
 
         <section aria-label="Example programs">
-          {/* On the heading's own line, so the invitation costs the cards no vertical room. */}
           <div className="flex items-baseline justify-between gap-3">
             <h3 className="text-label font-medium text-fg-2">Start with an example</h3>
             <button
@@ -165,8 +129,7 @@ export function WelcomeScreen({
           </ul>
         </section>
 
-        {/* Above the drop zone, not after the last thing on the page: the column is anchored to
-            the top, so anything below the fold is a message nobody reads. */}
+        {}
         {notice === undefined ? null : (
           <ErrorBanner
             severity={notice.severity}
@@ -194,8 +157,6 @@ export function WelcomeScreen({
           )}
         </div>
 
-        {/* Directly under the drop zone, because that is where someone decides whether the file
-            they brought is worth trying. Closed it is one line, so the examples stay in frame. */}
         <CapabilityNote />
       </div>
     </div>

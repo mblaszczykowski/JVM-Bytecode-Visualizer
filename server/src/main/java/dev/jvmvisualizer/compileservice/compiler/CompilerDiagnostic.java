@@ -3,10 +3,6 @@ package dev.jvmvisualizer.compileservice.compiler;
 import javax.tools.Diagnostic;
 import javax.tools.JavaFileObject;
 
-/**
- * A javac diagnostic reduced to what the client can render. {@code line} and {@code column} are
- * null when the diagnostic has no position in the source ({@link Diagnostic#NOPOS}).
- */
 public record CompilerDiagnostic(Diagnostic.Kind kind, Integer line, Integer column, String message) {
 
     public static CompilerDiagnostic error(String message) {

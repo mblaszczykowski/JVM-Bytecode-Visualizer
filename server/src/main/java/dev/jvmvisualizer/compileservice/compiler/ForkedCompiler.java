@@ -28,23 +28,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/**
- * Compiles in a child JVM and kills that JVM when the deadline passes.
- *
- * <p>An in-process timeout was a lie: {@code Future.cancel(true)} raises an interrupt flag that
- * javac never polls, so a source with pathological type inference kept a thread at 100 % CPU long
- * after the client had its answer, one thread per request. {@code destroyForcibly()} on a child
- * process is the only construction that actually reclaims a running javac.
- *
- * <p>The child inherits the same hardening — it runs the very same {@link InMemoryCompiler}, so
- * {@code -proc:none}, {@code --release 21}, the empty class path and the null class loader come
- * with it — plus a small heap and stack of its own. Concurrency is bounded: a saturated pool
- * rejects rather than letting every Tomcat thread spawn a JVM, and the caller gets 503.
- *
- * <p>The child is launched with this process's {@code java.class.path}, so the deployment has to
- * expose one that a plain {@code java -cp} understands — see the Dockerfile, which runs the
- * application exploded for exactly that reason.
- */
 public class ForkedCompiler implements SourceCompiler, AutoCloseable {
 
     static final String TIMEOUT_MESSAGE = "compilation timed out";
@@ -53,15 +36,13 @@ public class ForkedCompiler implements SourceCompiler, AutoCloseable {
 
     private static final Logger log = LoggerFactory.getLogger(ForkedCompiler.class);
 
-    /** Small enough to bound one request, large enough for javac on a 64 KiB source. */
     private static final List<String> CHILD_VM_OPTIONS = List.of(
             "-Xmx128m",
             "-Xss1m",
-            "-XX:+UseSerialGC",          // one short-lived compilation, no concurrent collector needed
-            "-XX:TieredStopAtLevel=1",   // startup dominates the wall clock here, not peak throughput
-            "-XX:-UsePerfData");         // no hsperfdata file per compilation
+            "-XX:+UseSerialGC",
+            "-XX:TieredStopAtLevel=1",
+            "-XX:-UsePerfData");
 
-    /** Reading the child's output and reaping it may outlive the compile budget by this much. */
     private static final Duration REAPING_GRACE = Duration.ofSeconds(5);
     private static final Duration RETRY_AFTER = Duration.ofSeconds(5);
     private static final int MAX_LOGGED_STDERR = 2_000;
@@ -84,12 +65,6 @@ public class ForkedCompiler implements SourceCompiler, AutoCloseable {
         warnIfTheChildCannotBeLaunched();
     }
 
-    /**
-     * An executable Spring Boot jar keeps the application classes under {@code BOOT-INF}, where a
-     * plain {@code java -cp} cannot reach them, and {@code java.class.path} is then the jar alone.
-     * Deployments have to run exploded — the Dockerfile does; say so at start-up rather than once
-     * per failed request.
-     */
     private static void warnIfTheChildCannotBeLaunched() {
         URL location = CompilerProcessMain.class.getResource("CompilerProcessMain.class");
         if (location != null && location.toString().contains("!/BOOT-INF/")) {
@@ -112,7 +87,6 @@ public class ForkedCompiler implements SourceCompiler, AutoCloseable {
         try {
             return pending.get(timeout.plus(REAPING_GRACE).toMillis(), TimeUnit.MILLISECONDS);
         } catch (TimeoutException e) {
-            // The watchdog owns the kill; this only stops the request from waiting any longer.
             pending.cancel(true);
             log.warn("compiler process outlived {} plus the reaping grace", timeout);
             return CompilationResult.Failure.of(TIMEOUT_MESSAGE);
@@ -134,8 +108,6 @@ public class ForkedCompiler implements SourceCompiler, AutoCloseable {
         ScheduledFuture<?> deadline = null;
 
         try {
-            // Registered first, then checked: a shutdown either sees this process in the set or
-            // this sees the shutdown, and an accepted task can never leave a JVM behind.
             if (closed) {
                 return CompilationResult.Failure.of(UNAVAILABLE_MESSAGE);
             }
@@ -145,7 +117,6 @@ public class ForkedCompiler implements SourceCompiler, AutoCloseable {
             }, timeout.toMillis(), TimeUnit.MILLISECONDS);
 
             writeSource(process, source);
-            // The kill closes both pipes, so neither read can outlast the deadline.
             byte[] payload = process.getInputStream().readAllBytes();
             int exitCode = process.waitFor();
 
@@ -164,7 +135,7 @@ public class ForkedCompiler implements SourceCompiler, AutoCloseable {
             if (deadline != null) {
                 deadline.cancel(false);
             }
-            process.destroyForcibly(); // no orphan survives this method, whatever went wrong
+            process.destroyForcibly();
             running.remove(process);
         }
     }
@@ -173,7 +144,6 @@ public class ForkedCompiler implements SourceCompiler, AutoCloseable {
         try (OutputStream stdin = process.getOutputStream()) {
             stdin.write(source.getBytes(StandardCharsets.UTF_8));
         } catch (IOException e) {
-            // The child died before reading its input; the exit status below is the real story.
             log.debug("could not hand the source to the compiler process", e);
         }
     }
@@ -197,7 +167,6 @@ public class ForkedCompiler implements SourceCompiler, AutoCloseable {
         }
     }
 
-    /** Only ever called once the process has exited, so the pipe holds a bounded, complete message. */
     private String stderrOf(Process process) {
         try {
             String stderr = new String(process.getErrorStream().readAllBytes(), StandardCharsets.UTF_8).strip();

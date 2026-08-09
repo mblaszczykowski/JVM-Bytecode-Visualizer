@@ -13,18 +13,12 @@ import {
 } from './capabilities';
 import type * as Capabilities from './capabilities';
 
-/** The mnemonics the interpreter can run, straight from the two sources of truth. */
 function executableMnemonics(): readonly string[] {
   return [...OPCODES.values()]
     .filter((info) => EXECUTABLE_OPCODES.has(info.opcode))
     .map((info) => info.mnemonic);
 }
 
-/**
- * Re-imports the module against an interpreter that executes one more opcode — the cheapest
- * stand-in for the work landing next door, and the only way to prove the lists are derived
- * rather than merely correct today.
- */
 async function capabilitiesWith(...opcodes: readonly number[]): Promise<typeof Capabilities> {
   const actual = await vi.importActual<typeof Interpreter>('../core/interpreter');
   vi.doMock('../core/interpreter', () => ({
@@ -66,11 +60,6 @@ describe('instruction families', () => {
     }
   });
 
-  /**
-   * The point of the whole module: the other half of the project is widening the instruction
-   * set, and nothing here may need a hand-edit when it lands. Widening the executable set by
-   * one opcode has to move that opcode into its family and out of the gap that named it.
-   */
   it('follows the interpreter into an instruction it has just learned', async () => {
     const putstatic = 0xb3;
     expect(EXECUTABLE_OPCODES.has(putstatic)).toBe(false);
@@ -80,10 +69,9 @@ describe('instruction families', () => {
     const fields = widened.executableFamilies().find((family) => family.name === 'Field access');
     const statics = widened
       .featureGaps()
-      .find((gap) => gap.title === 'Static fields — state that outlives every instance');
+      .find((gap) => gap.title === 'Static fields: state that outlives every instance');
 
     expect(fields?.mnemonics).toContain('putstatic');
-    // The gap named exactly one instruction, so implementing it retires the gap outright.
     expect(statics).toBeUndefined();
     expect(widened.capabilitySummary().executable).toBe(capabilitySummary().executable + 1);
   });
@@ -118,12 +106,6 @@ describe('feature gaps', () => {
     expect(widened.featureGaps().map((gap) => gap.title)).not.toContain(title);
   });
 
-  /**
-   * Objects, constructors, instance methods and fields all run now, so none of them is a gap.
-   * What stops `new ArrayList<>()` is not a missing instruction but a missing class file, and
-   * no opcode expresses that — which is exactly why `CALL_SCOPE_NOTE` is asserted by hand and
-   * the list must not quietly imply the feature is complete.
-   */
   it('leaves objects out of the gap list, because the instructions behind them run', () => {
     const titles = featureGaps().map((gap) => gap.title);
 
@@ -132,7 +114,7 @@ describe('feature gaps', () => {
     }
     expect(titles).not.toContain('Objects, constructors and instance methods');
     expect(titles).not.toContain('Exceptions, throw and try/catch');
-    expect(CALL_SCOPE_NOTE).toContain('uploaded class only');
+    expect(CALL_SCOPE_NOTE).toContain('must resolve inside the uploaded class');
   });
 });
 
@@ -171,10 +153,6 @@ describe('capabilitySummary', () => {
     expect(summary.families.flatMap((family) => family.mnemonics)).toHaveLength(summary.executable);
   });
 
-  /**
-   * Executing an instruction the disassembler cannot decode is unreachable by construction —
-   * a divergence between the two tables would show up here before it showed up in a run.
-   */
   it('never claims to execute an instruction the disassembler cannot decode', () => {
     for (const opcode of EXECUTABLE_OPCODES) {
       expect(isSupportedOpcode(opcode)).toBe(true);

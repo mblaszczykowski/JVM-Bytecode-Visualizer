@@ -46,7 +46,7 @@ describe('example URLs', () => {
     );
   });
 
-  it('shortens the toolbar label to the part before the dash', () => {
+  it('shortens the toolbar label to the part before the separator', () => {
     expect(shortTitleOf(factorialEntry())).toBe('Factorial');
   });
 });
@@ -58,7 +58,6 @@ describe('fetchExampleManifest', () => {
     const manifest = await fetchExampleManifest();
 
     expect(manifest.version).toBe(1);
-    // However many examples ship, the loader hands back the ones the file lists.
     expect(manifest.examples.map((example) => example.id)).toEqual(
       (readExampleManifest() as ExampleManifest).examples.map((example) => example.id),
     );

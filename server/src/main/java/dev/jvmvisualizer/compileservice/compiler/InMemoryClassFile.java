@@ -5,7 +5,6 @@ import java.io.OutputStream;
 import java.net.URI;
 import javax.tools.SimpleJavaFileObject;
 
-/** Output file object that keeps javac's bytes in a buffer instead of on disk. */
 final class InMemoryClassFile extends SimpleJavaFileObject {
 
     private final ByteArrayOutputStream bytes = new ByteArrayOutputStream();

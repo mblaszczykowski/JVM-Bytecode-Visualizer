@@ -27,10 +27,6 @@ function commandFor(classFile: ClassFile, maxSteps = 20_000): RunCommand {
   return { classFile, entryMethod: 'main', maxSteps };
 }
 
-/**
- * Stands in for the worker so the protocol can be driven a message at a time. jsdom has no
- * `Worker`, and a real one would settle before a test could catch a run in flight.
- */
 class FakeWorker implements RunWorker {
   onmessage: ((event: MessageEvent<RunEvent>) => void) | null = null;
   onerror: ((event: ErrorEvent) => void) | null = null;
@@ -49,7 +45,6 @@ class FakeWorker implements RunWorker {
     this.onmessage?.(new MessageEvent('message', { data: event }));
   }
 
-  /** Everything a real worker would send back for `result`, in the batches it would use. */
   stream(result: ExecutionResult): void {
     for (let from = 0; from < result.snapshots.length; from += SNAPSHOTS_PER_MESSAGE) {
       this.emit({
@@ -65,7 +60,6 @@ class FakeWorker implements RunWorker {
   }
 }
 
-/** A history long enough to cross the progress threshold, without executing anything. */
 function fakeHistory(steps: number): readonly Snapshot[] {
   return Array.from({ length: steps }, (_, step) => ({ step, callStack: [] }));
 }
@@ -100,7 +94,6 @@ describe('running in a worker', () => {
     expect(runner.cancellable).toBe(true);
     expect(await pending).toEqual(expected);
     expect(worker.commands).toEqual([commandFor(classFile)]);
-    // The history is on this side now; nothing is left holding a copy of it.
     expect(worker.terminations).toBe(1);
   });
 
@@ -129,10 +122,6 @@ describe('running in a worker', () => {
     expect(worker.terminations).toBe(1);
   });
 
-  /**
-   * The failure with no event behind it: a worker the browser reclaims stops existing without
-   * firing `onerror`, so only the passage of time distinguishes it from a run still going.
-   */
   it('gives up on a worker that has gone silent, instead of waiting forever', async () => {
     vi.useFakeTimers();
     try {
@@ -145,7 +134,6 @@ describe('running in a worker', () => {
       await settled;
 
       expect(worker.terminations).toBe(1);
-      // A worker that died once is not asked to hold the next run either.
       expect(runner.cancellable).toBe(false);
     } finally {
       vi.useRealTimers();
@@ -159,8 +147,6 @@ describe('running in a worker', () => {
       const runner = workerRunner(() => worker, inlineRunner, 1_000);
 
       const pending = runner.run(commandFor(gcd()));
-      // Three quiet spells, each shorter than the limit, separated by a batch: the deadline
-      // is on silence, not on how long the handover takes.
       for (let batch = 0; batch < 3; batch += 1) {
         await vi.advanceTimersByTimeAsync(900);
         worker.emit({ kind: 'snapshots', snapshots: fakeHistory(10) });
@@ -228,7 +214,6 @@ describe('when there is no usable worker', () => {
   });
 
   it('is what the application falls back to where `Worker` does not exist at all', () => {
-    // jsdom, Node, and any browser old enough not to have workers: the same answer.
     expect(globalThis).not.toHaveProperty('Worker');
     expect(createProgramRunner()).toBe(inlineRunner);
   });

@@ -9,11 +9,11 @@ server:
 compile:
   allowed-origin: ${COMPILE_SERVICE_ALLOWED_ORIGIN:http://localhost:5173}
   max-source-size: 64KB
-  # Room for a 64 KiB source even when JSON escaping inflates it; past this nothing is buffered.
+  # Room for a 64 KiB source after JSON escaping. Nothing beyond this is buffered.
   max-request-size: 256KB
-  # Wall clock for the whole child process: spawning the JVM, javac, and reading the result back.
+  # Wall clock for the whole child process: JVM start-up, javac, and reading the result back.
   timeout: 10s
-  # Each compilation costs a JVM, so the number of them is the resource that has to be bounded.
+  # Each compilation costs a child JVM, so this is the resource that has to be bounded.
   max-concurrent-compilations: ${COMPILE_SERVICE_MAX_CONCURRENT_COMPILATIONS:2}
   rate-limit:
     requests-per-minute: 10

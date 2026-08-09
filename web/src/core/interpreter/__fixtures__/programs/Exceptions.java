@@ -1,7 +1,7 @@
 /**
  * Differential fixture for the exception table and `athrow` (JVMS §2.10, §4.7.3, §6.5).
  *
- * Every exception here is one the *machine* raises — a division by zero, an index off the end
+ * Every exception here is one the *machine* raises: a division by zero, an index off the end
  * of an array, a null reference, a negative array length. That is not a shortcut, it is the
  * whole scope: nothing in the executable subset can construct an object, so `throw new ...`
  * has nothing to throw. What can be checked is everything that happens afterwards, and that
@@ -23,7 +23,7 @@ public class Exceptions {
         }
     }
 
-    /** Caught by a supertype — ArithmeticException is a RuntimeException is an Exception. */
+    /** Caught by a supertype: ArithmeticException is a RuntimeException is an Exception. */
     static int caughtBySupertype(int a, int b) {
         try {
             return a / b;
@@ -61,7 +61,7 @@ public class Exceptions {
         }
     }
 
-    /** Catches, then throws the very same object again — this is where `athrow` comes from. */
+    /** Catches, then throws the very same object again, which is where `athrow` comes from. */
     static int rethrowing(int n) {
         try {
             return 1 / n;
@@ -81,7 +81,7 @@ public class Exceptions {
 
     /**
      * `finally` on both paths. javac compiles it as a catch-all row (catch_type 0) that stores
-     * the exception, runs the block and throws it again — so this exercises the row that
+     * the exception, runs the block and throws it again, so this exercises the row that
      * matches everything as well as the ordinary one.
      */
     static int withFinally(int n) {

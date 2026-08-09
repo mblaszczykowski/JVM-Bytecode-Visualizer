@@ -68,15 +68,10 @@ class RateLimitFilterTest {
             call(filter, "10.0.0.1", "203.0.113." + i);
         }
 
-        // All requests came from the same remote address, so the forged header buys nothing.
         assertThat(call(filter, "10.0.0.1", "203.0.113.9").getStatus())
                 .isEqualTo(HttpStatus.TOO_MANY_REQUESTS.value());
     }
 
-    /**
-     * One proxy in front of the service: it appends the address it saw, so the client is the last
-     * entry and everything before it is whatever the caller chose to send.
-     */
     @Test
     void keysOnTheEntryTheTrustedProxyAppended() throws Exception {
         RateLimitFilter filter = filter(true, ONE_PROXY);
@@ -98,7 +93,6 @@ class RateLimitFilterTest {
             call(filter, "10.0.0.1", "203.0.113.7");
         }
 
-        // Reading the leftmost entry gave every request a bucket of the caller's choosing.
         assertThat(call(filter, "10.0.0.1", "198.51.100.1, 203.0.113.7").getStatus())
                 .isEqualTo(HttpStatus.TOO_MANY_REQUESTS.value());
         assertThat(call(filter, "10.0.0.1", "198.51.100.2, 198.51.100.3, 203.0.113.7").getStatus())
@@ -109,7 +103,6 @@ class RateLimitFilterTest {
     void countsBackTheConfiguredNumberOfAppendingProxies() throws Exception {
         RateLimitFilter filter = filter(true, 2);
 
-        // client → CDN (appends the client) → load balancer (appends the CDN)
         for (int i = 1; i <= LIMIT; i++) {
             call(filter, "10.0.0.1", "203.0.113.7, 192.0.2.10");
         }
@@ -128,7 +121,6 @@ class RateLimitFilterTest {
             call(filter, "10.0.0.1", "not-an-address");
         }
 
-        // A name would have keyed a bucket of its own — and a DNS lookup on the request path.
         assertThat(call(filter, "10.0.0.1", "another.name").getStatus())
                 .isEqualTo(HttpStatus.TOO_MANY_REQUESTS.value());
     }
@@ -163,7 +155,6 @@ class RateLimitFilterTest {
         }
     }
 
-    /** A map keyed by address grew with every address an attacker cared to invent. */
     @Test
     void tracksABoundedNumberOfClients() throws Exception {
         RateLimitFilter filter = filter(false);

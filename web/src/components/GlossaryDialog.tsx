@@ -7,7 +7,6 @@ import { closeGlossary, useOpenGlossaryTerm } from './glossary-store';
 
 const FOCUSABLE = 'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
-/** Keys the transport listens for on the window; while this is open they belong to the dialog. */
 const TRANSPORT_KEYS: ReadonlySet<string> = new Set([
   ' ',
   'ArrowLeft',
@@ -18,10 +17,6 @@ const TRANSPORT_KEYS: ReadonlySet<string> = new Set([
   'End',
 ]);
 
-/**
- * Backticks in the entry text are code, the same convention the primer is written in. Nothing
- * else is marked up: an explanation that needs more than that is too long for a glossary.
- */
 function Prose({ text }: { readonly text: string }) {
   return (
     <>
@@ -65,20 +60,12 @@ function TermButton({ term, selected, onSelect, className = '', children }: Term
   );
 }
 
-/**
- * The glossary itself: the term list beside the entry, over a scrim.
- *
- * Mounted fresh on every open (see `GlossaryDialog`), so the selected term, the scroll
- * position and the focus all start from the door the reader came through.
- */
 function GlossarySheet({ initialTerm }: { readonly initialTerm: GlossaryTermId }) {
   const [termId, setTermId] = useState<GlossaryTermId>(initialTerm);
   const sheetRef = useRef<HTMLDivElement>(null);
   const entry = glossaryEntry(termId);
 
   useEffect(() => {
-    // Captured before anything is focused, so closing hands the reader back to the panel
-    // header, the metadata line or the welcome screen they opened this from.
     const opener = document.activeElement;
     sheetRef.current?.focus();
 
@@ -90,11 +77,6 @@ function GlossarySheet({ initialTerm }: { readonly initialTerm: GlossaryTermId }
   }, []);
 
   useEffect(() => {
-    /**
-     * One capture-phase listener does all three jobs a modal owes the keyboard: an escape
-     * route, a Tab cycle that cannot leave, and silence for the shortcuts underneath — the
-     * transport listens on the window and would otherwise scrub the run behind the dialog.
-     */
     function handleKeyDown(event: KeyboardEvent): void {
       const sheet = sheetRef.current;
       if (sheet === null) {
@@ -154,7 +136,7 @@ function GlossarySheet({ initialTerm }: { readonly initialTerm: GlossaryTermId }
           </h2>
           <div className="flex items-baseline gap-3">
             <span className="hidden font-mono text-meta text-fg-3 sm:inline">
-              the words on these panels
+              terms used on these panels
             </span>
             <button
               type="button"
@@ -166,7 +148,6 @@ function GlossarySheet({ initialTerm }: { readonly initialTerm: GlossaryTermId }
           </div>
         </div>
 
-        {/* One row of terms on a phone, a column beside the entry from `md` up. */}
         <div className="flex min-h-0 flex-1 flex-col gap-2.5 px-3.5 pb-3.5 md:flex-row md:gap-3.5">
           <nav
             aria-label="Glossary terms"
@@ -213,11 +194,10 @@ function GlossarySheet({ initialTerm }: { readonly initialTerm: GlossaryTermId }
               ))}
             </div>
 
-            {/* The long form is the authority; this is its abstract. */}
             <p className="mt-2.5 text-meta text-fg-3">
-              Full treatment in <code className="font-mono text-fg-2">docs/jvm-primer.md</code> §
-              {entry.primer.section} — <Prose text={entry.primer.title} />, with the worked examples
-              and the <code className="font-mono text-fg-2">javap</code> output to check it against.
+              More detail in <code className="font-mono text-fg-2">docs/jvm-primer.md</code> §
+              {entry.primer.section}, <Prose text={entry.primer.title} />, with worked examples and
+              the <code className="font-mono text-fg-2">javap</code> output to check it against.
             </p>
           </article>
         </div>
@@ -227,11 +207,6 @@ function GlossarySheet({ initialTerm }: { readonly initialTerm: GlossaryTermId }
   );
 }
 
-/**
- * Mounted once, from the toolbar, because the toolbar is the one thing on screen in every
- * state of the application. The doors into it are everywhere the words are: panel headers, a
- * method descriptor, the welcome screen.
- */
 export function GlossaryDialog() {
   const openTerm = useOpenGlossaryTerm();
 

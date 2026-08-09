@@ -7,7 +7,7 @@
 #   app                             the name reserved with `fly apps create` / `fly launch --no-deploy`
 #   COMPILE_SERVICE_ALLOWED_ORIGIN  the exact origin the frontend is served from
 #
-# docs/deployment.md has the full walk-through.
+# See docs/deployment.md for the full walk-through.
 
 app = "CHANGE-ME-compile-service"
 primary_region = "fra"
@@ -20,7 +20,7 @@ primary_region = "fra"
   # jdk.compiler module ToolProvider.getSystemJavaCompiler() returns null.
   PORT = "8080"
 
-  # No trailing slash, no "*" — the application refuses to start with a wildcard origin.
+  # No trailing slash and no "*"; the application refuses to start with a wildcard origin.
   COMPILE_SERVICE_ALLOWED_ORIGIN = "https://CHANGE-ME.vercel.app"
 
   # Fly's proxy appends the client address to X-Forwarded-For, and it is the last entry.
@@ -36,8 +36,8 @@ primary_region = "fra"
   internal_port = 8080
   force_https = true
   # A stopped machine costs nothing, but the first request after a stop pays a cold start. The
-  # frontend gives the health check 2 s before it hides the editor, so set min_machines_running
-  # to 1 if the editor has to be there on the first visit.
+  # frontend gives the health check 2 s before hiding the editor, so set min_machines_running to 1
+  # if the editor has to be there on the first visit.
   auto_stop_machines = "stop"
   auto_start_machines = true
   min_machines_running = 0

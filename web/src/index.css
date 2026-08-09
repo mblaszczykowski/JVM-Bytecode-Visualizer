@@ -1,165 +1,59 @@
 @import 'tailwindcss';
 
-/*
- * Both faces are self-hosted as woff2 (no CDN, no render-blocking third party).
- *
- * JetBrains Mono: only the latin subset and the two weights the UI asks for — regular for code
- * and figures, medium for the one number the completion card leads with.
- *
- * Inter carries the text layer. Its `unicode-range` declarations mean the browser fetches the
- * latin file alone, so the variable axis costs one request rather than one per weight.
- *
- * Inter rather than Inter Tight, which was here first and was a mistake at this scale. Tight is
- * a narrowed cut, and narrow letterforms set light and knocked out of a dark ground read as
- * spindly — light-on-dark text already looks a weight lighter than the same text dark-on-light,
- * and a condensed face compounds it. Inter's wider apertures hold up at 11–13px, which is where
- * this entire interface lives.
- */
 @import '@fontsource/jetbrains-mono/latin-400.css';
 @import '@fontsource/jetbrains-mono/latin-500.css';
 @import '@fontsource-variable/inter/wght.css';
 
-/*
- * Design tokens. Defined once here and consumed through Tailwind utilities — no raw
- * rgba() literals scattered across components.
- *
- * The register is an instrument, not a window: flat matte surfaces, separation by hairline,
- * and no light source anywhere. A tool that reports on a machine has no business pretending
- * to be a pane of glass lying on a desk — the blur, the lit top edges and the coloured glow
- * that used to be here all drew the eye to the chrome, which is the one place in a debugger
- * where nothing is happening.
- *
- * The accent means exactly one thing: "the machine is here now" — current source line,
- * current instruction, top frame, top of the operand stack, the played part of the history.
- * Everything that does not answer "you are here" is grey, and grey has four steps.
- *
- * Both themes are written as `light-dark()` pairs — one declaration per token, light first.
- * Which half applies is decided entirely by the `color-scheme` property set on `:root` below,
- * so the theme switch changes exactly one line of CSS and nothing here has to know about it.
- * The alternative, a whole second palette duplicated under a media query and again under an
- * attribute selector, is three copies of every colour drifting apart one commit at a time.
- */
-
 @theme static {
-  /*
-   * The surfaces. Flat and opaque, never alpha over alpha: a stack of translucent films drifts
-   * as soon as two of them overlap, and the whole grid is overlapping panels.
-   *
-   * The two themes are not inverses. Dark stacks upwards — the ground is darkest and a panel
-   * rises off it. Light stacks downwards: the ground is grey and the panels are the white
-   * paper laid on it. Inverting the dark ramp instead would put the listing in a grey box on a
-   * white page, which is the wrong way round for the thing the reader is meant to be looking at.
-   */
   --color-app: light-dark(#f4f5f7, #08090a);
   --color-shell: light-dark(#f4f5f7, #08090a);
   --color-panel: light-dark(#ffffff, #0e0f11);
   --color-ink: light-dark(#ffffff, #0b0c0e);
   --color-raised: light-dark(#f1f2f5, #17181b);
   --color-raised-hover: light-dark(#e8eaee, #1e1f24);
-  /*
-   * A selected or pressed control. It is the one surface `fg-3` may not sit on — at 4.0:1 in
-   * light and 3.9:1 in dark it is the deepest interactive fill in the ramp, and the metadata
-   * on a selected row steps up to `fg-2` with the row. `theme.spec.ts` enforces exactly that.
-   */
   --color-raised-active: light-dark(#dee1e7, #26272d);
   --color-sunken: light-dark(#eceef1, #0a0b0d);
   --color-overlay: light-dark(#ffffff, #131417);
-  /*
-   * The scrim behind a dialog darkens in both themes. Tinting it with the page ground instead
-   * — which is what `bg-app/70` did — bleaches a light page rather than pushing it back, and a
-   * modal that makes the page underneath brighter is a modal that reads as a rendering fault.
-   */
   --color-scrim: light-dark(rgb(16 20 28 / 0.32), rgb(0 0 0 / 0.62));
 
-  /* The hairline does all the separating. Two weights: between things, and around a control. */
   --color-line: light-dark(rgb(0 0 0 / 0.09), rgb(255 255 255 / 0.07));
   --color-line-strong: light-dark(rgb(0 0 0 / 0.17), rgb(255 255 255 / 0.12));
 
-  /*
-   * Four text steps, measured rather than picked. The three readable ones clear AA against
-   * every surface text is set on — ground, panel, code and row — in both palettes, and
-   * `tests/e2e/theme.spec.ts` does that arithmetic in a real browser rather than leaving it to
-   * a comment nobody re-checks. `fg-3`'s light half is the binding constraint: it has to hold
-   * 4.5:1 against the grey ground, which is lighter than any panel sitting on it.
-   *
-   * `fg-dim` is deliberately under AA and is only ever worn by a disabled control, where WCAG
-   * stops asking. Anything a reader has to actually read — a line number, a heap index, an
-   * uninitialised slot — is content, and content is never dimmer than `fg-3`.
-   *
-   * They replace twenty-two ad-hoc `text-white/NN` values. Eight shades of grey with no rule
-   * behind them is what "amateur" looks like from across the room.
-   */
   --color-fg: light-dark(#16181c, #edeef0);
   --color-fg-2: light-dark(#585e67, #9aa0a8);
   --color-fg-3: light-dark(#676d75, #7c828b);
   --color-fg-dim: light-dark(#a2a7ae, #565b63);
 
-  /*
-   * One accent. Not the iOS system blue that was here before — that hue belongs to a platform
-   * and reads as borrowed. This is darker, more violet, and it never glows: it appears as a
-   * 2px rail, a 10% wash, and the played length of the history. Nowhere else.
-   *
-   * The light value is a step deeper so it still clears 5.5:1 against white; the dark value
-   * would have come out at 3.9:1 there, which is fine for a rail and not fine for a word.
-   */
   --color-accent: light-dark(#4f5bd5, #5b6cf0);
   --color-accent-soft: light-dark(#4a55c9, #a8b2ff);
   --color-accent-dim: light-dark(#5661cf, #7d8bf5);
-  /* Text sitting on the accent wash, which is far too faint to invert the type against. */
   --color-accent-text: light-dark(#2f379e, #c3caff);
-  /* The wash itself. Heavier in light: 10% over near-black reads clearly, over paper it does not. */
   --color-now: light-dark(rgb(79 91 213 / 0.13), rgb(91 108 240 / 0.1));
 
-  /* Status is not the accent and never competes with it. Desaturated to match the surface. */
   --color-ok: light-dark(#1a7f37, #3fb950);
   --color-warn: light-dark(#9a6700, #d29922);
   --color-error: light-dark(#cf222e, #f85149);
 
-  /*
-   * Source syntax: keywords, method names, type names, number literals.
-   *
-   * Deliberately clear of the accent's blue-violet — a method name the same hue as "you are
-   * here" makes every line look current. What is left is one cool violet against three warm
-   * steps, all of them pulled well down in saturation so the listing reads as text first and
-   * as colour second. Both halves are measured at 5:1 or better on their own code surface.
-   */
   --color-syntax-keyword: light-dark(#8250df, #c39aef);
   --color-syntax-method: light-dark(#1f7a4d, #82c7a5);
   --color-syntax-type: light-dark(#8a6a00, #e5c07b);
   --color-syntax-number: light-dark(#b5451b, #e08b69);
 
-  /*
-   * Concentric radii: inner radius = outer radius − padding. Roughly half of what they were.
-   * A 28px corner on a pane of disassembly rounds a dense instrument into a toy; at this
-   * density the corner's job is to stop the box reading as a table cell, and 10px does it.
-   */
   --radius-panel: 10px;
   --radius-card: 8px;
   --radius-row: 6px;
   --radius-code: 5px;
   --radius-control: 6px;
 
-  /*
-   * Every "shadow" here is a hairline. Thirteen tokens of stacked drop shadows, lit edges and
-   * coloured glow collapsed into one grammar: an inset ring one pixel wide, at one of four
-   * strengths. Inset rather than `border` so it costs the layout no pixel — branch arcs and
-   * scroll-follow are computed from row geometry and a border would move them.
-   *
-   * Two real shadows survive, and both are earned: an overlay has to detach from the page
-   * beneath it, and the scrubber handle has to sit on top of its own track.
-   */
   --shadow-panel: inset 0 0 0 1px var(--color-line), var(--lift);
   --shadow-panel-ink: inset 0 0 0 1px var(--color-line), var(--lift);
   --shadow-panel-raised: inset 0 0 0 1px var(--color-line), var(--lift);
   --shadow-row-outline: inset 0 0 0 1px var(--color-line);
   --shadow-control-inset: inset 0 0 0 1px var(--color-line);
   --shadow-control-raised: inset 0 0 0 1px var(--color-line-strong);
-  /* "You are here", as a ring rather than as a halo. */
   --shadow-current: inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 34%, transparent);
   --shadow-current-strong: inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 50%, transparent);
-  /* A ring, not a bloom: the health dot says "reachable", not "radioactive". */
   --shadow-glow-ok: 0 0 0 3px color-mix(in srgb, var(--color-ok) 18%, transparent);
-  /* Banners wear the same ring grammar as everything else, tinted by their own severity. */
   --shadow-banner-error: inset 0 0 0 1px color-mix(in srgb, var(--color-error) 42%, transparent);
   --shadow-banner-warn: inset 0 0 0 1px color-mix(in srgb, var(--color-warn) 42%, transparent);
   --shadow-handle: 0 1px 3px light-dark(rgb(0 0 0 / 0.25), rgb(0 0 0 / 0.6));
@@ -171,16 +65,6 @@
   --font-sans: 'Inter Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 
-  /*
-   * Nine steps between 9px and 15px is not a scale, it is one size with rounding error, and it
-   * is why the whole interface read as small print rather than as structure. These are seven
-   * steps with a job each and a real gap between neighbours, and the hierarchy that used to be
-   * asked of half-pixel size differences is carried by weight and by the four greys instead.
-   *
-   * `code` is 12.5px/26px because branch arcs and scroll-follow are computed from the row
-   * height (see `rhythm.ts`); it is the one step that may not be retuned in isolation.
-   */
-  /* Axis labels only — `TOP`/`BASE` and the heap indices, which sit in 30px and 34px gutters. */
   --text-legend: 10px;
   --text-legend--line-height: 14px;
   --text-micro: 11px;
@@ -197,28 +81,14 @@
   --text-title--line-height: 18px;
   --text-brand: 14px;
   --text-brand--line-height: 20px;
-  /* The one place the type is allowed to be loud, and the first frame anyone sees. */
   --text-display: 38px;
   --text-display--line-height: 41px;
 }
 
 @layer base {
-  /*
-   * The one switch. `color-scheme: light dark` means "follow the operating system", and every
-   * `light-dark()` pair above resolves against it — as do the native scrollbars, form controls
-   * and focus rings the browser draws for us. Setting `data-theme` on `<html>` pins it.
-   *
-   * `index.html` applies the stored choice before first paint, so a reader who picked dark
-   * never sees a white page flash on the way in.
-   */
   :root {
     color-scheme: light dark;
 
-    /*
-     * A panel in light mode needs a shadow to lift off the ground, because a hairline alone
-     * is nearly invisible on white paper. In dark mode the hairline is the whole story and a
-     * drop shadow would be the glass this redesign removed, so there it resolves to nothing.
-     */
     --lift: light-dark(0 1px 2px rgb(16 20 28 / 0.06), 0 0 rgb(0 0 0 / 0));
   }
 
@@ -236,12 +106,6 @@
     height: 100%;
   }
 
-  /*
-   * Flat. There used to be a radial light in the top-left and a film grain over the whole
-   * viewport, both of them feeding a `backdrop-filter` that no longer exists — the shell is
-   * opaque now, so a gradient behind it is a gradient nobody can see, and grain over an
-   * instrument is an effect asking to be noticed.
-   */
   body {
     background-color: var(--color-app);
     color: var(--color-fg-2);
@@ -249,10 +113,6 @@
     text-rendering: optimizeLegibility;
   }
 
-  /*
-   * Interface type is set slightly tight. Code is exempt — a monospace face with its advance
-   * width altered stops lining up, which is the only reason to use one.
-   */
   body,
   button,
   input,
@@ -262,14 +122,6 @@
     letter-spacing: -0.009em;
   }
 
-  /*
-   * Every control is medium, not regular.
-   *
-   * A control has to survive being glanced at rather than read: it is short, it sits alone in
-   * whitespace, and it is the thing a hand is aiming for. At 400 the toolbar, the example rail
-   * and the transport all came out thin enough to read as unfinished — the single most common
-   * tell of an interface whose type was never set, only defaulted.
-   */
   button,
   label,
   summary,
@@ -287,47 +139,25 @@
     letter-spacing: 0;
   }
 
-  /* Figures in a column that changes every step must not reflow as the digits change. */
   [class*='tabular-nums'],
   .font-mono {
     font-variant-numeric: tabular-nums;
   }
 }
 
-/*
- * "The machine is here now" — the current source line, the current instruction, the top frame,
- * the top of the operand stack. A wash the eye reads as a change of surface and a rail on the
- * leading edge that survives being scrubbed past at eight steps a second.
- *
- * One utility rather than a treatment per panel: the reader is tracking a single position
- * across three columns, and it has to be the same mark in all of them.
- */
 @utility now-row {
   background-color: var(--color-now);
   box-shadow: inset 2px 0 0 0 var(--color-accent);
 }
 
-/*
- * Two states of a code row that are about the row as a whole rather than about its text.
- *
- * These are the one legitimate use of opacity in this interface, and they are utilities rather
- * than a loose `opacity-50` for exactly that reason: a disassembly row is a composition of
- * spans that set their own syntax colours, so a text token applied to the row would dim the
- * mnemonic and leave the operands at full strength. Opacity is the only thing that reaches all
- * of them at once — and naming it is what stops it becoming a general-purpose dimmer again.
- */
-
-/* The run never reached this instruction. It is still part of the method, so it stays legible. */
 @utility row-unreached {
   opacity: 0.5;
 }
 
-/* The machine does not implement this opcode. Dimmed less: it is the reason a run stopped. */
 @utility row-unsupported {
   opacity: 0.72;
 }
 
-/* A one-pixel ring in the accent, offset so it never sits on the control's own hairline. */
 @utility focus-ring {
   &:focus-visible {
     outline: 2px solid var(--color-accent);
@@ -335,10 +165,6 @@
   }
 }
 
-/*
- * For controls whose real input is invisible — a `sr-only` file input, the transparent range
- * that covers the scrubber — the ring has to land on the wrapper the reader can actually see.
- */
 @utility focus-ring-within {
   &:has(:focus-visible) {
     outline: 2px solid var(--color-accent);
@@ -351,10 +177,6 @@
   scrollbar-color: rgb(255 255 255 / 0.14) transparent;
 }
 
-/*
- * Styling the scrollbar at all switches WebKit from overlay bars to classic ones, which is
- * the point: a panel that scrolls sideways has to say so without being touched first.
- */
 @utility scroll-visible {
   scrollbar-width: thin;
   scrollbar-color: rgb(255 255 255 / 0.14) transparent;
@@ -379,11 +201,6 @@
   }
 }
 
-/*
- * A scroll container that ends at a hard edge reads as a clipped layout rather than as more
- * content. Both fades are `mask-image`, so they cost no element and no scroll offset; the
- * `-start`/`-end` variants are for rails that only ever overflow one way.
- */
 @utility fade-y {
   mask-image: linear-gradient(
     to bottom,
@@ -394,7 +211,6 @@
   );
 }
 
-/* For a list that only ever overflows downwards, and whose first row is a heading. */
 @utility fade-y-end {
   mask-image: linear-gradient(to bottom, black calc(100% - 88px), transparent 100%);
 }
@@ -403,15 +219,6 @@
   mask-image: linear-gradient(to right, black calc(100% - 28px), transparent 100%);
 }
 
-/*
- * Both edges of a rail, but the leading one only once there is something behind it.
- *
- * `fade-x-end` alone leaves the first item cut by a hard edge as soon as the rail is scrolled;
- * a fixed fade on both edges is worse, because it dims the first item while it is still the
- * first item. The start stop is therefore driven by the scroll position. Where scroll-driven
- * animation is missing the property keeps its initial `0px` and the rail behaves as it does
- * today — trailing fade only.
- */
 @property --fade-start {
   syntax: '<length>';
   inherits: false;

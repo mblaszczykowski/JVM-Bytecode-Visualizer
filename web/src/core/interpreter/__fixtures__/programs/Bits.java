@@ -1,6 +1,6 @@
 /**
  * Differential fixture: shifts, bitwise logic and the narrowing conversions, over the values
- * where they are easy to get wrong — both boundaries of the int range, and shift distances
+ * where they are easy to get wrong: both boundaries of the int range, and shift distances
  * above 31, which JVMS §6.5 (ishl, ishr, iushr) reduces to the low five bits of value2.
  *
  * Every result is printed, so the whole of Bits.stdout.txt is the assertion.

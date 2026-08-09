@@ -1,20 +1,3 @@
-/**
- * Opcode metadata for the whole JVM instruction set (JVMS §6.5), kept as data rather than a
- * switch so the decoder, the interpreter and the UI all read the same table.
- *
- * Two facts live here and are deliberately kept apart:
- *
- *   - the *encoding* — the width, signedness and role of every operand — which every assigned
- *     opcode carries, because a listing that prints `getstatic` without its `#7` is not a
- *     listing of that instruction;
- *   - the *stack effect*, which only the opcodes the interpreter executes carry.
- *
- * An instruction can therefore be decoded completely and still not be runnable, which is the
- * normal case for a class file taken from a real project. `kind` answers the second question
- * only: `supported` means the interpreter runs it, never that the decoder understands it.
- */
-
-/** Operand width and signedness as written in the JVMS instruction format. */
 export type OperandType = 'u1' | 'i1' | 'u2' | 'i2' | 'i4';
 
 export type OperandRole =
@@ -22,16 +5,9 @@ export type OperandRole =
   | 'constant-pool-index'
   | 'immediate'
   | 'branch-offset'
-  /** The `atype` of `newarray`, which names a primitive element type rather than a number. */
   | 'array-type'
-  /** Number of dimensions `multianewarray` allocates (JVMS §6.5 multianewarray). */
   | 'dimensions'
-  /** `invokeinterface`'s `count`: the argument slots the call occupies, checked by the JVM. */
   | 'argument-count'
-  /**
-   * A byte JVMS requires to be zero (`invokeinterface`, `invokedynamic`). It carries no value
-   * but it is part of the instruction, so it is decoded rather than silently skipped.
-   */
   | 'mandated-zero';
 
 export interface OperandSpec {
@@ -39,10 +15,6 @@ export interface OperandSpec {
   readonly role: OperandRole;
 }
 
-/**
- * Net effect on the operand stack. `varies` covers instructions whose effect depends on
- * something outside the instruction itself (method descriptor, frame state).
- */
 export type StackEffect =
   | { readonly kind: 'fixed'; readonly pops: number; readonly pushes: number }
   | { readonly kind: 'varies' };
@@ -50,41 +22,24 @@ export type StackEffect =
 interface OpcodeBase {
   readonly opcode: number;
   readonly mnemonic: string;
-  /**
-   * The operand layout the decoder reads. Empty for `tableswitch`/`lookupswitch`, whose arms
-   * are not a fixed list of operands and arrive as `Instruction.switchTargets` instead.
-   */
   readonly operands: readonly OperandSpec[];
 }
 
-/** Instruction the interpreter executes. Everything the decoder knows, plus a stack effect. */
 export interface SupportedOpcode extends OpcodeBase {
   readonly kind: 'supported';
-  /** Sum of the widths of `operands`; absent for the two switches, which are variable-length. */
   readonly operandBytes?: number;
   readonly stackEffect: StackEffect;
 }
 
-/**
- * Instruction outside the executable subset. Decoded exactly like a supported one — the
- * listing shows the mnemonic, the operands and the constant pool references — but executing
- * it ends the run with a VM error.
- */
 export interface UnsupportedOpcode extends OpcodeBase {
   readonly kind: 'unsupported';
   readonly operandBytes: number;
 }
 
-/**
- * `wide` (JVMS §6.5 wide): a modifier rather than an instruction. The decoder folds it into
- * the load, store or `iinc` it widens, so no `Instruction` ever carries opcode 0xc4 — see
- * `decodeWide` in disassembler.ts for the representation and why javap agrees with it.
- */
 export interface VariableLengthOpcode extends OpcodeBase {
   readonly kind: 'variable-length';
 }
 
-/** `breakpoint`/`impdep1`/`impdep2` — reserved for JVM internals, never in a valid class file. */
 export interface ReservedOpcode extends OpcodeBase {
   readonly kind: 'reserved';
 }
@@ -113,15 +68,12 @@ const LOCAL_INDEX: readonly OperandSpec[] = [{ type: 'u1', role: 'local-index' }
 const IMMEDIATE_BYTE: readonly OperandSpec[] = [{ type: 'i1', role: 'immediate' }];
 const IMMEDIATE_SHORT: readonly OperandSpec[] = [{ type: 'i2', role: 'immediate' }];
 const BRANCH_OFFSET: readonly OperandSpec[] = [{ type: 'i2', role: 'branch-offset' }];
-/** JVMS §6.5 goto_w/jsr_w: the same jump with a 4-byte delta, for methods above 32 KiB. */
 const WIDE_BRANCH_OFFSET: readonly OperandSpec[] = [{ type: 'i4', role: 'branch-offset' }];
 const CONSTANT_POOL_INDEX: readonly OperandSpec[] = [{ type: 'u2', role: 'constant-pool-index' }];
-/** `ldc` addresses only the first 255 pool entries; `ldc_w` is the same instruction widened. */
 const NARROW_CONSTANT_POOL_INDEX: readonly OperandSpec[] = [
   { type: 'u1', role: 'constant-pool-index' },
 ];
 const ARRAY_TYPE: readonly OperandSpec[] = [{ type: 'u1', role: 'array-type' }];
-/** `iinc`: unsigned local slot, then a signed increment (JVMS §6.5 iinc). */
 const IINC_OPERANDS: readonly OperandSpec[] = [
   { type: 'u1', role: 'local-index' },
   { type: 'i1', role: 'immediate' },
@@ -141,7 +93,6 @@ const INVOKEDYNAMIC_OPERANDS: readonly OperandSpec[] = [
   { type: 'u1', role: 'mandated-zero' },
 ];
 
-/** Length marker for the instructions that cannot be skipped by a constant number of bytes. */
 const VARIABLE_LENGTH = 'variable';
 
 type OpcodeRow = readonly [
@@ -150,7 +101,6 @@ type OpcodeRow = readonly [
   operands: readonly OperandSpec[] | typeof VARIABLE_LENGTH,
 ];
 
-/** Mnemonic and operand encoding of every assigned opcode — JVMS §6.5, §7. */
 const OPCODE_ROWS: readonly OpcodeRow[] = [
   [0x00, 'nop', NO_OPERANDS],
   [0x01, 'aconst_null', NO_OPERANDS],
@@ -354,7 +304,6 @@ const OPCODE_ROWS: readonly OpcodeRow[] = [
   [0xc7, 'ifnonnull', BRANCH_OFFSET],
   [0xc8, 'goto_w', WIDE_BRANCH_OFFSET],
   [0xc9, 'jsr_w', WIDE_BRANCH_OFFSET],
-  // Reserved opcodes — JVMS §6.2.
   [0xca, 'breakpoint', NO_OPERANDS],
   [0xfe, 'impdep1', NO_OPERANDS],
   [0xff, 'impdep2', NO_OPERANDS],
@@ -362,7 +311,6 @@ const OPCODE_ROWS: readonly OpcodeRow[] = [
 
 const RESERVED_OPCODES: ReadonlySet<number> = new Set([0xca, 0xfe, 0xff]);
 
-/** The two switches: variable-length, yet executed — their arms arrive as `switchTargets`. */
 const TABLESWITCH = 0xaa;
 export const LOOKUPSWITCH = 0xab;
 
@@ -380,126 +328,108 @@ const UNARY_ARITHMETIC = fixed(1, 1);
 const BRANCH_ON_INT = fixed(1, 0);
 const BRANCH_ON_INT_PAIR = fixed(2, 0);
 
-/**
- * The executable subset: an opcode is in this table exactly when `execute()` runs it, and the
- * value is what it does to the operand stack. Membership — not the encoding above — is what
- * `kind: 'supported'` and `Instruction.unsupported` report.
- */
 const STACK_EFFECTS = new Map<number, StackEffect>([
-  // Constants.
-  [0x00, fixed(0, 0)], // nop
-  [0x01, PUSH_CONSTANT], // aconst_null
-  [0x02, PUSH_CONSTANT], // iconst_m1
-  [0x03, PUSH_CONSTANT], // iconst_0
-  [0x04, PUSH_CONSTANT], // iconst_1
-  [0x05, PUSH_CONSTANT], // iconst_2
-  [0x06, PUSH_CONSTANT], // iconst_3
-  [0x07, PUSH_CONSTANT], // iconst_4
-  [0x08, PUSH_CONSTANT], // iconst_5
-  [0x10, PUSH_CONSTANT], // bipush
-  [0x11, PUSH_CONSTANT], // sipush
-  [0x12, PUSH_CONSTANT], // ldc
-  [0x13, PUSH_CONSTANT], // ldc_w
+  [0x00, fixed(0, 0)],
+  [0x01, PUSH_CONSTANT],
+  [0x02, PUSH_CONSTANT],
+  [0x03, PUSH_CONSTANT],
+  [0x04, PUSH_CONSTANT],
+  [0x05, PUSH_CONSTANT],
+  [0x06, PUSH_CONSTANT],
+  [0x07, PUSH_CONSTANT],
+  [0x08, PUSH_CONSTANT],
+  [0x10, PUSH_CONSTANT],
+  [0x11, PUSH_CONSTANT],
+  [0x12, PUSH_CONSTANT],
+  [0x13, PUSH_CONSTANT],
 
-  // Loads and stores.
-  [0x15, fixed(0, 1)], // iload
-  [0x19, fixed(0, 1)], // aload
-  [0x1a, LOAD_LOCAL_N], // iload_0
-  [0x1b, LOAD_LOCAL_N], // iload_1
-  [0x1c, LOAD_LOCAL_N], // iload_2
-  [0x1d, LOAD_LOCAL_N], // iload_3
-  [0x2a, LOAD_LOCAL_N], // aload_0
-  [0x2b, LOAD_LOCAL_N], // aload_1
-  [0x2c, LOAD_LOCAL_N], // aload_2
-  [0x2d, LOAD_LOCAL_N], // aload_3
-  [0x36, fixed(1, 0)], // istore
-  [0x3a, fixed(1, 0)], // astore
-  [0x3b, STORE_LOCAL_N], // istore_0
-  [0x3c, STORE_LOCAL_N], // istore_1
-  [0x3d, STORE_LOCAL_N], // istore_2
-  [0x3e, STORE_LOCAL_N], // istore_3
-  [0x4b, STORE_LOCAL_N], // astore_0
-  [0x4c, STORE_LOCAL_N], // astore_1
-  [0x4d, STORE_LOCAL_N], // astore_2
-  [0x4e, STORE_LOCAL_N], // astore_3
-  [0x84, fixed(0, 0)], // iinc
+  [0x15, fixed(0, 1)],
+  [0x19, fixed(0, 1)],
+  [0x1a, LOAD_LOCAL_N],
+  [0x1b, LOAD_LOCAL_N],
+  [0x1c, LOAD_LOCAL_N],
+  [0x1d, LOAD_LOCAL_N],
+  [0x2a, LOAD_LOCAL_N],
+  [0x2b, LOAD_LOCAL_N],
+  [0x2c, LOAD_LOCAL_N],
+  [0x2d, LOAD_LOCAL_N],
+  [0x36, fixed(1, 0)],
+  [0x3a, fixed(1, 0)],
+  [0x3b, STORE_LOCAL_N],
+  [0x3c, STORE_LOCAL_N],
+  [0x3d, STORE_LOCAL_N],
+  [0x3e, STORE_LOCAL_N],
+  [0x4b, STORE_LOCAL_N],
+  [0x4c, STORE_LOCAL_N],
+  [0x4d, STORE_LOCAL_N],
+  [0x4e, STORE_LOCAL_N],
+  [0x84, fixed(0, 0)],
 
-  // Arrays: `…, arrayref, index → …, value` and `…, arrayref, index, value →` (JVMS §6.5).
-  [0x2e, fixed(2, 1)], // iaload
-  [0x4f, fixed(3, 0)], // iastore
-  [0xbc, fixed(1, 1)], // newarray
-  [0xbe, fixed(1, 1)], // arraylength
+  [0x2e, fixed(2, 1)],
+  [0x4f, fixed(3, 0)],
+  [0xbc, fixed(1, 1)],
+  [0xbe, fixed(1, 1)],
 
-  // Operand stack. Only the category-1 forms exist here — see the interpreter's `dup2`.
-  [0x57, fixed(1, 0)], // pop
-  [0x58, fixed(2, 0)], // pop2
-  [0x59, fixed(1, 2)], // dup
-  [0x5a, fixed(2, 3)], // dup_x1
-  [0x5c, fixed(2, 4)], // dup2
-  [0x5d, fixed(3, 5)], // dup2_x1
-  [0x5f, fixed(2, 2)], // swap
+  [0x57, fixed(1, 0)],
+  [0x58, fixed(2, 0)],
+  [0x59, fixed(1, 2)],
+  [0x5a, fixed(2, 3)],
+  [0x5c, fixed(2, 4)],
+  [0x5d, fixed(3, 5)],
+  [0x5f, fixed(2, 2)],
 
-  // Arithmetic, shifts and bitwise logic.
-  [0x60, BINARY_ARITHMETIC], // iadd
-  [0x64, BINARY_ARITHMETIC], // isub
-  [0x68, BINARY_ARITHMETIC], // imul
-  [0x6c, BINARY_ARITHMETIC], // idiv
-  [0x70, BINARY_ARITHMETIC], // irem
-  [0x74, UNARY_ARITHMETIC], // ineg
-  [0x78, BINARY_ARITHMETIC], // ishl
-  [0x7a, BINARY_ARITHMETIC], // ishr
-  [0x7c, BINARY_ARITHMETIC], // iushr
-  [0x7e, BINARY_ARITHMETIC], // iand
-  [0x80, BINARY_ARITHMETIC], // ior
-  [0x82, BINARY_ARITHMETIC], // ixor
+  [0x60, BINARY_ARITHMETIC],
+  [0x64, BINARY_ARITHMETIC],
+  [0x68, BINARY_ARITHMETIC],
+  [0x6c, BINARY_ARITHMETIC],
+  [0x70, BINARY_ARITHMETIC],
+  [0x74, UNARY_ARITHMETIC],
+  [0x78, BINARY_ARITHMETIC],
+  [0x7a, BINARY_ARITHMETIC],
+  [0x7c, BINARY_ARITHMETIC],
+  [0x7e, BINARY_ARITHMETIC],
+  [0x80, BINARY_ARITHMETIC],
+  [0x82, BINARY_ARITHMETIC],
 
-  // Narrowing conversions, which change the value but not the number of slots.
-  [0x91, UNARY_ARITHMETIC], // i2b
-  [0x92, UNARY_ARITHMETIC], // i2c
-  [0x93, UNARY_ARITHMETIC], // i2s
+  [0x91, UNARY_ARITHMETIC],
+  [0x92, UNARY_ARITHMETIC],
+  [0x93, UNARY_ARITHMETIC],
 
-  // Conditional branches.
-  [0x99, BRANCH_ON_INT], // ifeq
-  [0x9a, BRANCH_ON_INT], // ifne
-  [0x9b, BRANCH_ON_INT], // iflt
-  [0x9c, BRANCH_ON_INT], // ifge
-  [0x9d, BRANCH_ON_INT], // ifgt
-  [0x9e, BRANCH_ON_INT], // ifle
-  [0x9f, BRANCH_ON_INT_PAIR], // if_icmpeq
-  [0xa0, BRANCH_ON_INT_PAIR], // if_icmpne
-  [0xa1, BRANCH_ON_INT_PAIR], // if_icmplt
-  [0xa2, BRANCH_ON_INT_PAIR], // if_icmpge
-  [0xa3, BRANCH_ON_INT_PAIR], // if_icmpgt
-  [0xa4, BRANCH_ON_INT_PAIR], // if_icmple
+  [0x99, BRANCH_ON_INT],
+  [0x9a, BRANCH_ON_INT],
+  [0x9b, BRANCH_ON_INT],
+  [0x9c, BRANCH_ON_INT],
+  [0x9d, BRANCH_ON_INT],
+  [0x9e, BRANCH_ON_INT],
+  [0x9f, BRANCH_ON_INT_PAIR],
+  [0xa0, BRANCH_ON_INT_PAIR],
+  [0xa1, BRANCH_ON_INT_PAIR],
+  [0xa2, BRANCH_ON_INT_PAIR],
+  [0xa3, BRANCH_ON_INT_PAIR],
+  [0xa4, BRANCH_ON_INT_PAIR],
 
-  // Unconditional branch and the two switches, which consume the value they dispatch on.
-  [0xa7, fixed(0, 0)], // goto
+  [0xa7, fixed(0, 0)],
   [TABLESWITCH, fixed(1, 0)],
   [LOOKUPSWITCH, fixed(1, 0)],
 
-  // Reference comparisons: two handles off the stack, or one against null.
-  [0xa5, fixed(2, 0)], // if_acmpeq
-  [0xa6, fixed(2, 0)], // if_acmpne
-  [0xc6, fixed(1, 0)], // ifnull
-  [0xc7, fixed(1, 0)], // ifnonnull
+  [0xa5, fixed(2, 0)],
+  [0xa6, fixed(2, 0)],
+  [0xc6, fixed(1, 0)],
+  [0xc7, fixed(1, 0)],
 
-  // Calls, field access and returns: the descriptor or the caller frame decides the effect.
-  [0xac, VARIES], // ireturn
-  [0xb0, VARIES], // areturn
-  [0xb1, VARIES], // return
-  [0xb2, VARIES], // getstatic
-  [0xb4, VARIES], // getfield
-  [0xb5, VARIES], // putfield
-  [0xb6, VARIES], // invokevirtual
-  [0xb7, VARIES], // invokespecial
-  [0xb8, VARIES], // invokestatic
+  [0xac, VARIES],
+  [0xb0, VARIES],
+  [0xb1, VARIES],
+  [0xb2, VARIES],
+  [0xb4, VARIES],
+  [0xb5, VARIES],
+  [0xb6, VARIES],
+  [0xb7, VARIES],
+  [0xb8, VARIES],
 
-  // `new` pushes the uninitialised instance; its constructor is a separate instruction.
-  [0xbb, fixed(0, 1)], // new
+  [0xbb, fixed(0, 1)],
 
-  // `athrow` empties the operand stack and leaves the exception alone on it (JVMS §2.10) —
-  // or the frame does not survive to have one, and the effect belongs to a frame further down.
-  [0xbf, VARIES], // athrow
+  [0xbf, VARIES],
 ]);
 
 function toOpcodeInfo([opcode, mnemonic, operands]: OpcodeRow): OpcodeInfo {
@@ -508,8 +438,6 @@ function toOpcodeInfo([opcode, mnemonic, operands]: OpcodeRow): OpcodeInfo {
   }
   const stackEffect = STACK_EFFECTS.get(opcode);
   if (operands === VARIABLE_LENGTH) {
-    // `wide` is the only variable-length opcode with no stack effect of its own: it is a
-    // prefix, and the instruction it widens carries the effect.
     return stackEffect === undefined
       ? { kind: 'variable-length', opcode, mnemonic, operands: NO_OPERANDS }
       : { kind: 'supported', opcode, mnemonic, operands: NO_OPERANDS, stackEffect };
@@ -522,52 +450,45 @@ function toOpcodeInfo([opcode, mnemonic, operands]: OpcodeRow): OpcodeInfo {
   return { kind: 'supported', opcode, mnemonic, operands, operandBytes, stackEffect };
 }
 
-/** Every assigned opcode, keyed by its byte value. Unassigned bytes are absent. */
 export const OPCODES: ReadonlyMap<number, OpcodeInfo> = new Map(
   OPCODE_ROWS.map((row) => [row[0], toOpcodeInfo(row)]),
 );
 
-/** `undefined` for the unassigned bytes 0xcb–0xfd (and anything outside 0–255). */
 export function lookupOpcode(opcode: number): OpcodeInfo | undefined {
   return OPCODES.get(opcode);
 }
 
-/** Whether the interpreter executes this opcode — not whether the decoder understands it. */
 export function isSupportedOpcode(opcode: number): boolean {
   return OPCODES.get(opcode)?.kind === 'supported';
 }
 
-/** JVMS §6.5 wide: the local index becomes `u2`, and `iinc`'s constant becomes `i2`. */
 const WIDE_LOCAL_INDEX: readonly OperandSpec[] = [{ type: 'u2', role: 'local-index' }];
 const WIDE_IINC_OPERANDS: readonly OperandSpec[] = [
   { type: 'u2', role: 'local-index' },
   { type: 'i2', role: 'immediate' },
 ];
 
-/** The instruction a `wide` prefix produces, ready to be listed on its own row. */
 export interface WidenedForm {
   readonly opcode: number;
-  /** javap prints the widened form with a `_w` suffix: `iload_w`, `iinc_w`. */
   readonly mnemonic: string;
   readonly operands: readonly OperandSpec[];
   readonly operandBytes: number;
   readonly unsupported: boolean;
 }
 
-/** The twelve instructions `wide` may prefix; any other byte after it is not an instruction. */
 const WIDENABLE: readonly (readonly [opcode: number, operands: readonly OperandSpec[]])[] = [
-  [0x15, WIDE_LOCAL_INDEX], // iload
-  [0x16, WIDE_LOCAL_INDEX], // lload
-  [0x17, WIDE_LOCAL_INDEX], // fload
-  [0x18, WIDE_LOCAL_INDEX], // dload
-  [0x19, WIDE_LOCAL_INDEX], // aload
-  [0x36, WIDE_LOCAL_INDEX], // istore
-  [0x37, WIDE_LOCAL_INDEX], // lstore
-  [0x38, WIDE_LOCAL_INDEX], // fstore
-  [0x39, WIDE_LOCAL_INDEX], // dstore
-  [0x3a, WIDE_LOCAL_INDEX], // astore
-  [0xa9, WIDE_LOCAL_INDEX], // ret
-  [0x84, WIDE_IINC_OPERANDS], // iinc
+  [0x15, WIDE_LOCAL_INDEX],
+  [0x16, WIDE_LOCAL_INDEX],
+  [0x17, WIDE_LOCAL_INDEX],
+  [0x18, WIDE_LOCAL_INDEX],
+  [0x19, WIDE_LOCAL_INDEX],
+  [0x36, WIDE_LOCAL_INDEX],
+  [0x37, WIDE_LOCAL_INDEX],
+  [0x38, WIDE_LOCAL_INDEX],
+  [0x39, WIDE_LOCAL_INDEX],
+  [0x3a, WIDE_LOCAL_INDEX],
+  [0xa9, WIDE_LOCAL_INDEX],
+  [0x84, WIDE_IINC_OPERANDS],
 ];
 
 export const WIDENED_FORMS: ReadonlyMap<number, WidenedForm> = new Map(
@@ -586,7 +507,6 @@ export const WIDENED_FORMS: ReadonlyMap<number, WidenedForm> = new Map(
   }),
 );
 
-/** JVMS §6.5 newarray: the `atype` operand codes the primitive element type. */
 const ARRAY_TYPE_NAMES: ReadonlyMap<number, string> = new Map([
   [4, 'boolean'],
   [5, 'char'],
@@ -598,10 +518,8 @@ const ARRAY_TYPE_NAMES: ReadonlyMap<number, string> = new Map([
   [11, 'long'],
 ]);
 
-/** The one element type this project allocates; every other `atype` is a VM error. */
 export const T_INT = 10;
 
-/** Element type of a `newarray` atype, or `undefined` for a code JVMS does not assign. */
 export function arrayTypeName(atype: number): string | undefined {
   return ARRAY_TYPE_NAMES.get(atype);
 }

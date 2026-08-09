@@ -1,18 +1,9 @@
-/**
- * Reads the committed example artifacts straight from `public/examples/`, so the tests
- * exercise the files that actually ship instead of a hand-written copy of them, plus the
- * hand-compiled class files that live next to this file.
- */
-
 /// <reference types="node" />
-// tsconfig.app.json narrows `types` to "vite/client", so the node module declarations have
-// to be pulled in explicitly here.
 
 import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import * as process from 'node:process';
 
-/** Vitest roots at `web/`; the second candidate covers a run from the repo root. */
 function resolveExamplesDir(): string {
   const candidates = [
     resolve(process.cwd(), 'public', 'examples'),
@@ -47,7 +38,6 @@ const FIXTURES_DIR = resolve(
   '__fixtures__',
 );
 
-/** A class file compiled by hand for a case no shipped example covers. */
 export function readFixtureBytes(fileName: string): ArrayBuffer {
   const buffer = readFileSync(join(FIXTURES_DIR, fileName));
   return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);

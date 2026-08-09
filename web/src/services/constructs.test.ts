@@ -7,11 +7,6 @@ import type { Instruction } from '../core/disassembler/types';
 import { readExampleBytes } from './__fixtures__/example-files';
 import { constructsFor } from './constructs';
 
-/**
- * Recognition is asserted against class files a real javac produced, because these are javac's
- * habits rather than rules of the JVM — a synthetic fixture would only prove that the matcher
- * matches what the matcher was written against.
- */
 function methodOf(classFile: ClassFile, name: string): readonly Instruction[] {
   const method = classFile.methods.find((candidate) => candidate.name === name);
   if (method?.code === undefined) {
@@ -30,7 +25,6 @@ describe('loops', () => {
   it('names the top of the loop in a sort, where the jump back lands', () => {
     const labels = labelsIn('BubbleSort.class', 'sortedMinimum');
 
-    // Two nested `for` loops, so two backward branches and two heads.
     expect(labels.filter((label) => label === 'loop')).toHaveLength(2);
   });
 
@@ -52,7 +46,6 @@ describe('loops', () => {
     expect(backward.length).toBeGreaterThan(0);
     for (const branch of backward) {
       expect(found.get(branch.branchTarget ?? -1)?.label).toBe('loop');
-      // The jump itself is not the head; the row it lands on is.
       expect(found.get(branch.offset)?.label).not.toBe('loop');
     }
   });
@@ -73,7 +66,6 @@ describe('what it refuses to say', () => {
       'factorial',
     );
 
-    // `factorial` is a branch, an arithmetic pair and a self-call: nothing javac inserted.
     expect([...found.values()]).toEqual([]);
   });
 
@@ -85,8 +77,6 @@ describe('what it refuses to say', () => {
   });
 
   it('keeps a construct over a loop head when a row is both', () => {
-    // A row is reported once. The stronger fact is what the instruction *is*, because the
-    // branch arcs already draw the loop and nothing else draws boxing.
     const classFile = parseClassFile(readExampleBytes('BubbleSort.class'));
     const found = constructsFor(
       methodOf(classFile, 'sortedMinimum'),

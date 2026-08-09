@@ -1,18 +1,8 @@
-/**
- * Client of the optional compile service.
- *
- * The whole feature hangs off `VITE_COMPILE_API_URL`: unset, nothing here is ever called and
- * the application stays what it is without a backend (ADR-0004). Everything crossing this
- * boundary is untrusted, so the response is validated with zod before it becomes a domain
- * value, and every failure comes back as a typed result rather than an exception.
- */
-
 import { z } from 'zod';
 
 export type DiagnosticKind = 'error' | 'warning' | 'note';
 
 export interface CompileDiagnostic {
-  /** 1-based; absent for diagnostics javac could not place in the source. */
   readonly line: number | undefined;
   readonly column: number | undefined;
   readonly kind: DiagnosticKind;
@@ -31,16 +21,13 @@ export type CompileResult =
   | { readonly kind: 'rate-limited' }
   | { readonly kind: 'unavailable'; readonly reason: UnavailableReason };
 
-/** Health has to answer fast or the badge is not worth showing at all. */
 export const HEALTH_TIMEOUT_MS = 2_000;
 
-/** The service caps a compilation at 10 s; this only catches a connection that hangs. */
 export const COMPILE_TIMEOUT_MS = 30_000;
 
 const RATE_LIMITED = 429;
 const BAD_REQUEST = 400;
 
-/** Read once at start-up: a deployment either has a compile service or it does not. */
 const CONFIGURED_BASE_URL = readConfiguredBaseUrl();
 
 export function compileApiBaseUrl(): string | undefined {
@@ -66,7 +53,6 @@ export async function compile(baseUrl: string, source: string): Promise<CompileR
   if (response.status === RATE_LIMITED) {
     return { kind: 'rate-limited' };
   }
-  // A rejected source is the author's problem, not the service's, so it reads as a diagnostic.
   if (response.status === BAD_REQUEST) {
     return {
       kind: 'diagnostics',
@@ -98,7 +84,6 @@ export async function compile(baseUrl: string, source: string): Promise<CompileR
   if (classBytes === undefined) {
     return unavailable('invalid-response', 'classFileBase64 is not valid base64');
   }
-  // Warnings on a successful compilation are dropped: the visualization replaces the editor.
   return { kind: 'compiled', className: parsed.data.className, classBytes };
 }
 
@@ -131,10 +116,6 @@ type Attempt =
   | { readonly kind: 'response'; readonly response: Response }
   | { readonly kind: 'failed'; readonly reason: UnavailableReason };
 
-/**
- * `fetch` with a deadline. The abort flag is read after the fact because an aborted request
- * rejects with the same shape as a refused connection, and the two need different sentences.
- */
 async function send(url: string, timeoutMs: number, init?: RequestInit): Promise<Attempt> {
   const controller = new AbortController();
   const timer = setTimeout(() => {
@@ -177,7 +158,6 @@ function toDiagnostic(raw: z.infer<typeof diagnosticSchema>): CompileDiagnostic 
   };
 }
 
-/** `javax.tools.Diagnostic.Kind` names, collapsed onto the three the editor styles. */
 function toDiagnosticKind(raw: string): DiagnosticKind {
   switch (raw.toUpperCase()) {
     case 'ERROR':

@@ -17,11 +17,6 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
-/**
- * The limit is enforced by a servlet filter, so it applies to every request that reaches the API —
- * including the malformed ones used here, which keeps the test from running eleven compilations.
- * The counters are shared by the whole context, so each test uses an address of its own.
- */
 @SpringBootTest
 @AutoConfigureMockMvc
 @TestPropertySource(properties = "compile.rate-limit.requests-per-minute=10")
@@ -43,10 +38,6 @@ class RateLimitIntegrationTest {
                 .andExpect(jsonPath("$.error").value("rate-limit-exceeded"));
     }
 
-    /**
-     * CORS runs in a filter ahead of the limiter for this: without the header the browser refuses
-     * to hand the page the body, and "rate limited" becomes an unexplained network failure.
-     */
     @Test
     void keepsTheResponseReadableByTheBrowserWhenItThrottles() throws Exception {
         for (int i = 1; i <= 10; i++) {
@@ -59,7 +50,6 @@ class RateLimitIntegrationTest {
                 .andExpect(jsonPath("$.error").value("rate-limit-exceeded"));
     }
 
-    /** One preflight per compile: charging them would halve the limit the client actually gets. */
     @Test
     void doesNotSpendTheLimitOnPreflights() throws Exception {
         for (int i = 1; i <= 10; i++) {

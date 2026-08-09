@@ -11,16 +11,12 @@ import {
 import { frameAt, snapshots } from './__fixtures__/factorial-run';
 import { LocalsPanel } from './LocalsPanel';
 
-/** Inside the sort, where slot 0 holds the array and the loop counters are plain ints. */
 const sortingStep = bubbleSortStepOf('iaload');
 
-/** Step 0 of the run: frame `main`, slot 0 is the `args` sentinel, slot 1 not assigned yet. */
 const mainFrame = frameAt(0);
 
-/** The last step that still has a frame: `main` holding the result of factorial(4). */
 const finishedMainFrame = frameAt(snapshots().length - 2);
 
-/** A file compiled without `-g` has no LocalVariableTable, so only slot numbers remain. */
 const frameWithoutNames: StackFrame = {
   methodName: 'factorial',
   methodDescriptor: '(I)I',
@@ -74,7 +70,6 @@ describe('LocalsPanel', () => {
     expect(array.getByText(': int[]')).toBeInTheDocument();
     expect(array.getByTestId('ref-chip')).toHaveTextContent('int[5]@0');
 
-    // The int slots next to it are untouched by any of that.
     const counter = within(slotAt(1));
     expect(counter.getByText(': I')).toBeInTheDocument();
     expect(counter.queryByTestId('ref-chip')).not.toBeInTheDocument();
@@ -85,7 +80,6 @@ describe('LocalsPanel', () => {
 
     expect(screen.queryByTestId('local-slot')).not.toBeInTheDocument();
     expect(screen.getByText('no active frame')).toBeInTheDocument();
-    // The state people screenshot at step 0 says why it is empty, not only that it is.
     expect(screen.getByText(/Local variables belong to a frame/)).toBeInTheDocument();
   });
 
@@ -102,7 +96,6 @@ describe('LocalsPanel', () => {
       const onSeekToStep = vi.fn();
       render(<LocalsPanel frame={finishedMainFrame} onSeekToStep={onSeekToStep} />);
 
-      // `result` holds 24, stored by the `istore_1` two steps before the run ends.
       expect(finishedMainFrame?.localOrigins?.[1]).toBe(37);
       fireEvent.click(within(slotAt(1)).getByRole('button'));
 
@@ -132,7 +125,6 @@ describe('LocalsPanel', () => {
     });
 
     it('offers nothing on a slot nothing has written yet', () => {
-      // Step 0 of the run: `args` is a slot the machine has, not one it has filled.
       render(<LocalsPanel frame={mainFrame} onSeekToStep={vi.fn()} />);
 
       expect(screen.getAllByTestId('local-slot')).toHaveLength(2);
@@ -142,7 +134,6 @@ describe('LocalsPanel', () => {
     it('offers only the slots that were written', () => {
       render(<LocalsPanel frame={finishedMainFrame} onSeekToStep={vi.fn()} />);
 
-      // `args` was never assigned; `result` was.
       expect(within(slotAt(0)).queryByTestId('local-origin')).not.toBeInTheDocument();
       expect(within(slotAt(1)).getByTestId('local-origin')).toBeInTheDocument();
     });
@@ -154,17 +145,11 @@ describe('LocalsPanel', () => {
       expect(within(screen.getByRole('list')).queryByRole('button')).not.toBeInTheDocument();
     });
 
-    /**
-     * A snapshot is the state before its instruction runs, so no slot can have been written by
-     * the step on screen. The affordance therefore never leads to where the reader already is,
-     * and no row has to be rendered inert.
-     */
     it('never points at the step being viewed', () => {
       for (const [step] of snapshots().entries()) {
         const view = render(<LocalsPanel frame={frameAt(step)} onSeekToStep={vi.fn()} />);
 
         for (const button of screen.queryAllByTestId('local-origin')) {
-          // The label is 1-based, like the step counter; the invariant is about the index.
           const target = Number(/from (\d+)/.exec(button.textContent)?.[1]) - 1;
           expect(target).toBeLessThan(step);
         }

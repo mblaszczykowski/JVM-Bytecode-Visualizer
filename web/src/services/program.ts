@@ -1,18 +1,3 @@
-/**
- * The loaded program: everything the panels read, computed once per run.
- *
- * The disassembly of every method and the set of offsets the run actually reached are
- * derived here rather than in render, so replaying the history stays a lookup by index.
- *
- * A run is a capability of a parsed class file, not a precondition for having one: every
- * method is listed whether or not the interpreter could enter it, and a class with nothing
- * runnable in it still produces a `LoadedProgram` — with `no-entry-point` as its outcome.
- *
- * Where the run itself happened is not this file's business. `buildProgram` will do it here
- * if nobody else has, and `runProgram` hands it to a `ProgramRunner` — the worker, in a
- * browser that has one — and assembles the same program around the answer.
- */
-
 import {
   isClassFileError,
   isStatic,
@@ -37,16 +22,14 @@ import {
 import type { ExampleEntry } from './manifest';
 import type { LoadContext } from './program-runner';
 
-/** Why a run cannot start from a method. `undefined` on a `MethodListing` means it can. */
 export type NotRunnableReason = 'no-code' | 'instance-method' | 'needs-arguments' | 'descriptor';
 
-/** Said next to a method in the picker, so "listing only" is never left as a verdict. */
 export function describeNotRunnable(reason: NotRunnableReason): string {
   switch (reason) {
     case 'no-code':
-      return 'no Code attribute — abstract, native, or declared by an interface';
+      return 'no Code attribute: abstract, native, or declared by an interface';
     case 'instance-method':
-      return 'an instance method, and this machine has no objects to call one on';
+      return 'an instance method; a run needs a static entry point';
     case 'needs-arguments':
       return 'takes arguments, and a run cannot be given values for them yet';
     case 'descriptor':
@@ -57,51 +40,40 @@ export function describeNotRunnable(reason: NotRunnableReason): string {
 export interface MethodListing {
   readonly name: string;
   readonly descriptor: string;
-  /** JVMS §4.6 table 4.6-A; the picker decodes it into modifier names. */
   readonly accessFlags: number;
   readonly maxStack: number;
   readonly maxLocals: number;
   readonly instructions: readonly Instruction[];
-  /** Set when decoding stopped early — the panel renders a `… not decoded` row for it. */
   readonly truncatedAtOffset: number | undefined;
   readonly lineNumbers: readonly LineNumberEntry[];
-  /** LocalVariableTable entries with their pc ranges — a slot can name several variables. */
   readonly localVariables: readonly LocalVariableEntry[];
-  /** Offsets reached by this run; everything else is dead code in this run. */
   readonly executedOffsets: ReadonlySet<number>;
-  /** Absent when a run can start here; otherwise the reason it cannot. */
   readonly notRunnable: NotRunnableReason | undefined;
 }
 
 export type ProgramOrigin =
   | { readonly kind: 'example'; readonly entry: ExampleEntry }
   | { readonly kind: 'upload'; readonly fileName: string }
-  /** Compiled from source written in the editor; the source is always available. */
   | { readonly kind: 'compiled'; readonly className: string };
 
 export type ExecutionOutcome =
   | { readonly kind: 'completed'; readonly returnValue: number | undefined }
   | { readonly kind: 'vm-error'; readonly error: VmError }
   | { readonly kind: 'step-limit'; readonly limit: number }
-  /** No run was attempted: the class declares no method this machine can enter. */
   | { readonly kind: 'no-entry-point' };
 
 export interface LoadedProgram {
   readonly origin: ProgramOrigin;
   readonly classFile: ClassFile;
-  /** Every declared method, including the ones with no Code attribute to disassemble. */
   readonly methods: readonly MethodListing[];
-  /** Method the run started from; absent when the class has no usable entry point. */
   readonly entry: MethodListing | undefined;
   readonly sourceFileName: string;
   readonly sourceLines: readonly string[];
-  /** Stable across renders — `useExecutionPlayer` treats a new array as a new program. */
   readonly snapshots: readonly Snapshot[];
   readonly outcome: ExecutionOutcome;
   readonly maxSteps: number;
 }
 
-/** Methods a run could start from — the picker's runnable set, in declaration order. */
 export function runnableMethodsOf(program: LoadedProgram): readonly MethodListing[] {
   return program.methods.filter((method) => method.notRunnable === undefined);
 }
@@ -114,27 +86,16 @@ export interface ProgramSource {
 export interface BuildProgramInput {
   readonly origin: ProgramOrigin;
   readonly classFile: ClassFile;
-  /** The matching `.java`; uploads rarely have one. */
   readonly source?: ProgramSource | undefined;
   readonly maxSteps?: number | undefined;
-  /**
-   * Name of the method to start from. Defaults to `main`, then to the first runnable method
-   * the class declares — a utility class runs its first helper rather than nothing at all.
-   */
   readonly entryMethod?: string | undefined;
-  /**
-   * A run of this class file that already happened somewhere else — the worker. Absent, the
-   * run happens here, on whichever thread called: the fallback path, and the one the previews
-   * and the tests take.
-   */
   readonly run?: ExecutionResult | undefined;
 }
 
-/** Shown instead of source code when a `.class` arrives without its `.java`. */
 export const NO_SOURCE_LINES: readonly string[] = [
   '// No .java source for this class file.',
   '//',
-  '// Upload only carries the compiled class, so the source panel has nothing to',
+  '// The upload carries only the compiled class, so the source panel has nothing to',
   '// highlight. Line numbers still come from the LineNumberTable, and the bytecode',
   '// panel shows the instructions being executed.',
 ];
@@ -148,8 +109,6 @@ export function buildProgram({
   run,
 }: BuildProgramInput): LoadedProgram {
   const entry = chooseEntry(classFile, entryMethod);
-  // A class with nothing runnable in it is still a class: no run is attempted, and every
-  // panel below reads from the parse rather than from the history.
   const result =
     run ??
     (entry === undefined ? undefined : execute(classFile, { entryMethod: entry.name, maxSteps }));
@@ -191,16 +150,6 @@ export function buildProgram({
   };
 }
 
-/**
- * The same program, with the run handed to `context.runner` instead of taken here.
- *
- * The entry method is still chosen on this side and named in the request: the runner is told
- * what to execute and decides nothing, so a worker and this thread cannot disagree about
- * which method a class "runs". A class with nothing runnable never reaches the runner at all.
- *
- * Rejects, rather than returning a program, when the reader abandoned the run — there is no
- * `LoadedProgram` to describe a run that was stopped halfway.
- */
 export async function runProgram(
   input: BuildProgramInput,
   context: LoadContext,
@@ -223,23 +172,11 @@ export async function runProgram(
 
 const EMPTY_OFFSETS: ReadonlySet<number> = new Set<number>();
 const NO_INSTRUCTIONS: readonly Instruction[] = [];
-/** One identity for every run that produced nothing — a fresh `[]` rewinds the player. */
 const NO_SNAPSHOTS: readonly Snapshot[] = Object.freeze([]);
 const NO_ENTRY_POINT: ExecutionOutcome = { kind: 'no-entry-point' };
 
-/** `main`'s array parameter, which the interpreter deliberately leaves as an empty slot. */
 const MAIN_DESCRIPTOR = '([Ljava/lang/String;)V';
 
-/**
- * Whether the interpreter could start at this method, and if not, why. `isEntryMethod` is the
- * authority on the first three conditions — asking it rather than restating the rule keeps the
- * picker from offering a method the run would then refuse.
- *
- * The fourth is this layer's own: `ExecuteOptions` names an entry method but carries no
- * argument values, so a method that reads a parameter faults on its first `iload`. It is
- * listed, and marked, rather than offered. `main` is the standing exception — nothing in the
- * subset can allocate a `String[]`, so its slot is meant to stay empty.
- */
 function notRunnableReasonOf(method: MethodInfo): NotRunnableReason | undefined {
   if (method.code === undefined) {
     return 'no-code';
@@ -263,17 +200,10 @@ function takesArguments(descriptor: string): boolean {
     if (!isClassFileError(error)) {
       throw error;
     }
-    // A descriptor the class file itself got wrong; `isEntryMethod` has already refused it.
     return true;
   }
 }
 
-/**
- * Where the run starts: what the caller asked for, then `main`, then the first runnable
- * method. `<clinit>` is never chosen on its own — it is the class initialiser, not a program,
- * and opening on it would answer "run this class" with a static-field setup nobody asked for.
- * It stays in the runnable set, so the picker can still offer it deliberately.
- */
 function chooseEntry(classFile: ClassFile, requested: string | undefined): MethodInfo | undefined {
   const runnable = classFile.methods.filter((method) => notRunnableReasonOf(method) === undefined);
   return (
@@ -293,25 +223,14 @@ export function findListing(
   return program.methods.find((method) => method.name === name && method.descriptor === descriptor);
 }
 
-/**
- * Listing the Bytecode panel opens on when the run has nothing to say: the method it started
- * from, else the first one there is anything to disassemble. A class with no entry point still
- * has code to read, and an empty panel would hide it.
- */
 export function defaultListingOf(program: LoadedProgram): MethodListing | undefined {
   return program.entry ?? program.methods.find((method) => method.instructions.length > 0);
 }
 
-/** A name alone does not identify a method — overloads differ only in their descriptor. */
 export function methodKeyOf(method: MethodListing): string {
   return `${method.name}${method.descriptor}`;
 }
 
-/**
- * The listing on screen: whichever method the reader opened in the picker, and until they open
- * one, whichever method the run is standing in. Browsing takes over from replaying here, and a
- * key that names nothing in this class file falls back rather than blanking the panel.
- */
 export function listingToShow(
   program: LoadedProgram,
   snapshot: Snapshot | undefined,
@@ -324,10 +243,6 @@ export function listingToShow(
   return viewed ?? listingFor(program, snapshot);
 }
 
-/**
- * Listing to show for a snapshot: the method of the top frame, or the default listing once the
- * stack is empty — the terminal snapshot should not blank the panel.
- */
 export function listingFor(
   program: LoadedProgram,
   snapshot: Snapshot | undefined,
@@ -341,11 +256,6 @@ export function listingFor(
   );
 }
 
-/**
- * Whether `listing` is the method the snapshot is standing in. Everything the panels derive
- * from the current step — the pc highlight, the "Next" card, the dead-code dimming — only
- * means anything while the two agree; browsing another method's listing must not borrow them.
- */
 export function isCurrentListing(
   listing: MethodListing | undefined,
   frame: StackFrame | undefined,
@@ -357,33 +267,22 @@ export function isCurrentListing(
   );
 }
 
-/**
- * Lines the program has printed by this snapshot. The interpreter's `consoleOutput` is
- * cumulative and optional — a build whose interpreter does not record it yet simply has a run
- * that printed nothing, rather than a panel that crashes.
- */
 export function consoleLinesOf(snapshot: Snapshot | undefined): readonly string[] {
-  // Structural rather than a cast: `Snapshot` is assignable to this whether or not it has
-  // grown the field yet, and the day it does, nothing here has to change.
   const printing: PrintingSnapshot | undefined = snapshot;
   return printing?.consoleOutput ?? NO_CONSOLE_OUTPUT;
 }
 
-/** The additive half of the interpreter's snapshot contract, as this layer relies on it. */
 interface PrintingSnapshot {
   readonly step: number;
-  /** Every line printed up to and including this snapshot's state. Cumulative. */
   readonly consoleOutput?: readonly string[];
 }
 
-/** Whether the run printed anything at all — the Console panel joins the column only then. */
 export function runPrintedOutput(snapshots: readonly Snapshot[]): boolean {
   return snapshots.some((snapshot) => consoleLinesOf(snapshot).length > 0);
 }
 
 const NO_CONSOLE_OUTPUT: readonly string[] = [];
 
-/** Offsets of `listing` that this run never reached. */
 export function deadOffsetsOf(listing: MethodListing): ReadonlySet<number> {
   const dead = new Set<number>();
   for (const instruction of listing.instructions) {
@@ -394,7 +293,6 @@ export function deadOffsetsOf(listing: MethodListing): ReadonlySet<number> {
   return dead;
 }
 
-/** JVMS §4.7.12: the current line is the entry with the largest `startPc <= offset`. */
 export function lineForOffset(listing: MethodListing, offset: number): number | undefined {
   let line: number | undefined;
   let bestStartPc = -1;
@@ -412,7 +310,6 @@ export interface OffsetRange {
   readonly to: number;
 }
 
-/** Byte offsets of every instruction mapped to `line` — the `pc 7–15` pill in the footer. */
 export function offsetsForLine(listing: MethodListing, line: number): OffsetRange | undefined {
   const offsets = listing.instructions
     .map((instruction) => instruction.offset)
@@ -423,7 +320,6 @@ export function offsetsForLine(listing: MethodListing, line: number): OffsetRang
   return from === undefined || to === undefined ? undefined : { from, to };
 }
 
-/** Spells the mapping rule out for the current pc, so the footer reads as a decision. */
 export function lineMappingNote(listing: MethodListing, pc: number): string | undefined {
   const line = lineForOffset(listing, pc);
   return line === undefined
@@ -431,7 +327,6 @@ export function lineMappingNote(listing: MethodListing, pc: number): string | un
     : `LineNumberTable · largest startPc ≤ ${String(pc)} → line ${String(line)}`;
 }
 
-/** Call stack depth per step — the background chart of the scrubber. */
 export function depthsOf(snapshots: readonly Snapshot[]): readonly number[] {
   return snapshots.map((snapshot) => snapshot.callStack.length);
 }
@@ -443,20 +338,13 @@ export function topFrameOf(snapshot: Snapshot | undefined): StackFrame | undefin
 export interface RunPreview {
   readonly steps: number;
   readonly maxDepth: number;
-  /** Call stack depth bucketed down to a fixed width — the sparkline on a welcome card. */
   readonly profile: readonly number[];
 }
 
-/** Nobody browses the welcome screen to watch a runaway loop; a preview gives up early. */
 const PREVIEW_MAX_STEPS = 5_000;
 
 const PREVIEW_BUCKETS = 32;
 
-/**
- * The shape of a run, without loading it: how long it is and how deep it goes. Cheap enough
- * to do for all four examples while someone reads the headline — the bundled programs are a
- * few hundred instructions each.
- */
 export function previewProgram(classFile: ClassFile): RunPreview {
   const depths = depthsOf(execute(classFile, { maxSteps: PREVIEW_MAX_STEPS }).snapshots);
   const profile: number[] = [];
@@ -479,20 +367,13 @@ export function previewProgram(classFile: ClassFile): RunPreview {
 }
 
 export interface RunSummary {
-  /** Name of the local the program leaves its answer in, e.g. `result`. */
   readonly resultName: string;
-  /** Value that local held on the last snapshot that still had a frame. */
   readonly resultValue: number | undefined;
   readonly totalSteps: number;
   readonly maxDepth: number;
-  /**
-   * What a real JVM computed for this example during the fixtures build. Present only for
-   * the bundled examples, and only shown once it agrees with what the run produced.
-   */
   readonly referenceValue: number | undefined;
 }
 
-/** The local `main` was left holding, by name — the answer the program was written to produce. */
 function resultOf(frame: StackFrame | undefined, name: string): number | undefined {
   if (frame === undefined) {
     return undefined;
@@ -501,7 +382,6 @@ function resultOf(frame: StackFrame | undefined, name: string): number | undefin
   return slot < 0 ? undefined : frame.locals[slot];
 }
 
-/** Last snapshot that still had a frame — the terminal one is empty by definition. */
 export function lastLiveSnapshot(snapshots: readonly Snapshot[]): Snapshot | undefined {
   for (let index = snapshots.length - 1; index >= 0; index--) {
     const snapshot = snapshots[index];
@@ -512,13 +392,6 @@ export function lastLiveSnapshot(snapshots: readonly Snapshot[]): Snapshot | und
   return undefined;
 }
 
-/**
- * What the terminal snapshot has to say. The call stack is empty there, so the numbers come
- * from the history around it: the last frame that still existed carries the result, and the
- * depths carry how far the recursion went.
- *
- * `undefined` for a run that did not finish — a stopped run has an error banner instead.
- */
 export function runSummaryOf(program: LoadedProgram): RunSummary | undefined {
   if (program.outcome.kind !== 'completed') {
     return undefined;
@@ -539,7 +412,6 @@ export function runSummaryOf(program: LoadedProgram): RunSummary | undefined {
     resultValue,
     totalSteps: program.snapshots.length,
     maxDepth,
-    // A reference the run disagrees with is a bug report, not a badge; it is simply not shown.
     referenceValue:
       entry !== undefined && entry.expectedResult === resultValue
         ? entry.expectedResult
@@ -547,11 +419,6 @@ export function runSummaryOf(program: LoadedProgram): RunSummary | undefined {
   };
 }
 
-/**
- * First step of the run that stood at each byte offset of `listing`. Clicking an instruction
- * row seeks there, so the map is keyed by offset and scoped to one method — the same offset
- * in another method is another instruction.
- */
 export function firstStepByOffset(
   snapshots: readonly Snapshot[],
   listing: MethodListing | undefined,
@@ -577,7 +444,6 @@ export function firstStepByOffset(
   return steps;
 }
 
-/** Same idea for the source panel: the first step the run spent on each line of the file. */
 export function firstStepByLine(snapshots: readonly Snapshot[]): ReadonlyMap<number, number> {
   const steps = new Map<number, number>();
   snapshots.forEach((snapshot, index) => {

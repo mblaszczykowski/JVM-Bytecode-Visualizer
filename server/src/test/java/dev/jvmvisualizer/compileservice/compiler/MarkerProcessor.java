@@ -8,11 +8,6 @@ import javax.annotation.processing.SupportedSourceVersion;
 import javax.lang.model.SourceVersion;
 import javax.lang.model.element.TypeElement;
 
-/**
- * Records the fact that it ran in a system property. javac loads processors in its own class
- * loader, so a static field would not necessarily be the one the test can read; a system property
- * is JVM-wide.
- */
 @SupportedAnnotationTypes("java.lang.Deprecated")
 @SupportedSourceVersion(SourceVersion.RELEASE_21)
 public class MarkerProcessor extends AbstractProcessor {

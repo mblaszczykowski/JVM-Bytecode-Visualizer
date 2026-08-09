@@ -21,7 +21,6 @@ describe('Panel', () => {
 
     const region = screen.getByRole('region', { name: 'Operand stack' });
     expect(region).toHaveTextContent('height 2');
-    // The visible copy is decoration over the heading; announcing it twice says nothing.
     expect(screen.getByRole('heading', { level: 2, name: 'Operand stack' })).toBeInTheDocument();
   });
 
@@ -32,7 +31,6 @@ describe('Panel', () => {
       </Panel>,
     );
 
-    // Content is ink, chrome is glass: a listing is darker than the sheet it floats on.
     expect(screen.getByRole('region', { name: 'Bytecode' }).className).toContain('bg-ink');
 
     rerender(

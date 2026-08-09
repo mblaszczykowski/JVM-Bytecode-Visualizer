@@ -1,25 +1,18 @@
 /**
- * Nested {@code for} loops — an example without recursion, with a flat stack and a long
- * execution history instead.
- *
- * <p>It sums the products {@code i * j} over a square {@code n x n} grid. For {@code n = 6}
- * the grid has 36 cells, giving roughly 470 bytecode steps — enough to see {@code iinc} in
- * action (incrementing the counter in place, without touching the operand stack),
- * {@code if_icmpgt} (the loop condition) and the backward {@code goto} jump.
- *
- * <p>There is no {@code System.out.println} and no static field; the result is stored in the
+ * Nested {@code for} loops, no recursion: a flat call stack and a long execution history. Summing
+ * {@code i * j} over a 6 x 6 grid covers 36 cells in roughly 470 bytecode steps, which is enough to
+ * see {@code iinc} (incrementing the counter in place, without touching the operand stack),
+ * {@code if_icmpgt} (the loop condition) and the backward {@code goto}. The result is left in the
  * local variable {@code result}.
  */
 public final class SumOfProducts {
 
-    private SumOfProducts() {
-        // Utility class — never instantiated.
-    }
+    private SumOfProducts() {}
 
     /**
      * Sums the products {@code i * j} for every pair drawn from the range {@code 1..n}.
      *
-     * @param n side of the grid; for {@code n <= 0} the loops do not run a single iteration
+     * @param n side of the grid; {@code n <= 0} runs no iterations at all
      * @return the sum of all products, i.e. the square of the n-th triangular number
      */
     static int sumOfProducts(int n) {
@@ -33,8 +26,8 @@ public final class SumOfProducts {
     }
 
     /**
-     * Interpreter entry point. The {@code args} parameter is deliberately unused — slot 0 of
-     * the {@code main} frame holds a sentinel that no supported instruction can read.
+     * Entry point. {@code args} is unused: slot 0 of the frame holds a sentinel that no supported
+     * instruction can read.
      */
     public static void main(String[] args) {
         int result = sumOfProducts(6); // 441

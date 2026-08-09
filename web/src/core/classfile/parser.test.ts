@@ -7,50 +7,9 @@ import { isClassFileError } from './errors';
 import { parseClassFile } from './parser';
 import { ConstantTag, isStatic, type ClassFile, type MethodInfo } from './types';
 
-/**
- * Source of truth for the assertions: `javap -v -p Factorial.class`; the full dump sits
- * next to the fixture in `__fixtures__/Factorial.javap.txt`. The excerpts the tests rely on:
- *
- *   minor version: 0
- *   major version: 65
- *   this_class: #8  // Factorial
- *   super_class: #2 // java/lang/Object
- *   interfaces: 0, fields: 0, methods: 3, attributes: 1
- *   Constant pool:
- *      #1 = Methodref  #2.#3   // java/lang/Object."<init>":()V
- *      #2 = Class      #4      // java/lang/Object
- *      #4 = Utf8       java/lang/Object
- *      #7 = Methodref  #8.#9   // Factorial.factorial:(I)I
- *      #8 = Class      #10     // Factorial
- *      #9 = NameAndType #11:#12
- *     #12 = Utf8       (I)I
- *     #27 = Utf8       Factorial.java     <- last entry, constant_pool_count = 28
- *
- *   public static void main(java.lang.String[]);   descriptor: ([Ljava/lang/String;)V
- *     Code: stack=1, locals=2, args_size=1
- *        0: iconst_4          // 0x07
- *        1: invokestatic  #7  // 0xb8 0x00 0x07
- *        4: istore_1          // 0x3c
- *        5: return            // 0xb1
- *     LineNumberTable: line 15: 0 | line 16: 5
- *     LocalVariableTable: [0,6) slot 0 args [Ljava/lang/String; | [5,6) slot 1 result I
- *
- *   static int factorial(int);   descriptor: (I)I
- *     Code: stack=3, locals=1, args_size=1
- *        0: iload_0           // 0x1a
- *        1: iconst_1          // 0x04
- *        2: if_icmpgt     7   // 0xa3 0x00 0x05
- *        5: iconst_1          // 0x04
- *        6: ireturn           // 0xac
- *        7: iload_0 / iload_0 / iconst_1 / isub / invokestatic #7 / imul / ireturn
- *     LineNumberTable: line 19: 0 | line 20: 5 | line 22: 7
- *     LocalVariableTable: [0,16) slot 0 n I
- *     StackMapTable: number_of_entries = 1   <- attribute unknown to the parser, must be skipped
- */
 const FACTORIAL_CLASS = new URL('./__fixtures__/Factorial.class', import.meta.url);
 
 function factorialBytes(): Uint8Array<ArrayBuffer> {
-  // Copy into a fresh buffer: a Node Buffer can be a view onto a shared memory pool.
   return new Uint8Array(readFileSync(FACTORIAL_CLASS));
 }
 
@@ -66,7 +25,7 @@ function methodOf(name: string): MethodInfo {
   return method;
 }
 
-describe('parseClassFile — Factorial.class fixture header', () => {
+describe('parseClassFile: Factorial.class fixture header', () => {
   it('reads version 65.0 (Java 21, javac --release 21)', () => {
     const classFile = parseFactorial();
 
@@ -81,12 +40,11 @@ describe('parseClassFile — Factorial.class fixture header', () => {
     expect(classFile.superClassName).toBe('java/lang/Object');
     expect(classFile.interfaceNames).toEqual([]);
     expect(classFile.fields).toEqual([]);
-    // ACC_PUBLIC | ACC_SUPER = 0x0021 (javap: "flags: (0x0021)").
     expect(classFile.accessFlags).toBe(0x0021);
   });
 });
 
-describe('parseClassFile — fixture constant pool', () => {
+describe('parseClassFile: fixture constant pool', () => {
   it('is 1-indexed and holds constant_pool_count entries (slot 0 empty)', () => {
     const { constantPool } = parseFactorial();
 
@@ -95,7 +53,7 @@ describe('parseClassFile — fixture constant pool', () => {
     expect(constantPool[27]).toEqual({ tag: ConstantTag.Utf8, value: 'Factorial.java' });
   });
 
-  it('interprets the tags the MVP requires', () => {
+  it('interprets the tags the parser needs', () => {
     const { constantPool } = parseFactorial();
 
     expect(constantPool[1]).toEqual({
@@ -114,7 +72,7 @@ describe('parseClassFile — fixture constant pool', () => {
   });
 });
 
-describe('parseClassFile — fixture methods', () => {
+describe('parseClassFile: fixture methods', () => {
   it('sees all three methods, including the generated <init>', () => {
     const methods = parseFactorial().methods;
 
@@ -126,7 +84,6 @@ describe('parseClassFile — fixture methods', () => {
   });
 
   it('reads method access flags', () => {
-    // javap: main → (0x0009) ACC_PUBLIC, ACC_STATIC; factorial → (0x0008) ACC_STATIC.
     expect(methodOf('main').accessFlags).toBe(0x0009);
     expect(methodOf('factorial').accessFlags).toBe(0x0008);
     expect(isStatic(methodOf('factorial').accessFlags)).toBe(true);
@@ -147,7 +104,6 @@ describe('parseClassFile — fixture methods', () => {
     expect(code?.maxStack).toBe(3);
     expect(code?.maxLocals).toBe(1);
     expect(code?.code).toHaveLength(16);
-    // iload_0, iconst_1, if_icmpgt +5 (the branch delta is relative to the opcode offset).
     expect(Array.from(code?.code.slice(0, 5) ?? [])).toEqual([0x1a, 0x04, 0xa3, 0x00, 0x05]);
     expect(Array.from(code?.code.slice(-2) ?? [])).toEqual([0x68, 0xac]);
   });
@@ -175,16 +131,12 @@ describe('parseClassFile — fixture methods', () => {
   });
 
   it('skips out-of-scope attributes (StackMapTable in Code, SourceFile in the class)', () => {
-    // If skipping by attribute_length were broken, the parser would already desynchronise
-    // on the StackMapTable of factorial and never reach the class attributes.
     const classFile = parseFactorial();
 
     expect(classFile.methods).toHaveLength(3);
     expect(methodOf('factorial').code?.localVariableTable).toHaveLength(1);
   });
 });
-
-// --- Synthetic .class files for the cases the fixture does not cover ---
 
 const u2 = (value: number): number[] => [(value >>> 8) & 0xff, value & 0xff];
 const u4 = (value: number): number[] => [...u2((value >>> 16) & 0xffff), ...u2(value & 0xffff)];
@@ -215,11 +167,9 @@ const member = (
 
 interface SyntheticClass {
   readonly constantPool: readonly (readonly number[])[];
-  /** Given explicitly — must account for the double slots of Long/Double (JVMS §4.4.5). */
   readonly constantPoolCount: number;
   readonly thisClass: number;
   readonly superClass: number;
-  /** Indices of Class entries in the constant pool. */
   readonly interfaces?: readonly number[];
   readonly fields?: readonly (readonly number[])[];
   readonly methods?: readonly (readonly number[])[];
@@ -252,35 +202,31 @@ function buildClassFile(spec: SyntheticClass): ArrayBuffer {
   ]).buffer;
 }
 
-describe('parseClassFile — Long/Double entries and uninterpreted tags', () => {
-  /**
-   * A pool holding every tag the MVP does not interpret but must be able to skip.
-   * Long (#1) and Double (#3) take two slots each — hence the numbering.
-   */
+describe('parseClassFile: Long/Double entries and uninterpreted tags', () => {
   const kitchenSink = buildClassFile({
     constantPoolCount: 24,
     constantPool: [
-      filler(ConstantTag.Long, 8), // #1 (#2 = empty slot)
-      filler(ConstantTag.Double, 8), // #3 (#4 = empty slot)
-      filler(ConstantTag.Float, 4), // #5
-      filler(ConstantTag.MethodHandle, 3), // #6
-      filler(ConstantTag.MethodType, 2), // #7
-      filler(ConstantTag.InvokeDynamic, 4), // #8
-      filler(ConstantTag.Dynamic, 4), // #9
-      filler(ConstantTag.Module, 2), // #10
-      filler(ConstantTag.Package, 2), // #11
-      filler(ConstantTag.InterfaceMethodref, 4), // #12
-      utf8Entry('Synthetic'), // #13
-      classEntry(13), // #14
-      utf8Entry('java/lang/Object'), // #15
-      classEntry(15), // #16
-      [ConstantTag.Integer, 0xff, 0xff, 0xff, 0xff], // #17
-      [ConstantTag.String, ...u2(13)], // #18
-      utf8Entry('value'), // #19
-      utf8Entry('I'), // #20
-      [ConstantTag.NameAndType, ...u2(19), ...u2(20)], // #21
-      [ConstantTag.Fieldref, ...u2(14), ...u2(21)], // #22
-      [ConstantTag.Methodref, ...u2(16), ...u2(21)], // #23
+      filler(ConstantTag.Long, 8),
+      filler(ConstantTag.Double, 8),
+      filler(ConstantTag.Float, 4),
+      filler(ConstantTag.MethodHandle, 3),
+      filler(ConstantTag.MethodType, 2),
+      filler(ConstantTag.InvokeDynamic, 4),
+      filler(ConstantTag.Dynamic, 4),
+      filler(ConstantTag.Module, 2),
+      filler(ConstantTag.Package, 2),
+      filler(ConstantTag.InterfaceMethodref, 4),
+      utf8Entry('Synthetic'),
+      classEntry(13),
+      utf8Entry('java/lang/Object'),
+      classEntry(15),
+      [ConstantTag.Integer, 0xff, 0xff, 0xff, 0xff],
+      [ConstantTag.String, ...u2(13)],
+      utf8Entry('value'),
+      utf8Entry('I'),
+      [ConstantTag.NameAndType, ...u2(19), ...u2(20)],
+      [ConstantTag.Fieldref, ...u2(14), ...u2(21)],
+      [ConstantTag.Methodref, ...u2(16), ...u2(21)],
     ],
     thisClass: 14,
     superClass: 16,
@@ -312,41 +258,41 @@ describe('parseClassFile — Long/Double entries and uninterpreted tags', () => 
   });
 });
 
-describe('parseClassFile — skipping unknown attributes at every level', () => {
+describe('parseClassFile: skipping unknown attributes at every level', () => {
   const BOGUS = 12;
   const codeBody = [
-    ...u2(2), // max_stack
-    ...u2(1), // max_locals
-    ...u4(2), // code_length
+    ...u2(2),
+    ...u2(1),
+    ...u4(2),
     0x03,
-    0xb1, // iconst_0, return
-    ...u2(1), // exception_table_length — read and ignored
+    0xb1,
+    ...u2(1),
     ...u2(0),
     ...u2(2),
     ...u2(0),
     ...u2(0),
-    ...u2(3), // attributes_count inside Code
+    ...u2(3),
     ...attribute(BOGUS, [0xff]),
-    ...attribute(10, [...u2(1), ...u2(0), ...u2(7)]), // LineNumberTable: pc 0 → line 7
-    ...attribute(11, [...u2(1), ...u2(0), ...u2(2), ...u2(13), ...u2(6), ...u2(0)]), // LocalVariableTable: x/I in slot 0
+    ...attribute(10, [...u2(1), ...u2(0), ...u2(7)]),
+    ...attribute(11, [...u2(1), ...u2(0), ...u2(2), ...u2(13), ...u2(6), ...u2(0)]),
   ];
 
   const withBogusAttributes = buildClassFile({
     constantPoolCount: 14,
     constantPool: [
-      utf8Entry('Synth'), // #1
-      classEntry(1), // #2
-      utf8Entry('java/lang/Object'), // #3
-      classEntry(3), // #4
-      utf8Entry('f'), // #5
-      utf8Entry('I'), // #6
-      utf8Entry('m'), // #7
-      utf8Entry('()V'), // #8
-      utf8Entry('Code'), // #9
-      utf8Entry('LineNumberTable'), // #10
-      utf8Entry('LocalVariableTable'), // #11
-      utf8Entry('Bogus'), // #12
-      utf8Entry('x'), // #13
+      utf8Entry('Synth'),
+      classEntry(1),
+      utf8Entry('java/lang/Object'),
+      classEntry(3),
+      utf8Entry('f'),
+      utf8Entry('I'),
+      utf8Entry('m'),
+      utf8Entry('()V'),
+      utf8Entry('Code'),
+      utf8Entry('LineNumberTable'),
+      utf8Entry('LocalVariableTable'),
+      utf8Entry('Bogus'),
+      utf8Entry('x'),
     ],
     thisClass: 2,
     superClass: 4,
@@ -386,23 +332,21 @@ describe('parseClassFile — skipping unknown attributes at every level', () => 
   });
 });
 
-describe('parseClassFile — methods without Code and Code without debug tables', () => {
+describe('parseClassFile: methods without Code and Code without debug tables', () => {
   const buffer = buildClassFile({
     constantPoolCount: 7,
     constantPool: [
-      utf8Entry('Synth'), // #1
-      classEntry(1), // #2
-      utf8Entry('abstractMethod'), // #3
-      utf8Entry('()V'), // #4
-      utf8Entry('Code'), // #5
-      utf8Entry('noDebugInfo'), // #6
+      utf8Entry('Synth'),
+      classEntry(1),
+      utf8Entry('abstractMethod'),
+      utf8Entry('()V'),
+      utf8Entry('Code'),
+      utf8Entry('noDebugInfo'),
     ],
     thisClass: 2,
     superClass: 0,
     methods: [
-      // ACC_ABSTRACT — JVMS §4.6 forbids such a method from having a Code attribute.
       member(0x0400, 3, 4, []),
-      // Code without LineNumberTable/LocalVariableTable, i.e. a class compiled without -g.
       member(0x0008, 6, 4, [
         attribute(5, [...u2(1), ...u2(0), ...u4(1), 0xb1, ...u2(0), ...u2(0)]),
       ]),
@@ -423,45 +367,43 @@ describe('parseClassFile — methods without Code and Code without debug tables'
     expect(method?.code?.maxStack).toBe(1);
     expect(method?.code?.lineNumberTable).toBeUndefined();
     expect(method?.code?.localVariableTable).toBeUndefined();
-    // A method with no `try` in it has no rows, and carries no empty array either.
     expect(method?.code?.exceptionTable).toBeUndefined();
   });
 });
 
-describe('parseClassFile — the exception table (JVMS §4.7.3)', () => {
+describe('parseClassFile: the exception table (JVMS §4.7.3)', () => {
   const ARITHMETIC = 'java/lang/ArithmeticException';
 
-  /** Two handlers over the same one-byte method: one typed, one the catch-all `finally` row. */
   const buffer = buildClassFile({
     constantPoolCount: 8,
     constantPool: [
-      utf8Entry('Synth'), // #1
-      classEntry(1), // #2
-      utf8Entry('guarded'), // #3
-      utf8Entry('()V'), // #4
-      utf8Entry('Code'), // #5
-      utf8Entry(ARITHMETIC), // #6
-      classEntry(6), // #7
+      utf8Entry('Synth'),
+      classEntry(1),
+      utf8Entry('guarded'),
+      utf8Entry('()V'),
+      utf8Entry('Code'),
+      utf8Entry(ARITHMETIC),
+      classEntry(6),
     ],
     thisClass: 2,
     superClass: 0,
     methods: [
       member(0x0008, 3, 4, [
         attribute(5, [
-          ...u2(1), // max_stack
-          ...u2(1), // max_locals
-          ...u4(1), // code_length
-          0xb1, // return
-          ...u2(2), // exception_table_length
-          ...u2(0), // [0].start_pc
-          ...u2(1), // [0].end_pc
-          ...u2(1), // [0].handler_pc
-          ...u2(7), // [0].catch_type -> Class #7
-          ...u2(0), // [1].start_pc
-          ...u2(1), // [1].end_pc
-          ...u2(1), // [1].handler_pc
-          ...u2(0), // [1].catch_type = 0, catches everything
-          ...u2(0), // attributes_count
+          ...u2(1),
+          ...u2(1),
+          ...u4(1),
+          0xb1,
+          ...u2(2),
+          ...u2(0),
+          ...u2(1),
+          ...u2(1),
+          ...u2(7),
+          ...u2(0),
+          ...u2(1),
+          ...u2(1),
+          ...u2(0),
+          ...u2(0),
         ]),
       ]),
     ],
@@ -474,32 +416,30 @@ describe('parseClassFile — the exception table (JVMS §4.7.3)', () => {
     ]);
   });
 
-  it('leaves catchType off the catch-all row rather than inventing a class for it', () => {
+  it('leaves catchType off the catch-all row', () => {
     const rows = parseClassFile(buffer).methods[0]?.code?.exceptionTable ?? [];
 
     expect(rows[1] && 'catchType' in rows[1]).toBe(false);
   });
 
   it('keeps the rows in the order the class file wrote them', () => {
-    // The order is the order of the `catch` clauses, and the first match wins — so a parser
-    // that sorted or deduplicated them would change which handler runs.
     const rows = parseClassFile(buffer).methods[0]?.code?.exceptionTable ?? [];
 
     expect(rows.map((row) => row.catchTypeIndex)).toEqual([7, 0]);
   });
 });
 
-describe('parseClassFile — interfaces', () => {
+describe('parseClassFile: interfaces', () => {
   it('resolves the names of implemented interfaces', () => {
     const buffer = buildClassFile({
       constantPoolCount: 7,
       constantPool: [
-        utf8Entry('Synth'), // #1
-        classEntry(1), // #2
-        utf8Entry('java/lang/Object'), // #3
-        classEntry(3), // #4
-        utf8Entry('java/lang/Runnable'), // #5
-        classEntry(5), // #6
+        utf8Entry('Synth'),
+        classEntry(1),
+        utf8Entry('java/lang/Object'),
+        classEntry(3),
+        utf8Entry('java/lang/Runnable'),
+        classEntry(5),
       ],
       thisClass: 2,
       superClass: 4,
@@ -510,7 +450,7 @@ describe('parseClassFile — interfaces', () => {
   });
 });
 
-describe('parseClassFile — errors', () => {
+describe('parseClassFile: errors', () => {
   it('rejects a file without the 0xCAFEBABE magic', () => {
     const buffer = Uint8Array.from([0xde, 0xad, 0xbe, 0xef, 0, 0, 0, 65]).buffer;
 
@@ -530,7 +470,6 @@ describe('parseClassFile — errors', () => {
   });
 
   it('reports truncated with an offset when the file ends inside the constant pool', () => {
-    // 12 bytes = header (10 B) + the tag of entry #1 (Methodref) + one byte of class_index.
     const truncated = factorialBytes().slice(0, 12);
 
     expect(expectClassFileError(() => parseClassFile(truncated.buffer))).toEqual({
@@ -559,7 +498,7 @@ describe('parseClassFile — errors', () => {
   it('reports unknown-constant-tag with an offset and entry number', () => {
     const buffer = buildClassFile({
       constantPoolCount: 2,
-      constantPool: [[2]], // tag 2 does not exist in JVMS §4.4
+      constantPool: [[2]],
       thisClass: 1,
       superClass: 0,
     });
@@ -599,7 +538,7 @@ describe('parseClassFile — errors', () => {
     const emptySlot = buildClassFile({
       constantPoolCount: 3,
       constantPool: [filler(ConstantTag.Long, 8)],
-      thisClass: 2, // the second slot of the Long entry — empty
+      thisClass: 2,
       superClass: 0,
     });
 
@@ -626,12 +565,12 @@ describe('parseClassFile — errors', () => {
     const emptyCode = buildClassFile({
       constantPoolCount: 7,
       constantPool: [
-        utf8Entry('Synth'), // #1
-        classEntry(1), // #2
-        utf8Entry('m'), // #3
-        utf8Entry('()V'), // #4
-        utf8Entry('Code'), // #5
-        utf8Entry('java/lang/Object'), // #6
+        utf8Entry('Synth'),
+        classEntry(1),
+        utf8Entry('m'),
+        utf8Entry('()V'),
+        utf8Entry('Code'),
+        utf8Entry('java/lang/Object'),
       ],
       thisClass: 2,
       superClass: 0,
@@ -648,7 +587,7 @@ describe('parseClassFile — errors', () => {
   it('reports malformed-utf8 on an invalid byte sequence', () => {
     const buffer = buildClassFile({
       constantPoolCount: 2,
-      constantPool: [[ConstantTag.Utf8, ...u2(2), 0xf0, 0x9f]], // the 4-byte form is forbidden
+      constantPool: [[ConstantTag.Utf8, ...u2(2), 0xf0, 0x9f]],
       thisClass: 1,
       superClass: 0,
     });
@@ -660,7 +599,7 @@ describe('parseClassFile — errors', () => {
   });
 });
 
-describe('parseClassFile — modified UTF-8 decoding (JVMS §4.4.7)', () => {
+describe('parseClassFile: modified UTF-8 decoding (JVMS §4.4.7)', () => {
   function classWithName(nameBytes: readonly number[]): ArrayBuffer {
     return buildClassFile({
       constantPoolCount: 3,
@@ -671,14 +610,12 @@ describe('parseClassFile — modified UTF-8 decoding (JVMS §4.4.7)', () => {
   }
 
   it('decodes two- and three-byte sequences', () => {
-    // 0xC0 0x80 = U+0000, 0xC5 0xBC = U+017C, 0xE2 0x82 0xAC = U+20AC (euro sign)
     const buffer = classWithName([0x41, 0xc0, 0x80, 0xc5, 0xbc, 0xe2, 0x82, 0xac]);
 
     expect(parseClassFile(buffer).thisClassName).toBe('A\u0000\u017c\u20ac');
   });
 
   it('decodes supplementary characters written as a surrogate pair (six-byte form)', () => {
-    // U+1F600 = surrogates D83D DE00 → 0xED 0xA0 0xBD 0xED 0xB8 0x80
     const buffer = classWithName([0xed, 0xa0, 0xbd, 0xed, 0xb8, 0x80]);
 
     expect(parseClassFile(buffer).thisClassName).toBe('\u{1f600}');
@@ -691,7 +628,6 @@ describe('parseClassFile — modified UTF-8 decoding (JVMS §4.4.7)', () => {
   });
 
   it('rejects a sequence truncated at the end of the entry', () => {
-    // 0xC5 announces two bytes, but the entry ends after the first one.
     expect(expectClassFileError(() => parseClassFile(classWithName([0xc5])))).toMatchObject({
       kind: 'malformed-utf8',
       offset: 14,
@@ -707,10 +643,9 @@ describe('parseClassFile — modified UTF-8 decoding (JVMS §4.4.7)', () => {
   });
 });
 
-describe('parseClassFile — robustness property test', () => {
+describe('parseClassFile: robustness property test', () => {
   function parseIsSafe(bytes: Uint8Array): void {
     try {
-      // slice() yields a copy in its own ArrayBuffer — fast-check returns shared views.
       parseClassFile(bytes.slice().buffer);
     } catch (error) {
       if (!isClassFileError(error)) {
@@ -737,13 +672,11 @@ describe('parseClassFile — robustness property test', () => {
     );
   });
 
-  it('every truncated fixture ends in a ClassFileError, never a runtime exception', () => {
+  it('reports every truncated prefix of the fixture as a ClassFileError', () => {
     const full = factorialBytes();
 
     fc.assert(
       fc.property(fc.integer({ min: 0, max: full.length - 1 }), (length) => {
-        // Every truncation removes bytes of some structure — a valid file ends exactly on
-        // the last class attribute, so every prefix must be reported as truncated.
         const detail = expectClassFileError(() => parseClassFile(full.slice(0, length).buffer));
         expect(detail.kind).toBe('truncated');
       }),

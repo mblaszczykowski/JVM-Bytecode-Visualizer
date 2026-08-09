@@ -17,18 +17,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.web.filter.OncePerRequestFilter;
 
-/**
- * Refuses a body that is too large to be a source before a byte of it is buffered.
- *
- * <p>The size check used to live in the service, on the already-parsed string: a 19 MB {@code
- * source} was fully read, decoded and held in the heap, and only then rejected — an out-of-memory
- * exit reachable with one request. Content-Length is the cheap half of the fix; the wrapper is the
- * other half, because a chunked request has no Content-Length to check and an attacker picks the
- * framing.
- *
- * <p>It answers 400 rather than 413: the client contract has 400 for "your source is not
- * acceptable" and the frontend renders that message inline, while a 413 would read as an outage.
- */
 public class RequestSizeLimitFilter extends OncePerRequestFilter {
 
     public static final String ERROR = "source-too-large";
@@ -56,7 +44,6 @@ public class RequestSizeLimitFilter extends OncePerRequestFilter {
         try {
             chain.doFilter(limited, response);
         } catch (RequestTooLargeException e) {
-            // Only reachable when the declared length lied or there was none at all.
             if (!response.isCommitted()) {
                 response.reset();
                 reject(response, e.read());
@@ -73,10 +60,6 @@ public class RequestSizeLimitFilter extends OncePerRequestFilter {
                                 maxSourceBytes)));
     }
 
-    /**
-     * Signals a body that outgrew the cap while being read. Message converters wrap it, so the
-     * exception handler unwraps the cause chain to answer with the same error as the early check.
-     */
     public static final class RequestTooLargeException extends IOException {
 
         private final long read;

@@ -12,7 +12,6 @@ function programOf(classFile: ClassFile, fileName: string): LoadedProgram {
   return buildProgram({ origin: { kind: 'upload', fileName }, classFile });
 }
 
-/** A utility class this machine cannot enter anywhere — the panel's reason for existing. */
 const libraryClass = parseClassFile(readFixtureBytes('Library.class'));
 const library = programOf(libraryClass, 'Library.class');
 
@@ -58,7 +57,6 @@ describe('ClassPanel', () => {
 
     expect(within(factOf('this_class')).getByText('Library')).toBeInTheDocument();
     expect(within(factOf('super_class')).getByText('java/lang/Object')).toBeInTheDocument();
-    // javac 21 writes major version 65 (JVMS §4.1, table 4.1-A).
     expect(within(factOf('version')).getByText('65.0')).toBeInTheDocument();
     expect(within(factOf('version')).getByText('class file format of Java 21')).toBeInTheDocument();
     expect(within(factOf('access_flags')).getByText('public final super')).toBeInTheDocument();
@@ -75,7 +73,6 @@ describe('ClassPanel', () => {
   it('replaces the title with the panel switch when one is given', () => {
     renderPanel(library, { titleControl: <button type="button">Class</button> });
 
-    // The region keeps its name through the `<h2>` even once the visible title is a control.
     expect(screen.getByRole('region', { name: 'Class file' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Class' })).toBeInTheDocument();
   });

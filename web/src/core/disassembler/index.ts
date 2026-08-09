@@ -1,6 +1,3 @@
-/**
- * Public API of the disassembler layer. The interpreter and the UI import only from here.
- */
 export { disassemble } from './disassembler';
 export {
   arrayTypeName,

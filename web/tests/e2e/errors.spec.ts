@@ -2,7 +2,6 @@ import { expect, test, type Page } from '@playwright/test';
 
 import { fixturePath } from './fixtures';
 
-/** The toolbar upload sits first in the DOM; the welcome screen has a drop zone of its own. */
 function fileInput(page: Page) {
   return page.locator('input[type="file"]').first();
 }
@@ -33,7 +32,6 @@ test('an unsupported instruction stops the run but keeps the history playable', 
     'Unsupported instruction: i2l (pc 20, method main)',
   );
 
-  // ADR-0001: the snapshots collected before the fault are still a full recording.
   await expect(page.getByTestId('step-counter')).toHaveText(/^step 1 \/ \d+$/);
   await expect(page.getByTestId('current-instruction')).toContainText('iconst_0');
 

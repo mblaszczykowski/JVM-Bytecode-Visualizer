@@ -1,28 +1,4 @@
 #!/usr/bin/env node
-/**
- * Downloads a pinned corpus of real-world jars and unpacks their class files.
- *
- * The fixtures under `src/core/**​/__fixtures__` are written to be parsed: they come from this
- * repository, they are compiled by this repository's own build, and they exercise the cases
- * someone thought of. A corpus is the opposite kind of evidence — sixteen thousand class files
- * nobody here wrote, emitted by four different compilers over a decade, including every
- * attribute, constant pool tag and instruction encoding that real libraries actually contain.
- *
- * Passing on them is the only claim about the parser worth making out loud.
- *
- * The list is deliberately diverse rather than large:
- *   - javac across many years (commons-collections4 targets Java 6; junit-jupiter targets 17)
- *   - two other languages entirely — Kotlin and Scala compile to the same class file format,
- *     and their compilers emit shapes javac never does
- *   - ASM, which is a bytecode library and therefore full of the format's own edge cases
- *   - module-info.class and multi-release jars, which several of these ship
- *
- * Every jar is pinned to a version and verified against the SHA-1 Maven Central publishes
- * next to it, so the corpus is the same on every machine and in CI. Nothing is committed:
- * `.cache/` is ignored, and CI restores it from the actions cache keyed on this file.
- *
- * Usage: `npm run corpus -w web`, then `npm run test:corpus -w web`.
- */
 
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
@@ -37,7 +13,6 @@ export const CLASSES_DIR = join(CACHE_DIR, 'classes');
 
 const MAVEN_CENTRAL = 'https://repo1.maven.org/maven2';
 
-/** `path` is the Maven coordinate path; `sha1` is what Maven Central publishes beside it. */
 const CORPUS = [
   {
     path: 'com/google/guava/guava/33.4.0-jre/guava-33.4.0-jre.jar',
@@ -72,12 +47,12 @@ const CORPUS = [
   {
     path: 'org/jetbrains/kotlin/kotlin-stdlib/2.1.0/kotlin-stdlib-2.1.0.jar',
     sha1: '85f8b81009cda5890e54ba67d64b5e599c645020',
-    why: 'not javac at all — kotlinc, with its own attributes and synthetic shapes',
+    why: 'kotlinc, with its own attributes and synthetic shapes',
   },
   {
     path: 'org/scala-lang/scala-library/2.13.15/scala-library-2.13.15.jar',
     sha1: 'ed6f1d58968b16c5f9067d5cac032d952552de58',
-    why: 'not javac either — scalac emits the densest constant pools of the set',
+    why: 'scalac, which emits the densest constant pools of the set',
   },
   {
     path: 'org/ow2/asm/asm/9.7.1/asm-9.7.1.jar',
@@ -87,7 +62,7 @@ const CORPUS = [
   {
     path: 'org/apache/commons/commons-collections4/4.4/commons-collections4-4.4.jar',
     sha1: '62ebe7544cb7164d87e0637a2a6a2bdc981395e8',
-    why: 'old — compiled for Java 6, class file major version 50',
+    why: 'old: compiled for Java 6, class file major version 50',
   },
 ];
 
@@ -105,8 +80,6 @@ async function download(entry) {
 
   const actual = sha1Of(bytes);
   if (actual !== entry.sha1) {
-    // A jar whose bytes changed is not the jar the corpus was pinned to, and a corpus that
-    // silently drifts proves nothing.
     throw new Error(`${entry.path}: expected sha1 ${entry.sha1}, got ${actual}`);
   }
   return bytes;
@@ -115,8 +88,6 @@ async function download(entry) {
 function unpack(jarPath, into) {
   rmSync(into, { recursive: true, force: true });
   mkdirSync(into, { recursive: true });
-  // `-qq` silent, `-o` overwrite: only the class files matter, and a jar's other entries
-  // (manifests, licences, resources) are not what is under test.
   execFileSync('unzip', ['-qq', '-o', jarPath, '*.class', '-d', into], { stdio: 'pipe' });
 }
 

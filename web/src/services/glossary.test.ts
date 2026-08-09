@@ -1,12 +1,4 @@
-/**
- * The guard that keeps the glossary an abstract of `docs/jvm-primer.md` rather than a second
- * account of the JVM: the primer is read from disk, and every section an entry condenses and
- * every JVMS rule an entry asserts has to be there in the long form too.
- */
-
 /// <reference types="node" />
-// tsconfig.app.json narrows `types` to "vite/client" (application code targets the browser),
-// so the `node:*` module declarations have to be pulled in explicitly here.
 
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -15,7 +7,6 @@ import { describe, expect, it } from 'vitest';
 
 import { GLOSSARY, glossaryEntry, glossaryTermForPanel, type GlossaryTermId } from './glossary';
 
-/** Vitest roots at `web/`; the second candidate covers a run from the repository root. */
 function primerText(): string {
   const candidates = [
     resolve(process.cwd(), '../docs/jvm-primer.md'),
@@ -30,7 +21,6 @@ function primerText(): string {
 
 const PRIMER = primerText();
 
-/** `## 2. Two stacks, not one` → `2` ⇒ `Two stacks, not one`. */
 const PRIMER_SECTIONS = new Map(
   [...PRIMER.matchAll(/^## (\d+)\. (.+)$/gm)].map((heading) => [
     Number(heading[1]),
@@ -54,7 +44,6 @@ describe('glossary', () => {
   it('cites no JVMS section the primer does not cite for the same machine', () => {
     for (const entry of GLOSSARY) {
       for (const citation of citationsOf(entry.paragraphs.join(' '))) {
-        // Anchored on the right, so citing §4.7 does not pass on the primer's §4.7.3.
         const cited = new RegExp(`${citation.replaceAll('.', '\\.')}(?![\\d.])`);
         expect(cited.test(PRIMER), `${entry.term} cites ${citation}`).toBe(true);
       }
@@ -92,7 +81,6 @@ describe('glossary', () => {
     for (const [panel, term] of Object.entries(panels)) {
       expect(glossaryTermForPanel(panel), panel).toBe(term);
     }
-    // The console and the heap show what a run produced, not a concept the primer teaches.
     expect(glossaryTermForPanel('Console')).toBeUndefined();
     expect(glossaryTermForPanel('Heap')).toBeUndefined();
   });

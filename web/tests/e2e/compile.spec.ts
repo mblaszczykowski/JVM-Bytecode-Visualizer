@@ -1,21 +1,4 @@
-/**
- * The editor loop against a real compile service. It needs a backend, so the default run
- * skips this file and the rest of the suite stays green without one:
- *
- *   VITE_COMPILE_API_URL=http://localhost:8080 \
- *   PLAYWRIGHT_COMPILE_API_URL=http://localhost:8080 npm run e2e -w web
- *
- * The first variable is baked into the bundle by the build Playwright runs, the second one
- * switches these tests on. A preview server left over from an earlier run serves the old
- * bundle — stop it before starting.
- */
 import { expect, test } from '@playwright/test';
-
-/**
- * The toolbar's button, not the welcome screen's — both open the editor, and both are on
- * screen before a program is loaded. `exact` picks the toolbar one, whose accessible name is
- * the label alone, and it is the one that is there in every state.
- */
 
 test.skip(
   () => process.env.PLAYWRIGHT_COMPILE_API_URL === undefined,
@@ -43,7 +26,6 @@ test('writes a class, compiles it and replays the run', async ({ page }) => {
   await expect(page.getByTestId('step-counter')).toHaveText(/^step 1 \/ \d+$/);
   await expect(page.getByTestId('compile-editor')).toHaveCount(0);
 
-  // The source panel shows the .java that was compiled, not a placeholder.
   const source = page.getByRole('region', { name: 'Source' });
   await expect(source).toContainText('FizzBuzz.java');
   await expect(source).toContainText('switch (n % 15)');
@@ -68,7 +50,6 @@ test('points at the offending line when the source does not compile', async ({ p
   await expect(diagnostic).toHaveAttribute('data-kind', 'error');
   await expect(diagnostic).toContainText("';' expected");
 
-  // A compile error is not a broken application: the editor keeps the source as written.
   await expect(page.getByTestId('error-banner')).toHaveCount(0);
   await expect(page.getByLabel('Java source')).toHaveValue(BROKEN_SOURCE);
 });

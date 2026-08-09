@@ -10,10 +10,6 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.util.unit.DataSize;
 import org.springframework.validation.annotation.Validated;
 
-/**
- * @param maxRequestSize hard cap on the request body, checked before anything is buffered; it has
- *                       to leave room for the JSON envelope around a {@code maxSourceSize} source
- */
 @Validated
 @ConfigurationProperties(prefix = "compile")
 public record CompileProperties(
@@ -25,7 +21,6 @@ public record CompileProperties(
         @NotNull @Valid RateLimit rateLimit) {
 
     public CompileProperties {
-        // Constraints the annotations cannot express; nulls are left to the validator's messages.
         if ("*".equals(allowedOrigin)) {
             throw new IllegalArgumentException(
                     "compile.allowed-origin must name the frontend origin: '*' would let any page drive the compiler");
@@ -42,13 +37,6 @@ public record CompileProperties(
         }
     }
 
-    /**
-     * @param trustForwardedFor whether {@code X-Forwarded-For} identifies the client; only enable
-     *                          it behind a proxy that appends to the header
-     * @param trustedProxyHops  how many proxies append to {@code X-Forwarded-For} between the
-     *                          client and this service; the client address is that many entries
-     *                          from the right, and everything to the left of it is caller-controlled
-     */
     public record RateLimit(@Positive int requestsPerMinute, boolean trustForwardedFor,
                             @PositiveOrZero int trustedProxyHops) {
 

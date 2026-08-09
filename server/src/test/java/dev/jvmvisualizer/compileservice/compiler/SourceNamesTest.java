@@ -6,12 +6,6 @@ import java.time.Duration;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
-/**
- * The name scan is the first thing every request touches, before any size or shape check, so it
- * has to be linear and it has to be right. The modifier payload below used to reach a repeated
- * group in {@code java.util.regex} that recurses once per repetition: {@link StackOverflowError},
- * escaping the controller advice, 500, no JSON body.
- */
 class SourceNamesTest {
 
     @Test
@@ -105,7 +99,6 @@ class SourceNamesTest {
     @Test
     @Timeout(5)
     void staysLinearOnAModifierRunThatNeverReachesAType() {
-        // The same shape without the declaration: the old pattern recursed to the very end.
         String pathological = "public " + "final ".repeat(50_000);
 
         assertThat(SourceNames.publicTypeName(pathological)).isEmpty();

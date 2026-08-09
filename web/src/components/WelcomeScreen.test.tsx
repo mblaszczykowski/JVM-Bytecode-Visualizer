@@ -87,8 +87,6 @@ describe('WelcomeScreen', () => {
 
     expect(banner).toHaveTextContent('Not a .class file.');
     expect(screen.getByTestId('welcome-screen')).toContainElement(banner);
-    // Ahead of the drop zone, not after the last section: the column is top-anchored, so a
-    // banner at the end of it is below the fold on an ordinary laptop.
     expect(
       banner.compareDocumentPosition(screen.getByTestId('file-drop-zone')) &
         Node.DOCUMENT_POSITION_FOLLOWING,
@@ -97,10 +95,6 @@ describe('WelcomeScreen', () => {
     expect(onDismiss).toHaveBeenCalledTimes(1);
   });
 
-  /**
-   * The capability note is the answer to "will my own file work", so it has to be readable at
-   * the moment that question comes up: after the drop zone, before anyone picks a file.
-   */
   it('states what the machine can run right below the drop zone', () => {
     renderWelcome();
 
@@ -111,11 +105,6 @@ describe('WelcomeScreen', () => {
     expect(dropZone.compareDocumentPosition(note) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  /**
-   * The first screen is where a reader decides whether any of this is for them, and it is the
-   * only screen with no panel headers to ask from — so the invitation lives on the heading's
-   * own line, ahead of the cards and costing them no room.
-   */
   it('offers the vocabulary without pushing the examples down', () => {
     render(
       <>
@@ -135,11 +124,6 @@ describe('WelcomeScreen', () => {
     expect(screen.getByRole('dialog', { name: 'Glossary' })).toBeInTheDocument();
   });
 
-  /**
-   * jsdom has no layout, so the guard is on the two class-level decisions that produce it:
-   * a column main axis (auto margins collapse to zero on overflow and anchor the block to
-   * the top) and the mask that makes a cut edge read as more content.
-   */
   it('spills off the bottom on a short viewport instead of losing the headline off the top', () => {
     renderWelcome();
 

@@ -31,7 +31,6 @@ describe('ConsolePanel', () => {
     render(<ConsolePanel lines={['first', 'second', 'third']} />);
 
     expect(currentRow()?.textContent).toBe('third');
-    // Colour is not the only signal: the newest row is announced as the current one.
     expect(currentRow()?.getAttribute('aria-current')).toBe('true');
     expect(rows().filter((row) => row.dataset.current === 'true')).toHaveLength(1);
   });
@@ -59,7 +58,6 @@ describe('ConsolePanel', () => {
     render(<ConsolePanel lines={['  indented', '   ', '']} />);
 
     expect(texts()).toEqual(['  indented', '   ', '']);
-    // Preserved by the row's own style, not by the browser's default handling of the text.
     for (const row of rows()) {
       expect(row.className).toContain('whitespace-pre');
     }
@@ -73,8 +71,6 @@ describe('ConsolePanel', () => {
   });
 
   it('renders nothing at all for a snapshot that recorded no output', () => {
-    // The field is additive and optional: a run that printed nothing — and a build whose
-    // interpreter has not grown the field at all — is an empty panel, not one that throws.
     const { unmount } = render(<ConsolePanel lines={consoleLinesOf({ step: 0, callStack: [] })} />);
     expect(screen.queryByTestId('console-line')).not.toBeInTheDocument();
     unmount();

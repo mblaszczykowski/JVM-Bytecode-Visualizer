@@ -105,7 +105,6 @@ describe('KeyboardHelp', () => {
     render(<KeyboardHelp groups={GROUPS} />);
     openSheet();
 
-    // Bubble phase, exactly where the transport listens; the sheet swallows it in capture.
     window.addEventListener('keydown', onKeyDown);
     fireEvent.keyDown(screen.getByTestId('keyboard-help'), { key: ' ' });
     window.removeEventListener('keydown', onKeyDown);

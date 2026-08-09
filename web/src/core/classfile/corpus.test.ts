@@ -13,19 +13,6 @@ import { ClassFileError } from './errors';
 import { parseClassFile } from './parser';
 import type { ClassFile } from './types';
 
-/**
- * The parser and the disassembler against eight thousand class files nobody here wrote.
- *
- * Every other test in this directory asserts against a fixture built by this repository, which
- * means it can only ever find the cases someone thought of. This one runs the two pure stages
- * over the output of four compilers — javac across a decade, kotlinc, scalac — and asks a
- * single question of each file: did anything throw?
- *
- * It is skipped unless the corpus has been fetched, exactly as the compile end-to-end suite
- * skips itself without a backend. `npm run corpus -w web` downloads and verifies it; CI has a
- * job that does the same and then runs this.
- */
-
 const CACHE = join(dirname(fileURLToPath(import.meta.url)), '../../../corpus/.cache');
 const CLASSES = join(CACHE, 'classes');
 const hasCorpus = existsSync(CLASSES);
@@ -46,7 +33,6 @@ interface Failure {
   readonly file: string;
   readonly stage: 'parse' | 'disassemble';
   readonly error: string;
-  /** A `ClassFileError` is a refusal the parser designed; anything else is a crash. */
   readonly typed: boolean;
 }
 
@@ -55,16 +41,10 @@ interface Scan {
   readonly methods: number;
   readonly instructions: number;
   readonly failures: readonly Failure[];
-  /** Instruction occurrences by opcode, over the whole corpus. */
   readonly opcodeCounts: ReadonlyMap<number, number>;
-  /** Class file major versions seen, with how many files carried each. */
   readonly majorVersions: ReadonlyMap<number, number>;
   readonly withRunnableEntry: number;
   readonly truncated: number;
-  /**
-   * Methods every one of whose instructions the interpreter implements. The honest measure of
-   * reach: a method replays only if all of it runs, so a per-instruction percentage flatters.
-   */
   readonly fullyExecutableMethods: number;
 }
 
@@ -141,7 +121,6 @@ function scanCorpus(files: readonly string[]): Scan {
   };
 }
 
-/** Nothing to scan, for the collection pass that happens even when the suite is skipped. */
 const NO_SCAN: Scan = {
   files: 0,
   methods: 0,
@@ -155,34 +134,22 @@ const NO_SCAN: Scan = {
 };
 
 describe.skipIf(!hasCorpus)('the parser and disassembler against a real-world corpus', () => {
-  // `skipIf` still runs the body to collect the tests inside it, so the scan itself has to be
-  // conditional — otherwise a checkout with no corpus fails here instead of skipping.
   const scan = hasCorpus ? scanCorpus(corpusFiles()) : NO_SCAN;
 
-  it('has a corpus worth the name', () => {
+  it('has enough files, from enough compilers, to be worth running', () => {
     expect(scan.files).toBeGreaterThan(5_000);
-    // Several compilers and a decade of targets, not one build of one project.
     expect(scan.majorVersions.size).toBeGreaterThan(3);
   });
 
-  it('parses and disassembles every class file, without one exception', () => {
-    // Named rather than counted: a failure has to say which file and why, or the next person
-    // has eight thousand candidates and no lead.
+  it('parses and disassembles every class file without throwing', () => {
     expect(scan.failures.slice(0, 10)).toEqual([]);
     expect(scan.failures).toHaveLength(0);
   });
 
-  it('decodes every method to the end, leaving no undecodable tail', () => {
-    // `truncatedAtOffset` is legitimate for hand-written bytecode, but a jar from Maven
-    // Central contains none: a truncation here means the decoder lost the instruction stream.
+  it('decodes every method to the end', () => {
     expect(scan.truncated).toBe(0);
   });
 
-  /**
-   * Not an assertion about the corpus so much as an honest measurement of scope: the
-   * interpreter runs a subset, and this is what that subset is worth against real code.
-   * Written to a file so the README can quote a number that was measured rather than guessed.
-   */
   it('records what the executable subset covers', () => {
     const executable = [...scan.opcodeCounts]
       .filter(([opcode]) => EXECUTABLE_OPCODES.has(opcode))
@@ -219,8 +186,6 @@ describe.skipIf(!hasCorpus)('the parser and disassembler against a real-world co
     };
     writeFileSync(join(CACHE, 'scan.json'), `${JSON.stringify(summary, null, 2)}\n`);
 
-    // The subset is narrow by design, but it is not a toy: it has to carry the ordinary
-    // arithmetic and control flow that dominates any real method body.
     expect(summary.instructionCoveragePercent).toBeGreaterThan(30);
     expect(scan.instructions).toBeGreaterThan(1_000_000);
   });

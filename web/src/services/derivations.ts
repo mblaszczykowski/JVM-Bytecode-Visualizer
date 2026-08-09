@@ -1,12 +1,3 @@
-/**
- * What the panels show beyond the raw `Snapshot`: the stack effect of the next instruction,
- * a sentence about the concrete values it will touch, the constant pool resolution chain and
- * the role of each operand stack cell.
- *
- * All of it is derived from the opcode table and the real constant pool — nothing is written
- * out per instruction, so an example the interpreter can run is an example this can explain.
- */
-
 import {
   ConstantTag,
   isClassFileError,
@@ -16,7 +7,6 @@ import {
 } from '../core/classfile';
 import { arrayTypeName, lookupOpcode, T_INT, type Instruction } from '../core/disassembler';
 import type { ArrayObject, HeapObject, Snapshot, StackFrame } from '../core/interpreter';
-// int semantics live in one place: the explanations quote the interpreter, not a copy of it.
 import { iadd, idiv, imul, ineg, irem, isub } from '../core/interpreter/int32';
 
 import type { MethodListing } from './program';
@@ -28,7 +18,6 @@ export interface EffectPill {
 export interface NextInstructionSummary {
   readonly effects: readonly EffectPill[];
   readonly explanation: string;
-  /** Only for instructions with a constant pool operand. */
   readonly cpChain?: readonly string[] | undefined;
 }
 
@@ -53,10 +42,6 @@ export function describeNextInstruction(
   };
 }
 
-/**
- * Role annotation per operand stack cell (indexed like `StackFrame.operandStack`): what the
- * current instruction is about to do with it, or which later instruction is waiting for it.
- */
 export function describeOperandRoles(
   snapshot: Snapshot,
   listing: MethodListing | undefined,
@@ -94,13 +79,6 @@ export function describeOperandRoles(
   return roles;
 }
 
-/**
- * What one cell about to be popped is *for*. Two cells that both read "operand" say nothing:
- * on a binary instruction the JVM order matters, so they are named by position, and a call
- * names the argument slot each value lands in.
- *
- * @param taken 0 for the top of the stack, counting downwards
- */
 function operandRole(mnemonic: string, pops: number, taken: number): string {
   if (mnemonic === 'invokestatic') {
     return `→ arg ${String(pops - 1 - taken)}`;
@@ -109,18 +87,12 @@ function operandRole(mnemonic: string, pops: number, taken: number): string {
   if (named !== undefined) {
     return named;
   }
-  // `value1 op value2` with value2 on top (JVMS §6.5 iadd, if_icmp<cond>).
   if (pops === 2) {
     return taken === 0 ? '→ right' : '→ left';
   }
   return `→ ${mnemonic}`;
 }
 
-/**
- * The array instructions take cells that mean different things, so "→ left" and "→ right"
- * would say nothing. Listed top of the stack first, matching the `taken` index — which is the
- * reverse of the JVMS operand order (`…, arrayref, index, value`).
- */
 const ARRAY_OPERAND_ROLES: Readonly<Record<string, readonly string[]>> = {
   iaload: ['→ index', '→ array'],
   iastore: ['→ value', '→ index', '→ array'],
@@ -128,7 +100,6 @@ const ARRAY_OPERAND_ROLES: Readonly<Record<string, readonly string[]>> = {
   newarray: ['→ length'],
 };
 
-/** javap-style trailing comments, keyed by instruction offset. */
 export function constantPoolComments(
   listing: MethodListing,
   classFile: ClassFile,
@@ -145,20 +116,12 @@ export function constantPoolComments(
 
 export interface ResolvedConstant {
   readonly index: number;
-  /** Constant pool tag name, e.g. `Methodref`. */
   readonly tagName: string;
-  /** Fully resolved text, e.g. `Factorial.factorial:(I)I`. */
   readonly text: string;
-  /** Rendered as `#7 → Methodref → Factorial.factorial:(I)I`. */
   readonly chain: readonly string[];
   readonly comment: string;
 }
 
-/**
- * Follows a constant pool entry down to the Utf8 strings behind it (JVMS §4.4). Returns
- * `undefined` for an index that does not resolve — a broken pool is a display problem here,
- * not a reason to fail.
- */
 export function resolveConstant(pool: ConstantPool, index: number): ResolvedConstant | undefined {
   const entry = pool[index] ?? undefined;
   if (entry === undefined) {
@@ -214,7 +177,6 @@ export function resolveConstant(pool: ConstantPool, index: number): ResolvedCons
     case ConstantTag.InvokeDynamic:
     case ConstantTag.Module:
     case ConstantTag.Package:
-      // Tags the parser reads but never interprets — the kind is all there is to show.
       return {
         index,
         tagName,
@@ -229,21 +191,10 @@ const TAG_NAMES: ReadonlyMap<number, string> = new Map(
   Object.entries(ConstantTag).map(([name, tag]) => [tag, name]),
 );
 
-/**
- * Name of a constant pool tag (JVMS §4.4, table 4.4-B). Kept separate from `resolveConstant`
- * because an entry that cannot be followed to its strings still has a kind worth naming.
- */
 export function tagNameOf(tag: number): string {
   return TAG_NAMES.get(tag) ?? `tag ${String(tag)}`;
 }
 
-/**
- * Constant pool index of an instruction that has one, from the opcode table.
- *
- * Deliberately not restricted to the executable subset: the decoder gives every assigned
- * opcode its operand roles, so `getfield #3` can carry its `// Field Counter.value:I` comment
- * in a class this machine will never run. Reading a class file is not the same as executing it.
- */
 export function constantPoolIndexOf(instruction: Instruction): number | undefined {
   const info = lookupOpcode(instruction.opcode);
   if (info === undefined) {
@@ -266,10 +217,6 @@ interface StackDelta {
   readonly pushes: number;
 }
 
-/**
- * Net effect of one instruction on the operand stack. `undefined` for anything the
- * interpreter cannot run, because past such an instruction the stack shape is unknown.
- */
 export function stackDeltaOf(instruction: Instruction, pool: ConstantPool): StackDelta | undefined {
   const info = lookupOpcode(instruction.opcode);
   if (info?.kind !== 'supported') {
@@ -332,7 +279,6 @@ function pushPills(count: number, pushed: string): readonly EffectPill[] {
   return [{ label: count === 1 ? `push ${pushed}` : `push ${String(count)} ${pushed}s` }];
 }
 
-/** The instructions that leave a reference behind; everything else in the subset leaves an int. */
 const REFERENCE_PUSHING: ReadonlySet<string> = new Set([
   'aconst_null',
   'newarray',
@@ -362,7 +308,6 @@ const COMPARISON: Readonly<Record<string, string>> = {
   ifle: '≤',
 };
 
-/** Only ever applied to the operands of an instruction the run is about to execute. */
 const ARITHMETIC: Readonly<
   Record<string, { readonly symbol: string; readonly apply: (a: number, b: number) => number }>
 > = {
@@ -385,7 +330,7 @@ function explain(
   const below = frame.operandStack.at(-2);
 
   if (lookupOpcode(instruction.opcode)?.kind !== 'supported') {
-    return `${mnemonic} is outside the supported instruction subset — running it stops the program here.`;
+    return `${mnemonic} is outside the supported instruction subset; running it stops the program here.`;
   }
 
   const array = explainArray(instruction, frame, heap);
@@ -448,7 +393,7 @@ function explain(
       return `Pops two values and pushes their ${mnemonic} result.`;
     }
     if ((mnemonic === 'idiv' || mnemonic === 'irem') && top === 0) {
-      return `Pops ${String(below)} and ${String(top)} — dividing by zero, which stops the run with an ArithmeticException.`;
+      return `Pops ${String(below)} and ${String(top)}: dividing by zero, which stops the run with an ArithmeticException.`;
     }
     return `Pops ${String(top)} and ${String(below)} and pushes ${String(below)} ${arithmetic.symbol} ${String(top)} = ${String(arithmetic.apply(below, top))}.`;
   }
@@ -462,19 +407,18 @@ function explain(
     const popped = comparesPair ? 'Pops both values' : 'Pops the top value';
     const premise = `${popped} and compares ${valueText(left)} ${operator} ${valueText(right)}`;
 
-    // The snapshot already holds the values, so the branch is not a maybe — it is decided.
     const taken = comparisonHolds(mnemonic, left, right);
     if (taken === undefined) {
       return `${premise}; a true comparison jumps to pc ${String(target ?? 0)}, otherwise execution falls through.`;
     }
     const fallThrough = offsetAfter(listing, instruction.offset);
     return taken
-      ? `${premise} — true, so execution jumps to pc ${String(target ?? 0)}.`
-      : `${premise} — false, so execution falls through to pc ${String(fallThrough ?? instruction.offset)}.`;
+      ? `${premise}: true, so execution jumps to pc ${String(target ?? 0)}.`
+      : `${premise}: false, so execution falls through to pc ${String(fallThrough ?? instruction.offset)}.`;
   }
 
   if (mnemonic === 'goto') {
-    return `Jumps to pc ${String(instruction.branchTarget ?? 0)} — no value is touched.`;
+    return `Jumps to pc ${String(instruction.branchTarget ?? 0)}; no value is touched.`;
   }
 
   if (mnemonic === 'invokestatic') {
@@ -484,11 +428,10 @@ function explain(
     }
     const args = frame.operandStack.slice(frame.operandStack.length - callee.arity);
     const resume = offsetAfter(listing, instruction.offset);
-    // Where control actually goes, both ways: into the callee now, back here on the return.
     const handover =
       resume === undefined
-        ? ` — the callee starts at pc 0.`
-        : ` — the callee starts at pc 0 and ${frame.methodName} resumes at pc ${String(resume)}.`;
+        ? `. The callee starts at pc 0.`
+        : `. The callee starts at pc 0 and ${frame.methodName} resumes at pc ${String(resume)}.`;
     if (args.length === 0) {
       return `Calls ${callee.name}${callee.descriptor} with no arguments and opens a frame for it${handover}`;
     }
@@ -507,13 +450,6 @@ function explain(
   return `Executes ${mnemonic}.`;
 }
 
-/**
- * The four heap instructions, explained with the array they are about to touch: its length
- * comes from the snapshot's heap, so `iastore` reads as "Stores 3 at index 1 of int[6]"
- * rather than as a sentence about references and handles.
- *
- * `undefined` for everything else, so the caller falls through to the int instructions.
- */
 function explainArray(
   instruction: Instruction,
   frame: StackFrame,
@@ -528,7 +464,7 @@ function explainArray(
       const atype = instruction.operands[0] ?? 0;
       if (atype !== T_INT) {
         const element = arrayTypeName(atype) ?? `atype ${String(atype)}`;
-        return `Allocates ${element}[] — this interpreter only allocates int arrays, so running it stops the program here.`;
+        return `Allocates ${element}[]. This interpreter only allocates int arrays, so running it stops the program here.`;
       }
       return top === undefined
         ? 'Allocates a zero-filled int array as long as the value on top of the operand stack.'
@@ -543,14 +479,13 @@ function explainArray(
     }
 
     case 'iaload': {
-      // JVMS §6.5: `…, arrayref, index`, so the array sits one cell below the index.
       const array = arrayAt(heap, below);
       if (array === undefined || top === undefined) {
         return 'Pops an array reference and an index and pushes the element stored there.';
       }
       const element = array.elements[top];
       return element === undefined
-        ? `Reads index ${String(top)} of int[${String(array.length)}] — outside the array, which stops the run with an ArrayIndexOutOfBoundsException.`
+        ? `Reads index ${String(top)} of int[${String(array.length)}]: outside the array, which stops the run with an ArrayIndexOutOfBoundsException.`
         : `Pushes ${String(element)}, the element at index ${String(top)} of int[${String(array.length)}].`;
     }
 
@@ -560,7 +495,7 @@ function explainArray(
         return 'Pops an array reference, an index and a value, and stores the value at that index.';
       }
       return below < 0 || below >= array.length
-        ? `Stores ${String(top)} at index ${String(below)} of int[${String(array.length)}] — outside the array, which stops the run with an ArrayIndexOutOfBoundsException.`
+        ? `Stores ${String(top)} at index ${String(below)} of int[${String(array.length)}]: outside the array, which stops the run with an ArrayIndexOutOfBoundsException.`
         : `Stores ${String(top)} at index ${String(below)} of int[${String(array.length)}].`;
     }
 
@@ -569,7 +504,6 @@ function explainArray(
   }
 }
 
-/** The array a reference points at; `undefined` for `null`, an instance, or an unused handle. */
 function arrayAt(
   heap: readonly HeapObject[],
   reference: number | undefined,
@@ -578,7 +512,6 @@ function arrayAt(
   return object?.kind === 'int-array' ? object : undefined;
 }
 
-/** How a reference reads in a sentence: the object it names, or `null`. */
 function referenceText(heap: readonly HeapObject[], reference: number | undefined): string {
   const object = reference === undefined ? undefined : heap[reference];
   if (object === undefined) {
@@ -587,13 +520,6 @@ function referenceText(heap: readonly HeapObject[], reference: number | undefine
   return object.kind === 'int-array' ? `int[${String(object.length)}]` : object.className;
 }
 
-/**
- * What a mnemonic does in general, with no snapshot behind it — the tooltip on every row of
- * the listing, including the rows this run never reached.
- *
- * By family rather than per opcode: `iload_0` and `iload_3` differ only in the slot they
- * name, and the opcode table already knows which family an instruction belongs to.
- */
 export function explainMnemonic(mnemonic: string): string | undefined {
   const family = MNEMONIC_HELP[mnemonic];
   if (family !== undefined) {
@@ -666,7 +592,6 @@ function valueText(value: number | undefined): string {
   return value === undefined ? 'the top value' : String(value);
 }
 
-/** Whether the branch is taken, or `undefined` when a value is missing from the snapshot. */
 function comparisonHolds(
   mnemonic: string,
   left: number | undefined,
@@ -697,7 +622,6 @@ function comparisonHolds(
   return undefined;
 }
 
-/** Offset of the instruction laid out after `offset` — where a branch falls through to. */
 function offsetAfter(listing: MethodListing | undefined, offset: number): number | undefined {
   if (listing === undefined) {
     return undefined;
@@ -710,12 +634,6 @@ function nameOfSlot(frame: StackFrame, slot: number): string {
   return frame.localNames[slot] ?? `slot ${String(slot)}`;
 }
 
-/**
- * Name of the slot a store writes to. javac opens the scope of a variable at the instruction
- * *after* the store that initialises it (JVMS §4.7.13), so the frame's own names — taken at
- * the store itself — still call the slot anonymous. The value being stored is the variable,
- * so the name is looked up one instruction ahead.
- */
 function storedName(
   frame: StackFrame,
   listing: MethodListing | undefined,
@@ -733,7 +651,6 @@ function storedName(
   return nameOfSlot(frame, slot);
 }
 
-/** LocalVariableTable name of `slot` in scope at `pc`, if the table has one. */
 function localNameAt(listing: MethodListing, pc: number, slot: number): string | undefined {
   return listing.localVariables.find(
     (entry) => entry.index === slot && pc >= entry.startPc && pc < entry.startPc + entry.length,
@@ -742,7 +659,6 @@ function localNameAt(listing: MethodListing, pc: number, slot: number): string |
 
 function describeSlot(frame: StackFrame, slot: number, heap: readonly HeapObject[]): string {
   const value = frame.locals[slot];
-  // A reference slot holds a heap handle; the array behind it is what the reader wants.
   const shown =
     value === undefined
       ? 'uninitialised'
@@ -752,7 +668,6 @@ function describeSlot(frame: StackFrame, slot: number, heap: readonly HeapObject
   return `${nameOfSlot(frame, slot)} = ${shown}`;
 }
 
-/** Local slot addressed by a load/store — from the mnemonic suffix or from the operand. */
 function slotOf(instruction: Instruction): number {
   const suffix = instruction.mnemonic.split('_')[1];
   if (suffix !== undefined && /^\d+$/.test(suffix)) {
@@ -839,15 +754,6 @@ function utf8(pool: ConstantPool, index: number): string | undefined {
   return entry?.tag === ConstantTag.Utf8 ? entry.value : undefined;
 }
 
-/**
- * Walks the method forward from the current instruction, tracking the operand stack height,
- * and reports which instruction eventually consumes the value at `targetIndex`.
- *
- * Conditional branches are followed through to the fall-through path, but an unconditional
- * `goto` never falls through: reading straight past it would blame whatever instruction the
- * loop body happens to be laid out next to. Each instruction is visited at most once, so a
- * backward jump ends the walk instead of looping.
- */
 function consumerOf(
   listing: MethodListing,
   pool: ConstantPool,
@@ -887,7 +793,6 @@ function consumerOf(
       if (target === undefined) {
         return undefined;
       }
-      // The loop increment takes it to `target`.
       index = target - 1;
     }
   }

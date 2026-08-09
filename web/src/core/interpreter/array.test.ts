@@ -6,22 +6,8 @@ import { MAX_HEAP_ELEMENTS, MAX_RECORDED_ELEMENTS } from './heap';
 import { execute } from './interpreter';
 import type { ExecutionResult, HeapObject, Snapshot, ValueKind } from './types';
 
-/**
- * The int-array subset: allocation, element access, the reference kind that tells a handle
- * apart from a number, and the structural sharing that keeps the heap history affordable.
- *
- * Programs are hand-written bytecode, so they can put an array where javac never would —
- * a negative length, an index past the end, a reference read as an int.
- */
-
 const T_INT = 0x0a;
 
-/**
- * Two-pass assembler for the programs below. `label` marks an offset, `branch` emits the
- * signed delta JVMS §6.5 wants (relative to the opcode byte, not to the operands). Bubble
- * sort alone has four branches over sixty bytes; hand-computed deltas would make the test a
- * puzzle about arithmetic rather than about arrays.
- */
 type Piece = number | { readonly label: string } | { readonly opcode: number; readonly to: string };
 
 function label(name: string): Piece {
@@ -41,7 +27,7 @@ function assemble(pieces: readonly Piece[]): readonly number[] {
     } else if ('label' in piece) {
       offsets.set(piece.label, offset);
     } else {
-      offset += 3; // opcode + a two-byte signed delta
+      offset += 3;
     }
   }
 
@@ -66,31 +52,22 @@ function assemble(pieces: readonly Piece[]): readonly number[] {
 
 function run(code: readonly number[], maxLocals = 4): readonly Snapshot[] {
   return expectCompleted(
-    execute(
-      syntheticClass({ methods: [{ name: 'main', descriptor: '()V', code, maxLocals }] }),
-      // Bubble sort over five elements is a few hundred instructions.
-      { maxSteps: 5_000 },
-    ),
+    execute(syntheticClass({ methods: [{ name: 'main', descriptor: '()V', code, maxLocals }] }), {
+      maxSteps: 5_000,
+    }),
   ).snapshots;
 }
 
-/** Runs `code` as a static `()I` method and returns what it left on the stack. */
 function evaluate(code: readonly number[], maxLocals = 4): number | undefined {
   return expectCompleted(
     execute(syntheticClass({ methods: [{ name: 'main', descriptor: '()I', code, maxLocals }] })),
   ).returnValue;
 }
 
-/**
- * The heap of a snapshot, exactly as it came — identity matters here, because the structural
- * sharing these tests assert on is identity. `arrayAt` does the narrowing where a test needs
- * an array rather than an object; every program in this file allocates nothing else.
- */
 function heapOf(snapshot: Snapshot | undefined): readonly HeapObject[] {
   return snapshot?.heap ?? NO_HEAP;
 }
 
-/** One identity for "no heap", so a snapshot without one does not look like a change. */
 const NO_HEAP: readonly HeapObject[] = Object.freeze([]);
 
 function finalHeap(snapshots: readonly Snapshot[]): readonly HeapObject[] {
@@ -105,7 +82,6 @@ function elementsAt(heap: readonly HeapObject[], handle: number): readonly numbe
   return object.elements;
 }
 
-/** Kind of the top operand stack cell in the snapshot that follows the first `mnemonic`. */
 function topKindAfter(snapshots: readonly Snapshot[], mnemonic: string): ValueKind | undefined {
   const step = snapshots.findIndex(
     (snapshot) => snapshot.currentInstruction?.mnemonic === mnemonic,
@@ -116,7 +92,6 @@ function topKindAfter(snapshots: readonly Snapshot[], mnemonic: string): ValueKi
   return snapshots[step + 1]?.callStack.at(-1)?.operandKinds?.at(-1);
 }
 
-/** Every distinct heap object the whole history holds — one per array, plus one per write. */
 function distinctArrays(snapshots: readonly Snapshot[]): number {
   const seen = new Set<HeapObject>();
   for (const snapshot of snapshots) {
@@ -127,197 +102,169 @@ function distinctArrays(snapshots: readonly Snapshot[]): number {
   return seen.size;
 }
 
-/**
- * `int[] a = new int[5]; for (i…) a[i] = i + 1; for (i…) s += a[i]; return s;` — the shape
- * every array-walking loop javac emits, down to the `iinc` and the backward `goto`.
- */
 const SUM_LOOP: readonly number[] = assemble([
-  0x08, // iconst_5
+  0x08,
   0xbc,
-  T_INT, // newarray int
-  0x4b, // astore_0            a
-  0x03, // iconst_0
-  0x3c, // istore_1            i = 0
+  T_INT,
+  0x4b,
+  0x03,
+  0x3c,
   label('fill'),
-  0x1b, // iload_1
-  0x08, // iconst_5
-  branch(0xa2, 'sum'), // if_icmpge sum
-  0x2a, // aload_0
-  0x1b, // iload_1
-  0x1b, // iload_1
-  0x04, // iconst_1
-  0x60, // iadd
-  0x4f, // iastore             a[i] = i + 1
+  0x1b,
+  0x08,
+  branch(0xa2, 'sum'),
+  0x2a,
+  0x1b,
+  0x1b,
+  0x04,
+  0x60,
+  0x4f,
   0x84,
   0x01,
-  0x01, // iinc 1, 1
-  branch(0xa7, 'fill'), // goto fill
+  0x01,
+  branch(0xa7, 'fill'),
   label('sum'),
-  0x03, // iconst_0
-  0x3d, // istore_2            s = 0
-  0x03, // iconst_0
-  0x3c, // istore_1            i = 0
+  0x03,
+  0x3d,
+  0x03,
+  0x3c,
   label('read'),
-  0x1b, // iload_1
-  0x08, // iconst_5
-  branch(0xa2, 'done'), // if_icmpge done
-  0x1c, // iload_2
-  0x2a, // aload_0
-  0x1b, // iload_1
-  0x2e, // iaload
-  0x60, // iadd
-  0x3d, // istore_2            s += a[i]
+  0x1b,
+  0x08,
+  branch(0xa2, 'done'),
+  0x1c,
+  0x2a,
+  0x1b,
+  0x2e,
+  0x60,
+  0x3d,
   0x84,
   0x01,
-  0x01, // iinc 1, 1
-  branch(0xa7, 'read'), // goto read
+  0x01,
+  branch(0xa7, 'read'),
   label('done'),
-  0x1c, // iload_2
-  0xac, // ireturn
+  0x1c,
+  0xac,
 ]);
 
-/**
- * Bubble sort over `{5, 3, 4, 1, 2}`, built element by element and then sorted in place.
- *
- *   for (i = 0; i < a.length - 1; i++)
- *     for (j = 0; j < a.length - 1 - i; j++)
- *       if (a[j] > a[j + 1]) { t = a[j]; a[j] = a[j + 1]; a[j + 1] = t; }
- *
- * Slots: 0 = a, 1 = i, 2 = j, 3 = t.
- */
 const BUBBLE_SORT: readonly number[] = assemble([
-  0x08, // iconst_5
+  0x08,
   0xbc,
-  T_INT, // newarray int
-  0x4b, // astore_0
+  T_INT,
+  0x4b,
   ...fill(0, 5),
   ...fill(1, 3),
   ...fill(2, 4),
   ...fill(3, 1),
   ...fill(4, 2),
-  0x03, // iconst_0
-  0x3c, // istore_1            i = 0
+  0x03,
+  0x3c,
   label('outer'),
-  0x1b, // iload_1
-  0x2a, // aload_0
-  0xbe, // arraylength
-  0x04, // iconst_1
-  0x64, // isub
-  branch(0xa2, 'done'), // if_icmpge done      i >= a.length - 1
-  0x03, // iconst_0
-  0x3d, // istore_2            j = 0
+  0x1b,
+  0x2a,
+  0xbe,
+  0x04,
+  0x64,
+  branch(0xa2, 'done'),
+  0x03,
+  0x3d,
   label('inner'),
-  0x1c, // iload_2
-  0x2a, // aload_0
-  0xbe, // arraylength
-  0x04, // iconst_1
-  0x64, // isub
-  0x1b, // iload_1
-  0x64, // isub
-  branch(0xa2, 'nextOuter'), // if_icmpge      j >= a.length - 1 - i
-  0x2a, // aload_0
-  0x1c, // iload_2
-  0x2e, // iaload              a[j]
-  0x2a, // aload_0
-  0x1c, // iload_2
-  0x04, // iconst_1
-  0x60, // iadd
-  0x2e, // iaload              a[j + 1]
-  branch(0xa4, 'nextInner'), // if_icmple      already in order
-  0x2a, // aload_0
-  0x1c, // iload_2
-  0x2e, // iaload
-  0x3e, // istore_3            t = a[j]
-  0x2a, // aload_0
-  0x1c, // iload_2
-  0x2a, // aload_0
-  0x1c, // iload_2
-  0x04, // iconst_1
-  0x60, // iadd
-  0x2e, // iaload
-  0x4f, // iastore             a[j] = a[j + 1]
-  0x2a, // aload_0
-  0x1c, // iload_2
-  0x04, // iconst_1
-  0x60, // iadd
-  0x1d, // iload_3
-  0x4f, // iastore             a[j + 1] = t
+  0x1c,
+  0x2a,
+  0xbe,
+  0x04,
+  0x64,
+  0x1b,
+  0x64,
+  branch(0xa2, 'nextOuter'),
+  0x2a,
+  0x1c,
+  0x2e,
+  0x2a,
+  0x1c,
+  0x04,
+  0x60,
+  0x2e,
+  branch(0xa4, 'nextInner'),
+  0x2a,
+  0x1c,
+  0x2e,
+  0x3e,
+  0x2a,
+  0x1c,
+  0x2a,
+  0x1c,
+  0x04,
+  0x60,
+  0x2e,
+  0x4f,
+  0x2a,
+  0x1c,
+  0x04,
+  0x60,
+  0x1d,
+  0x4f,
   label('nextInner'),
   0x84,
   0x02,
-  0x01, // iinc 2, 1
-  branch(0xa7, 'inner'), // goto inner
+  0x01,
+  branch(0xa7, 'inner'),
   label('nextOuter'),
   0x84,
   0x01,
-  0x01, // iinc 1, 1
-  branch(0xa7, 'outer'), // goto outer
+  0x01,
+  branch(0xa7, 'outer'),
   label('done'),
-  0xb1, // return
+  0xb1,
 ]);
 
-/** `a[index] = value` with a one-byte constant — the opening of the sort fixture. */
 function fill(index: number, value: number): readonly number[] {
   return [0x2a, 0x03 + index, 0x10, value, 0x4f];
 }
 
-/** Two arrays, so a write to one can be watched leaving the other alone. */
 const TWO_ARRAYS: readonly number[] = [
-  0x05, //             iconst_2
+  0x05,
   0xbc,
-  T_INT, //     newarray int
-  0x4b, //             astore_0        a
-  0x05, //             iconst_2
+  T_INT,
+  0x4b,
+  0x05,
   0xbc,
-  T_INT, //     newarray int
-  0x4c, //             astore_1        b
+  T_INT,
+  0x4c,
   0x2a,
   0x03,
   0x04,
-  0x4f, // a[0] = 1
-  0x00, //             nop
-  0x00, //             nop
+  0x4f,
+  0x00,
+  0x00,
   0x2a,
   0x04,
   0x05,
-  0x4f, // a[1] = 2
-  0xb1, //             return
+  0x4f,
+  0xb1,
 ];
 
-describe('execute — allocation and element access', () => {
+describe('execute: allocation and element access', () => {
   it('allocates a zero-filled array and pushes its length', () => {
-    // iconst_3; newarray int; arraylength; ireturn
     expect(evaluate([0x06, 0xbc, T_INT, 0xbe, 0xac])).toBe(3);
   });
 
-  it('allocates a zero length array, which is legal and simply empty', () => {
-    const snapshots = run([0x03, 0xbc, T_INT, 0x4b, 0xb1]); // iconst_0; newarray; astore_0; return
+  it('allocates a zero-length array', () => {
+    const snapshots = run([0x03, 0xbc, T_INT, 0x4b, 0xb1]);
 
     expect(elementsAt(finalHeap(snapshots), 0)).toEqual([]);
   });
 
   it('reads back what iastore wrote, leaving its neighbours at zero', () => {
-    const snapshots = run([
-      0x06,
-      0xbc,
-      T_INT, // iconst_3; newarray int
-      0x4b, //          astore_0
-      0x2a,
-      0x04,
-      0x10,
-      42,
-      0x4f, // a[1] = 42
-      0xb1, //          return
-    ]);
+    const snapshots = run([0x06, 0xbc, T_INT, 0x4b, 0x2a, 0x04, 0x10, 42, 0x4f, 0xb1]);
 
     expect(elementsAt(finalHeap(snapshots), 0)).toEqual([0, 42, 0]);
-    // aload_0; iconst_1; iaload; ireturn appended to the same program
     expect(
       evaluate([0x06, 0xbc, T_INT, 0x4b, 0x2a, 0x04, 0x10, 42, 0x4f, 0x2a, 0x04, 0x2e, 0xac]),
     ).toBe(42);
   });
 
-  it('gives every allocation its own handle and its own elements', () => {
+  it('gives every allocation its own handle and elements', () => {
     const snapshots = run(TWO_ARRAYS);
     const heap = finalHeap(snapshots);
 
@@ -326,14 +273,13 @@ describe('execute — allocation and element access', () => {
     expect(elementsAt(heap, 1)).toEqual([0, 0]);
   });
 
-  it('walks an array with a loop, filling it and summing it back to 15', () => {
+  it('fills an array in a loop and sums it back to 15', () => {
     expect(evaluate([...SUM_LOOP], 3)).toBe(15);
   });
 
   it('sorts a hand-built array with a nested bubble-sort loop', () => {
     const snapshots = run(BUBBLE_SORT);
 
-    // The sort really ran: by the first `arraylength` the fill is complete and unsorted.
     const sortBegins = snapshots.findIndex(
       (snapshot) => snapshot.currentInstruction?.mnemonic === 'arraylength',
     );
@@ -344,7 +290,7 @@ describe('execute — allocation and element access', () => {
   });
 });
 
-describe('execute — value kinds', () => {
+describe('execute: value kinds', () => {
   it('marks a freshly allocated array as a reference and its length as an int', () => {
     const snapshots = run([0x06, 0xbc, T_INT, 0xbe, 0x3b, 0xb1]);
 
@@ -352,13 +298,13 @@ describe('execute — value kinds', () => {
     expect(topKindAfter(snapshots, 'arraylength')).toBe('int');
   });
 
-  it('marks an element read with iaload as an int, not as the reference it came from', () => {
+  it('marks an element read with iaload as an int', () => {
     const snapshots = run([0x06, 0xbc, T_INT, 0x4b, 0x2a, 0x03, 0x2e, 0x3c, 0xb1]);
 
     expect(topKindAfter(snapshots, 'iaload')).toBe('int');
   });
 
-  it('reads a reference back as a reference after a round trip through a local slot', () => {
+  it('keeps the ref kind across a round trip through a local slot', () => {
     const snapshots = run([0x06, 0xbc, T_INT, 0x4b, 0x2a, 0x57, 0xb1]);
     const stored = snapshots.find(
       (snapshot) => snapshot.currentInstruction?.mnemonic === 'aload_0',
@@ -368,14 +314,13 @@ describe('execute — value kinds', () => {
     expect(topKindAfter(snapshots, 'aload_0')).toBe('ref');
   });
 
-  it('keeps the kinds aligned with the values they describe', () => {
+  it('keeps the kind arrays the same length as the values they describe', () => {
     const snapshots = run(BUBBLE_SORT);
 
     for (const snapshot of snapshots) {
       for (const frame of snapshot.callStack) {
         expect(frame.operandKinds).toHaveLength(frame.operandStack.length);
         expect(frame.localKinds).toHaveLength(frame.locals.length);
-        // A slot holds a kind exactly when it holds a value.
         expect(frame.localKinds?.map((kind) => kind !== undefined)).toEqual(
           frame.locals.map((value) => value !== undefined),
         );
@@ -383,8 +328,7 @@ describe('execute — value kinds', () => {
     }
   });
 
-  it('duplicates a reference as a reference', () => {
-    // iconst_3; newarray int; dup; astore_0; arraylength; istore_1; return
+  it('dup keeps the ref kind', () => {
     const snapshots = run([0x06, 0xbc, T_INT, 0x59, 0x4b, 0xbe, 0x3c, 0xb1]);
 
     expect(topKindAfter(snapshots, 'dup')).toBe('ref');
@@ -392,8 +336,8 @@ describe('execute — value kinds', () => {
   });
 });
 
-describe('execute — heap snapshots', () => {
-  it('freezes every array and every element list it hands out', () => {
+describe('execute: heap snapshots', () => {
+  it('freezes every array and every element list on the heap', () => {
     const snapshots = run(TWO_ARRAYS);
 
     for (const snapshot of snapshots) {
@@ -410,21 +354,19 @@ describe('execute — heap snapshots', () => {
     expect(() => Object.assign(array ?? {}, { length: 99 })).toThrow(TypeError);
   });
 
-  it('hands consecutive snapshots the same frozen heap while nothing writes to it', () => {
+  it('shares one frozen heap across consecutive snapshots while nothing writes', () => {
     const snapshots = run(TWO_ARRAYS);
     const heaps = snapshots.map(heapOf);
     const objectsAt = (handle: number): number =>
       new Set(heaps.map((heap) => heap[handle]).filter((array) => array !== undefined)).size;
 
-    // Five views for eighteen snapshots: empty, after each allocation, after each store.
     expect(heaps).toHaveLength(18);
     expect(new Set(heaps).size).toBe(5);
-    // `a` is copied once when it is created and once per write; `b` is never written at all.
     expect(objectsAt(0)).toBe(3);
     expect(objectsAt(1)).toBe(1);
   });
 
-  it('replaces only the array a store touched and shares its siblings', () => {
+  it('replaces only the array a store wrote to, sharing the rest', () => {
     const snapshots = run(TWO_ARRAYS);
     const step = snapshots.findIndex(
       (snapshot) => snapshot.currentInstruction?.mnemonic === 'iastore',
@@ -447,23 +389,21 @@ describe('execute — heap snapshots', () => {
       ),
     ).snapshots;
 
-    // One array, five elements written: six frozen copies for a run of eighty-odd steps.
     expect(distinctArrays(snapshots)).toBe(6);
     expect(snapshots.length).toBeGreaterThan(60);
   });
 
-  it('keeps the copies of a long sort proportional to the writes, not to the steps', () => {
+  it('keeps the copies of a long sort proportional to its writes', () => {
     const snapshots = run(BUBBLE_SORT);
     const writes = snapshots.filter(
       (snapshot) => snapshot.currentInstruction?.mnemonic === 'iastore',
     ).length;
 
-    // The initial fill plus every swap; the array itself accounts for the remaining copy.
     expect(distinctArrays(snapshots)).toBe(writes + 1);
     expect(distinctArrays(snapshots)).toBeLessThan(snapshots.length / 4);
   });
 
-  it('carries the final heap on the terminal snapshot, where no frame is left', () => {
+  it('carries the final heap on the terminal snapshot', () => {
     const snapshots = run(BUBBLE_SORT);
     const terminal = snapshots.at(-1);
 
@@ -472,21 +412,14 @@ describe('execute — heap snapshots', () => {
   });
 
   it('leaves the heap empty for a run that never allocates', () => {
-    const snapshots = run([0x04, 0x3b, 0xb1]); // iconst_1; istore_0; return
+    const snapshots = run([0x04, 0x3b, 0xb1]);
 
     expect(snapshots.every((snapshot) => heapOf(snapshot).length === 0)).toBe(true);
-    // Nothing changes, so every snapshot shares the one empty array.
     expect(new Set(snapshots.map(heapOf)).size).toBe(1);
   });
 });
 
-/**
- * The two memory bounds. Both exist because the failure they prevent is not an exception:
- * `new Array(n).fill(0)` past a certain `n` ends the process with a V8 fatal error, and a
- * history that outgrows the tab takes it down with no error at all.
- */
-describe('execute — the limits on heap memory', () => {
-  /** `ldc #1; newarray int; return`, with #1 holding `length`. */
+describe('execute: heap memory limits', () => {
   function allocate(length: number): ExecutionResult {
     const pool = new ConstantPoolBuilder();
     const index = pool.integer(length);
@@ -498,9 +431,7 @@ describe('execute — the limits on heap memory', () => {
     );
   }
 
-  it('refuses an array larger than the whole heap instead of dying trying', () => {
-    // The allocation a real `new int[Integer.MAX_VALUE]` compiles to. Reaching
-    // `new Array(...).fill(0)` with it is an unrecoverable V8 abort, not a thrown error.
+  it('refuses an array larger than the heap limit', () => {
     const error = expectVmError(allocate(2_147_483_647));
 
     expect(error).toMatchObject({
@@ -516,8 +447,7 @@ describe('execute — the limits on heap memory', () => {
     expect(expectCompleted(allocate(MAX_HEAP_ELEMENTS)).kind).toBe('completed');
   });
 
-  it('counts every array on the heap, not each one on its own', () => {
-    // Two allocations of two thirds of the limit: neither is too large by itself.
+  it('sums every array on the heap against the limit', () => {
     const two = Math.ceil((MAX_HEAP_ELEMENTS * 2) / 3);
     const pool = new ConstantPoolBuilder();
     const index = pool.integer(two);
@@ -529,7 +459,6 @@ describe('execute — the limits on heap memory', () => {
             {
               name: 'main',
               descriptor: '()V',
-              // ldc #1; newarray int; astore_0; ldc #1; newarray int; return
               code: [0x12, index, 0xbc, T_INT, 0x4b, 0x12, index, 0xbc, T_INT, 0xb1],
             },
           ],
@@ -542,8 +471,6 @@ describe('execute — the limits on heap memory', () => {
   });
 
   it('stops a run whose array writes outgrow the recording budget', () => {
-    // A modest array written in a loop: no single allocation is large, but the history keeps
-    // one copy of the array per write, so the cost is length x writes.
     const length = 100_000;
     const pool = new ConstantPoolBuilder();
     const index = pool.integer(length);
@@ -559,13 +486,13 @@ describe('execute — the limits on heap memory', () => {
               index,
               0xbc,
               T_INT,
-              0x4b, // a = new int[100000]
+              0x4b,
               label('loop'),
               0x2a,
               0x03,
               0x03,
-              0x4f, // a[0] = 0
-              branch(0xa7, 'loop'), // goto loop
+              0x4f,
+              branch(0xa7, 'loop'),
             ]),
           },
         ],
@@ -579,12 +506,11 @@ describe('execute — the limits on heap memory', () => {
       resource: 'history',
       limit: MAX_RECORDED_ELEMENTS,
     });
-    // It stopped on the budget, long before it stopped on the step limit.
     expect(result.snapshots.length).toBeLessThan(20_000);
   });
 
-  it('leaves a run that never allocates untouched by either budget', () => {
-    const snapshots = run([0x04, 0x3b, 0xb1]); // iconst_1; istore_0; return
+  it('lets a run that never allocates through both budgets', () => {
+    const snapshots = run([0x04, 0x3b, 0xb1]);
 
     expect(snapshots).not.toHaveLength(0);
   });

@@ -1,15 +1,3 @@
-/**
- * The teaching text against the engine, on every snapshot of all four bundled examples.
- *
- * `describeNextInstruction` states what is about to happen in words and numbers — "pushes
- * 6 × 4 = 24", "true, so execution jumps to pc 7", "the callee starts at pc 0 and main
- * resumes at pc 4". Each of those is a prediction, and the next snapshot is the answer, so
- * every sentence can be held against what the interpreter actually did.
- *
- * The examples the other derivation tests never touch are the point here: the loops in Gcd
- * and SumOfProducts produce hundreds of predictions that nothing else checks.
- */
-
 import { describe, expect, it } from 'vitest';
 
 import { parseClassFile } from '../core/classfile';
@@ -24,13 +12,11 @@ import { describeNextInstruction } from './derivations';
 import { parseExampleManifest } from './manifest';
 import { buildProgram, listingFor, type LoadedProgram } from './program';
 
-/** `Pops 4 and 6 and pushes 6 × 4 = 24.` — both operands, the symbol and the result. */
 const ARITHMETIC = /and pushes (-?\d+) (\S+) (-?\d+) = (-?\d+)\.$/;
-const BRANCH_TAKEN = /— true, so execution jumps to pc (\d+)\.$/;
-const BRANCH_NOT_TAKEN = /— false, so execution falls through to pc (\d+)\.$/;
-const CALL = /the callee starts at pc 0 and (\S+) resumes at pc (\d+)\.$/;
+const BRANCH_TAKEN = /: true, so execution jumps to pc (\d+)\.$/;
+const BRANCH_NOT_TAKEN = /: false, so execution falls through to pc (\d+)\.$/;
+const CALL = /callee starts at pc 0 and (\S+) resumes at pc (\d+)\.$/;
 
-/** The symbol the sentence uses has to belong to the instruction that is about to run. */
 const SYMBOLS: Readonly<Record<string, string>> = {
   '+': 'iadd',
   '−': 'isub',
@@ -75,8 +61,6 @@ describe('what the panels explain matches what the interpreter does', () => {
         if (explanation === '' || next === undefined) {
           return;
         }
-        // Every assertion carries the sentence it is about — a bare `2 !== 3` on step 417 of
-        // SumOfProducts says nothing.
         const said = `step ${String(index)}: ${explanation}`;
         const stack = snapshot.callStack.at(-1)?.operandStack ?? [];
         const top = next.callStack.at(-1);
@@ -106,7 +90,6 @@ describe('what the panels explain matches what the interpreter does', () => {
         }
       });
 
-      // A sentence that changed shape would leave every assertion above unreached.
       expect(arithmetic).toBeGreaterThan(0);
       expect(branches).toBeGreaterThan(0);
       expect(calls).toBeGreaterThan(0);
@@ -121,7 +104,6 @@ describe('what the panels explain matches what the interpreter does', () => {
       ).length;
     };
 
-    // Euclid's loop tests its condition four times; the 6×6 grid tests its own dozens of times.
     expect(branchesIn('Gcd.class', 'Gcd.java')).toBe(4);
     expect(branchesIn('SumOfProducts.class', 'SumOfProducts.java')).toBeGreaterThan(40);
   });

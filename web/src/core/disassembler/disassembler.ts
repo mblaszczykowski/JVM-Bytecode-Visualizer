@@ -10,16 +10,6 @@ import {
 } from './opcodes';
 import type { DisassembledCode, Instruction, SwitchCase } from './types';
 
-/**
- * Sequential decoder for a method's `code[]` array (JVMS §4.7.3).
- *
- * Never throws and never reads past the buffer. Every instruction javac can emit is decoded
- * in full — operands included, whether or not the interpreter can run it — so the listing
- * stops only at bytes that are not an instruction at all: a reserved or unassigned opcode, an
- * operand cut off by the end of `code[]`, a `wide` prefix on something it cannot widen, or a
- * switch whose table runs past the end. From such a byte on, nothing is known to be an
- * instruction boundary, so decoding ends at `truncatedAtOffset` instead of guessing.
- */
 export function disassemble(code: Uint8Array): DisassembledCode {
   const view = new DataView(code.buffer, code.byteOffset, code.byteLength);
   const instructions: Instruction[] = [];
@@ -61,7 +51,6 @@ function decodeAt(view: DataView, offset: number): DecodeStep {
   switch (info.kind) {
     case 'supported':
     case 'unsupported': {
-      // The two switches are the only instructions with a stack effect and no fixed length.
       const { operandBytes } = info;
       return operandBytes === undefined
         ? decodeSwitch(view, offset, info)
@@ -117,8 +106,6 @@ function readOperands(
     const value = readOperand(view, cursor, spec.type);
     operands.push(value);
     if (spec.role === 'branch-offset') {
-      // JVMS §6.5 (goto, if<cond>, goto_w, …): the delta is relative to the opcode byte
-      // itself, not to the byte following the operands.
       branchTarget = instructionOffset + value;
     }
     cursor += operandWidth(spec.type);
@@ -150,33 +137,17 @@ function instructionOf(
   };
 }
 
-/**
- * JVMS §6.5 tableswitch/lookupswitch.
- *
- * Both start with 0–3 bytes of padding so that the first 4-byte operand begins on a 4-byte
- * boundary *of `code[]`* — which is why the padding is computed from the offset within the
- * method and not from the address of the buffer. After it come signed 4-byte values, and
- * every jump offset is relative to the opcode byte, exactly like a two-byte branch delta.
- *
- * The arms go into `switchTargets` rather than into `operands`: their number is decided by
- * the bytes, and the default branch has no match value to put next to it.
- */
 function decodeSwitch(
   view: DataView,
   offset: number,
   info: SupportedOpcode | UnsupportedOpcode,
 ): DecodeStep {
-  // The opcode byte sits at `offset`, so the operands start at `offset + 1` and the padding
-  // is whatever it takes to round that up to a multiple of four.
   let cursor = offset + 1 + ((4 - ((offset + 1) % 4)) % 4);
-  // The fixed head is `default` plus `npairs`, or `default` plus `low` and `high`.
   const isLookup = info.opcode === LOOKUPSWITCH;
   if (cursor + (isLookup ? 8 : 12) > view.byteLength) {
     return STOP;
   }
 
-  // Frozen arm by arm: an `Instruction` is replayed by the UI, which must not be able to
-  // rewrite the jump table it is drawing.
   const cases: SwitchCase[] = [
     Object.freeze({ match: undefined, target: offset + view.getInt32(cursor) }),
   ];
@@ -185,7 +156,6 @@ function decodeSwitch(
   if (isLookup) {
     const npairs = view.getInt32(cursor);
     cursor += 4;
-    // A negative or oversized `npairs` is a corrupt table, not a switch with many arms.
     if (npairs < 0 || cursor + npairs * 8 > view.byteLength) {
       return STOP;
     }
@@ -222,18 +192,6 @@ function decodeSwitch(
   };
 }
 
-/**
- * JVMS §6.5 wide: a prefix that re-reads the local index of the following load, store or
- * `ret` as `u2`, and both the index and the constant of a following `iinc` as `u2`/`i2`.
- *
- * It is folded into the instruction it modifies rather than listed on its own, which is what
- * `javap -c` does too: it prints one row, `iload_w 257`, at the offset of the `wide` byte.
- * The `_w` suffix is javap's, the operands are the widened ones, and `opcode` stays the
- * *widened* instruction's — 0x15 for `iload_w` — so the interpreter dispatches, and the UI
- * explains the stack effect, exactly as they do for the narrow form. The only difference
- * between the two rows is the operand width, and that is already decoded by the time anyone
- * reads it.
- */
 function decodeWide(view: DataView, offset: number): DecodeStep {
   if (offset + 2 > view.byteLength) {
     return STOP;
@@ -261,7 +219,6 @@ function decodeWide(view: DataView, offset: number): DecodeStep {
   };
 }
 
-/** JVMS §4.1: every multi-byte value in a class file is big-endian. */
 function readOperand(view: DataView, offset: number, operandType: OperandType): number {
   switch (operandType) {
     case 'u1':

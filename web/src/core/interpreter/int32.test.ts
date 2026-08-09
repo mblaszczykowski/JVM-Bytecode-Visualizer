@@ -24,11 +24,6 @@ import {
   ixor,
 } from './int32';
 
-/**
- * Reference semantics: exact arithmetic on BigInt, then truncation to the low 32 bits with
- * sign extension — the definition of `int` in JVMS §2.3.1 and §2.11.3. Every property below
- * compares the implementation against it, so an accidental `a * b` or a missing `| 0` fails.
- */
 function toInt32(value: bigint): number {
   const low = BigInt.asIntN(32, value);
   return Number(low);
@@ -96,7 +91,6 @@ describe('int32', () => {
     expect(Object.is(ineg(0), -0)).toBe(false);
   });
 
-  // JVMS §6.5 idiv: the only case where the result of an int division is not representable.
   it('overflows INT_MIN / -1 back to INT_MIN', () => {
     expect(idiv(INT_MIN, -1)).toBe(INT_MIN);
     expect(irem(INT_MIN, -1)).toBe(0);
@@ -109,7 +103,6 @@ describe('int32', () => {
     expect(imul(INT_MAX, 2)).toBe(-2);
     expect(imul(65_536, 65_536)).toBe(0);
     expect(imul(INT_MIN, INT_MIN)).toBe(0);
-    // 46341^2 = 2147488281 > INT_MAX: the case a plain `a * b` would get wrong.
     expect(imul(46_341, 46_341)).toBe(-2_147_479_015);
   });
 
@@ -123,15 +116,9 @@ describe('int32', () => {
   });
 });
 
-/**
- * JVMS §6.5 ishl/ishr/iushr: the shift distance is the low five bits of value2 and nothing
- * else, so a distance of 32 shifts by nothing and a negative one shifts by its low bits. The
- * reference below masks explicitly, which is the only way the property can catch an
- * implementation that leaned on JavaScript's shift operators doing it silently.
- */
 const SHIFT_DISTANCE = 0x1f;
 
-describe('int32 — shifts and bitwise logic', () => {
+describe('int32: shifts and bitwise logic', () => {
   it('ishl shifts left by the low five bits of value2', () => {
     fc.assert(
       fc.property(int32, int32, (value1, value2) => {
@@ -145,7 +132,6 @@ describe('int32 — shifts and bitwise logic', () => {
     fc.assert(
       fc.property(int32, int32, (value1, value2) => {
         const distance = BigInt(value2 & SHIFT_DISTANCE);
-        // A BigInt `>>` is arithmetic, which is precisely what `ishr` is defined to be.
         expect(ishr(value1, value2)).toBe(toInt32(BigInt(value1) >> distance));
       }),
     );
@@ -174,18 +160,16 @@ describe('int32 — shifts and bitwise logic', () => {
   });
 
   it('ignores everything above the low five bits of the distance', () => {
-    // 1 << 32 is 1, not 0: the distance wraps rather than clearing the value.
     expect(ishl(1, 32)).toBe(1);
     expect(ishl(1, 33)).toBe(2);
     expect(ishr(-8, 33)).toBe(-4);
     expect(iushr(-1, 32)).toBe(-1);
     expect(iushr(-1, 1)).toBe(INT_MAX);
-    // A negative distance is masked the same way: -1 & 31 is 31.
     expect(ishl(1, -1)).toBe(INT_MIN);
   });
 });
 
-describe('int32 — narrowing conversions', () => {
+describe('int32: narrowing conversions', () => {
   it('i2b truncates to a signed byte', () => {
     fc.assert(
       fc.property(int32, (value) => {
@@ -202,7 +186,7 @@ describe('int32 — narrowing conversions', () => {
     );
   });
 
-  it('i2c truncates to an unsigned char, the one JVM type with no sign', () => {
+  it('i2c truncates to an unsigned char', () => {
     fc.assert(
       fc.property(int32, (value) => {
         const converted = i2c(value);
@@ -224,14 +208,13 @@ describe('int32 — narrowing conversions', () => {
   });
 });
 
-/** Exact floor division on BigInt: `/` truncates towards zero, so a negative result rounds up. */
 function floorDiv(dividend: bigint, divisor: bigint): bigint {
   const quotient = dividend / divisor;
   return dividend % divisor !== 0n && dividend < 0n !== divisor < 0n ? quotient - 1n : quotient;
 }
 
-describe('int32 — the java.lang.Math primitives', () => {
-  it('iabs is the absolute value wherever one exists', () => {
+describe('int32: java.lang.Math primitives', () => {
+  it('iabs is the absolute value wherever one is representable', () => {
     fc.assert(
       fc.property(int32, (value) => {
         expect(iabs(value)).toBe(toInt32(value < 0 ? -BigInt(value) : BigInt(value)));
@@ -239,8 +222,6 @@ describe('int32 — the java.lang.Math primitives', () => {
     );
   });
 
-  // The javadoc of Math.abs(int) states this case outright: the true absolute value of
-  // Integer.MIN_VALUE is not an int, and the specified result is Integer.MIN_VALUE.
   it('answers Integer.MIN_VALUE for abs(Integer.MIN_VALUE)', () => {
     expect(iabs(INT_MIN)).toBe(INT_MIN);
     expect(iabs(INT_MAX)).toBe(INT_MAX);
@@ -269,13 +250,12 @@ describe('int32 — the java.lang.Math primitives', () => {
     );
   });
 
-  it('differs from idiv exactly where Java says it does', () => {
+  it('floors where idiv and irem truncate', () => {
     expect(ifloorDiv(7, 2)).toBe(3);
-    expect(ifloorDiv(-7, 2)).toBe(-4); // idiv would answer -3
+    expect(ifloorDiv(-7, 2)).toBe(-4);
     expect(ifloorDiv(7, -2)).toBe(-4);
-    expect(ifloorMod(-7, 2)).toBe(1); // irem would answer -1
+    expect(ifloorMod(-7, 2)).toBe(1);
     expect(ifloorMod(7, -2)).toBe(-1);
-    // The same overflow as idiv, and stated the same way in the javadoc.
     expect(ifloorDiv(INT_MIN, -1)).toBe(INT_MIN);
     expect(ifloorMod(INT_MIN, -1)).toBe(0);
   });

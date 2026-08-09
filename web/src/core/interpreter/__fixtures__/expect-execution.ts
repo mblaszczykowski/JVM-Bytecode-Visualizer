@@ -1,11 +1,5 @@
 import type { ExecutionResult, Snapshot, StackFrame, VmError } from '../types';
 
-/**
- * Narrowing helpers for `ExecutionResult` plus the few lookups every interpreter test needs.
- * A wrong result kind fails the test with the kind that actually came back, which is the
- * information one wants first when a run misbehaves.
- */
-
 type CompletedRun = Extract<ExecutionResult, { kind: 'completed' }>;
 type StepLimitRun = Extract<ExecutionResult, { kind: 'step-limit' }>;
 
@@ -30,7 +24,6 @@ export function expectStepLimit(result: ExecutionResult): StepLimitRun {
   return result;
 }
 
-/** The frame of `methodName` in the last snapshot that still has one. */
 export function lastFrameOf(snapshots: readonly Snapshot[], methodName: string): StackFrame {
   for (const snapshot of [...snapshots].reverse()) {
     const frame = snapshot.callStack

@@ -19,7 +19,7 @@ describe('ErrorBanner', () => {
     render(
       <ErrorBanner
         severity="warning"
-        message="Stopped after 20 000 steps — the program probably does not terminate. Showing the history up to this point."
+        message="Stopped after 20 000 steps. The program probably does not terminate; showing the history up to this point."
       />,
     );
 
@@ -67,18 +67,12 @@ describe('ErrorBanner', () => {
     expect(screen.queryByRole('button', { name: 'Dismiss this message' })).not.toBeInTheDocument();
   });
 
-  /**
-   * §12: hierarchy inside the glass comes from background opacity and hairlines. A banner that
-   * shouted with a saturated fill would be the one place on the screen breaking that rule.
-   */
   it('carries its severity in the hairline, on the same frame the panels use', () => {
     render(<ErrorBanner severity="error" message="Not a .class file." />);
 
     const banner = screen.getByTestId('error-banner');
 
     expect(banner.className).toContain('rounded-panel');
-    // The ring is a token now, tinted from `--color-error` so it themes with everything else;
-    // the raw rgb() literal it replaced could only ever be right in one of the two palettes.
     expect(banner.className).toContain('shadow-banner-error');
   });
 

@@ -11,9 +11,7 @@ import {
 } from './__fixtures__/bubble-sort-run';
 import { HeapPanel } from './HeapPanel';
 
-/** The comparison of the first pass: `iaload` reading a[0] out of `{5,3,4,1,2}`. */
 const loadStep = firstStepOf('iaload');
-/** The first swap: `iastore` writing 3 over a[0]. The array only changes on the next step. */
 const storeStep = firstStepOf('iastore', 40);
 
 function cellValues(): string[] {
@@ -45,7 +43,6 @@ describe('HeapPanel', () => {
     renderAt(loadStep);
 
     expect(currentCell()?.dataset.index).toBe('0');
-    // Colour is not the only signal: the array says in words which element is being touched.
     expect(screen.getByText('reads index 0')).toBeInTheDocument();
   });
 
@@ -54,7 +51,6 @@ describe('HeapPanel', () => {
 
     expect(currentCell()?.dataset.index).toBe('0');
     expect(screen.getByText('writes index 0')).toBeInTheDocument();
-    // The store has not run yet — the snapshot is the state before it.
     expect(cellValues()).toEqual(['5', '3', '4', '1', '2']);
   });
 

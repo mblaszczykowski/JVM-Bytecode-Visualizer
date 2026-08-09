@@ -4,10 +4,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { depths } from './__fixtures__/factorial-run';
 import { TransportControls } from './TransportControls';
 
-/** Call stack depth per step of the real `factorial(4)` run. */
 const runDepths = depths();
 
-/** Every prop the transport needs beyond the position, so a render reads as one line. */
 function handlers() {
   return {
     events: [],
@@ -23,7 +21,6 @@ function handlers() {
   };
 }
 
-/** A flat depth history of `steps` entries, so the transport can be tested on its own. */
 function flatDepths(steps: number): readonly number[] {
   return Array.from({ length: steps }, () => 1);
 }
@@ -107,8 +104,6 @@ describe('TransportControls', () => {
       />,
     );
 
-    // aria-disabled rather than the attribute: a `disabled` button drops out of the tab
-    // order, so the transport would change shape at either end of the history.
     expect(screen.getByRole('button', { name: 'Step back' })).toHaveAttribute(
       'aria-disabled',
       'true',
@@ -247,8 +242,6 @@ describe('TransportControls', () => {
       />,
     );
 
-    // The value belongs in the label; an aria-label of "Playback speed" alone would hide
-    // the visible `1×` from a screen reader without replacing it.
     const speedPill = screen.getByRole('button', { name: 'Playback speed 1×' });
     expect(speedPill).toHaveTextContent('1×');
 

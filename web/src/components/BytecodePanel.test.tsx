@@ -20,12 +20,10 @@ afterEach(() => {
   });
 });
 
-/** The real disassembly of a method of the committed `Factorial.class`. */
 const factorial = factorialListing();
 const constructor = constructorListing();
 const pool = factorialProgram().classFile.constantPool;
 
-/** The LineNumberTable of `factorial`, in the shape the panel takes it. */
 const sourceLineForOffset = new Map(
   factorial.instructions.flatMap((instruction) => {
     const line = lineForOffset(factorial, instruction.offset);
@@ -35,7 +33,6 @@ const sourceLineForOffset = new Map(
 
 type ExtraProps = Partial<Parameters<typeof BytecodePanel>[0]>;
 
-/** The rendered row of the one instruction with this mnemonic. */
 function rowOf(mnemonic: string): HTMLElement {
   const row = screen.getByText(mnemonic).closest('li');
   if (row === null) {
@@ -78,9 +75,7 @@ describe('BytecodePanel', () => {
     renderListing(factorial, undefined);
 
     expect(screen.getByRole('region', { name: 'Bytecode' })).toBeInTheDocument();
-    // stack=3, locals=1 in the Code attribute javap prints for factorial(int).
-    // The descriptor inside it is a way into the glossary, so the line is no longer one node.
-    const descriptor = screen.getByRole('button', { name: '(I)I — What is a descriptor?' });
+    const descriptor = screen.getByRole('button', { name: '(I)I: What is a descriptor?' });
     expect(descriptor.parentElement).toHaveTextContent('factorial(I)I · max 3/1');
     expect(screen.getAllByRole('listitem')).toHaveLength(factorial.instructions.length);
   });
@@ -114,7 +109,6 @@ describe('BytecodePanel', () => {
     const row = within(screen.getByTestId('current-instruction'));
 
     expect(row.getByText('if_icmpgt')).toBeInTheDocument();
-    // The operand in the stream is the delta 5; the target (2 + 5) is 7, which is what shows.
     expect(row.getByText('7')).toBeInTheDocument();
     expect(row.queryByText('5')).not.toBeInTheDocument();
   });
@@ -130,7 +124,6 @@ describe('BytecodePanel', () => {
 
     const arc = screen.getByTestId('branch-arc');
 
-    // `if_icmpgt` is row 2 and targets offset 7, which is row 5.
     expect(arc).toHaveStyle({ height: `${String((5 - 2) * ROW_HEIGHT)}px` });
   });
 
@@ -145,8 +138,6 @@ describe('BytecodePanel', () => {
   });
 
   it('marks instructions outside the supported subset as unsupported', () => {
-    // The constructor javac generates — aload_0, invokespecial, return — is entirely inside
-    // the subset now that objects run, so nothing in it carries the marker.
     renderListing(constructor, 0);
 
     expect(screen.queryAllByText('unsupported')).toHaveLength(0);
@@ -161,7 +152,6 @@ describe('BytecodePanel', () => {
         maxStack={2}
         maxLocals={2}
         instructions={[
-          // iinc 1, 1 — a local slot and an immediate; neither refers to anything.
           { offset: 0, opcode: 0x84, mnemonic: 'iinc', operands: [1, 1] },
           { offset: 3, opcode: 0xb8, mnemonic: 'invokestatic', operands: [7] },
           { offset: 6, opcode: 0xa7, mnemonic: 'goto', operands: [-6], branchTarget: 0 },
@@ -175,7 +165,6 @@ describe('BytecodePanel', () => {
 
     expect(accented('#7')).toBe(true);
     expect(accented('0')).toBe(true);
-    // Two `1`s on the iinc row: the slot and the increment, both plain numbers.
     expect(accented('1')).toBe(false);
   });
 
@@ -183,7 +172,6 @@ describe('BytecodePanel', () => {
     const onSeek = vi.fn();
     renderListing(factorial, 0, { stepForOffset: new Map([[11, 9]]), onSeek });
 
-    // Only the offsets the run reached are seekable; the rest are read-only rows.
     const targets = within(screen.getByRole('list')).getAllByRole('button');
     expect(targets).toHaveLength(1);
 
@@ -191,7 +179,6 @@ describe('BytecodePanel', () => {
     expect(onSeek).toHaveBeenCalledWith(9);
   });
 
-  /** `(I)I` is where a reader first meets the notation, so it is where the notation is explained. */
   it('explains the method descriptor from the descriptor itself', () => {
     render(
       <>
@@ -207,7 +194,7 @@ describe('BytecodePanel', () => {
       </>,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: '(I)I — What is a descriptor?' }));
+    fireEvent.click(screen.getByRole('button', { name: '(I)I: What is a descriptor?' }));
 
     expect(screen.getByTestId('glossary-entry')).toHaveAttribute('data-term', 'descriptor');
   });
@@ -233,10 +220,8 @@ describe('BytecodePanel', () => {
     it('shows what each instruction takes off the operand stack and leaves behind', () => {
       renderListing(factorial, undefined, { constantPool: pool });
 
-      // imul pops two ints and pushes their product; if_icmpgt pops both and pushes nothing.
       expect(stackCellOf('imul')).toBe('−2+1');
       expect(stackCellOf('if_icmpgt')).toBe('−2');
-      // invokestatic is `varies` in the opcode table; the descriptor behind #7 settles it.
       expect(stackCellOf('invokestatic')).toBe('−1+1');
     });
 
@@ -246,7 +231,6 @@ describe('BytecodePanel', () => {
       expect(stackCellOf('return')).toBe('');
     });
 
-    /** `getstatic` reads a field of a type the listing cannot see — there is no number here. */
     it('says varies rather than guessing at an effect that follows a descriptor', () => {
       render(
         <BytecodePanel
@@ -271,8 +255,6 @@ describe('BytecodePanel', () => {
     it('says the effect varies where the descriptor decides it', () => {
       renderListing(constructor, undefined, { constantPool: pool });
 
-      // `invokespecial` is executable, but how much it pops depends on the method it calls,
-      // so the column reports that rather than a number it would have to invent.
       expect(stackCellOf('invokespecial')).toBe('varies');
     });
 
@@ -300,24 +282,23 @@ describe('BytecodePanel', () => {
       });
 
       fireEvent.mouseOver(rowOf('imul'));
-      expect(onLinkedLineChange).toHaveBeenLastCalledWith(29);
+      expect(onLinkedLineChange).toHaveBeenLastCalledWith(20);
 
       fireEvent.focus(screen.getByRole('button', { name: 'Go to pc 14, imul' }));
-      expect(onLinkedLineChange).toHaveBeenLastCalledWith(29);
+      expect(onLinkedLineChange).toHaveBeenLastCalledWith(20);
 
       fireEvent.blur(screen.getByRole('button', { name: 'Go to pc 14, imul' }));
       expect(onLinkedLineChange).toHaveBeenLastCalledWith(undefined);
     });
 
     it('marks every instruction the linked line compiled to', () => {
-      renderListing(factorial, undefined, { sourceLineForOffset, linkedLine: 29 });
+      renderListing(factorial, undefined, { sourceLineForOffset, linkedLine: 20 });
 
-      // `return n * factorial(n - 1);` is the whole second half of the method.
       expect(linkedOffsets()).toEqual(['7', '8', '9', '10', '11', '14', '15']);
     });
 
     it('leaves the current instruction to the accent rather than marking it twice', () => {
-      renderListing(factorial, 14, { sourceLineForOffset, linkedLine: 29 });
+      renderListing(factorial, 14, { sourceLineForOffset, linkedLine: 20 });
 
       expect(screen.getByTestId('current-instruction')).not.toHaveAttribute('data-linked');
       expect(linkedOffsets()).toEqual(['7', '8', '9', '10', '11', '15']);
@@ -339,7 +320,6 @@ describe('what javac was compiling', () => {
       'boxing',
     ]);
     expect(within(rowOf('if_icmpgt')).getByTestId('construct-tag')).toHaveTextContent('loop');
-    // `imul` appears once in this method and carries no construct.
     expect(within(rowOf('imul')).queryByTestId('construct-tag')).not.toBeInTheDocument();
   });
 

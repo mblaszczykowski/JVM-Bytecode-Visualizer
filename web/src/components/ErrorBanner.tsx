@@ -8,24 +8,10 @@ interface BannerAction {
 interface ErrorBannerProps {
   readonly message: string;
   readonly severity: BannerSeverity;
-  /** Optional recovery affordance, e.g. raising the step limit. */
   readonly action?: BannerAction | undefined;
-  /** When given, the banner can be closed — nothing here blocks the rest of the screen. */
   readonly onDismiss?: (() => void) | undefined;
 }
 
-/**
- * Banners borrow the grammar of the current-step highlight — a fill plus an inset outline —
- * so the screen keeps one visual language for "look here".
- *
- * A stopped run (§8: `ClassFileError`, `VmError`) is an `error`; one that merely ran out of
- * steps is a `warning`, because nothing about the program is broken — and it is the variant
- * that arrives with a "raise the limit" action.
- *
- * The fill is deliberately weak. A saturated bar reads as a strip pasted over the glass; the
- * severity is carried by the coloured hairline and the tinted text, which is the same way
- * every other surface here separates itself from the one below it.
- */
 const SEVERITY_STYLE: Record<BannerSeverity, string> = {
   error: 'bg-error/12 text-error shadow-banner-error',
   warning: 'bg-warn/12 text-warn shadow-banner-warn',
@@ -38,7 +24,6 @@ const SEVERITY_LABEL: Record<BannerSeverity, string> = {
   info: 'Info',
 };
 
-/** Panel radius and panel gutter, so the banner lines its text up with whatever it sits under. */
 const FRAME = 'flex items-baseline gap-3 rounded-panel px-4 py-3 text-body';
 
 export function ErrorBanner({ message, severity, action, onDismiss }: ErrorBannerProps) {
@@ -49,7 +34,6 @@ export function ErrorBanner({ message, severity, action, onDismiss }: ErrorBanne
       data-severity={severity}
       className={`${FRAME} ${SEVERITY_STYLE[severity]}`}
     >
-      {/* Plain sentence case: small caps and letterspacing here would read as a dashboard. */}
       <span className="shrink-0 text-label font-medium">{SEVERITY_LABEL[severity]}</span>
       <span className="grow">{message}</span>
       {action === undefined ? null : (

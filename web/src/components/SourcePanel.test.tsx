@@ -11,13 +11,11 @@ import {
 } from './__fixtures__/factorial-run';
 import { SourcePanel } from './SourcePanel';
 
-/** The `Factorial.java` that ships next to the class file, as the app reads it. */
 const fileName = sourceFileName();
 const lines = sourceLines();
 
-/** `return n * factorial(n - 1);` — the recursive call, and the line the run spends most on. */
-const RECURSION_LINE = 29;
-const CONDITION_LINE = 26;
+const RECURSION_LINE = 20;
+const CONDITION_LINE = 17;
 
 function sourceLineAt(index: number): HTMLElement {
   const row = screen.getAllByTestId('source-line')[index];
@@ -27,7 +25,6 @@ function sourceLineAt(index: number): HTMLElement {
   return row;
 }
 
-/** By line number rather than by position, so the current row does not shift the count. */
 function lineRow(lineNumber: number): HTMLElement {
   const row = screen.getAllByTestId(/source-line/)[lineNumber - 1];
   if (row === undefined) {
@@ -77,10 +74,9 @@ describe('SourcePanel', () => {
       />,
     );
 
-    // The recursive call compiles to the instructions at pc 7 through 15.
     expect(screen.getByText('pc 7–15')).toBeInTheDocument();
     expect(
-      screen.getByText('LineNumberTable · largest startPc ≤ 11 → line 29'),
+      screen.getByText('LineNumberTable · largest startPc ≤ 11 → line 20'),
     ).toBeInTheDocument();
   });
 
@@ -108,17 +104,14 @@ describe('SourcePanel', () => {
       />,
     );
 
-    // Only lines the run actually reached are seekable — the javadoc above them is not.
-    // Scoped to the listing: the panel header carries a button of its own.
     const targets = within(screen.getByRole('list')).getAllByRole('button');
     expect(targets.map((target) => target.getAttribute('aria-label'))).toEqual([
-      'Go to line 26',
-      'Go to line 27',
+      'Go to line 17',
+      'Go to line 18',
+      'Go to line 20',
+      'Go to line 28',
       'Go to line 29',
-      'Go to line 37',
-      'Go to line 38',
     ]);
-    // The current line holds the tab stop; the arrow keys reach the rest.
     expect(targets.map((target) => target.getAttribute('tabindex'))).toEqual([
       '-1',
       '-1',
@@ -127,8 +120,7 @@ describe('SourcePanel', () => {
       '-1',
     ]);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Go to line 26' }));
-    // `if (n <= 1)` is the first thing factorial does, two steps into the run.
+    fireEvent.click(screen.getByRole('button', { name: 'Go to line 17' }));
     expect(onSeek).toHaveBeenCalledWith(2);
   });
 
@@ -170,16 +162,11 @@ describe('SourcePanel', () => {
     expect(screen.getByTestId('current-source-line')).not.toHaveAttribute('data-linked');
   });
 
-  /**
-   * A code row never wraps, so at 1024px a javadoc paragraph ends mid-word behind the fade.
-   * The row carries its own text, which is the one affordance that works at every width.
-   */
   it('carries the full text of every line it may be cutting off', () => {
     render(<SourcePanel fileName={fileName} lines={lines} currentLine={undefined} />);
 
     expect(lineRow(RECURSION_LINE)).toHaveAttribute('title', 'return n * factorial(n - 1);');
-    // A blank line has nothing to reveal, so it gets no tooltip.
-    expect(lineRow(18)).not.toHaveAttribute('title');
+    expect(lineRow(22)).not.toHaveAttribute('title');
   });
 
   it('moves the focus between rows with the arrow keys', () => {
@@ -193,8 +180,8 @@ describe('SourcePanel', () => {
       />,
     );
 
-    fireEvent.keyDown(screen.getByRole('button', { name: 'Go to line 26' }), { key: 'ArrowDown' });
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Go to line 17' }), { key: 'ArrowDown' });
 
-    expect(screen.getByRole('button', { name: 'Go to line 27' })).toHaveFocus();
+    expect(screen.getByRole('button', { name: 'Go to line 18' })).toHaveFocus();
   });
 });

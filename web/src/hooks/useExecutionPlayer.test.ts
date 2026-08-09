@@ -4,7 +4,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Snapshot, StackFrame } from '../core/interpreter/types';
 import { BASE_STEP_INTERVAL_MS, useExecutionPlayer } from './useExecutionPlayer';
 
-/** The player never looks inside a snapshot, so the bare shape is enough. */
 function historyOf(steps: number): readonly Snapshot[] {
   return Array.from({ length: steps }, (_, step) => ({ step, callStack: [] }));
 }
@@ -18,7 +17,6 @@ const FRAME: StackFrame = {
   localNames: [],
 };
 
-/** Call stack depth is the only thing step over and step out read out of a snapshot. */
 function historyOfDepths(depths: readonly number[]): readonly Snapshot[] {
   return depths.map((depth, step) => ({
     step,
@@ -202,7 +200,6 @@ describe('useExecutionPlayer', () => {
     expect(result.current.stepIndex).toBe(1);
   });
 
-  // main at depth 1 calls a method at step 2, which itself calls one; both return by step 8.
   const NESTED = [1, 1, 1, 2, 2, 3, 3, 2, 1, 0];
 
   it('steps over a call, past the whole callee', () => {
@@ -259,7 +256,6 @@ describe('useExecutionPlayer', () => {
   });
 
   it('stays put rather than jumping when the history ends inside the callee', () => {
-    // A run cut short by the step limit never comes back down to the caller's depth.
     const { result } = renderPlayer(historyOfDepths([1, 2, 3, 4]));
 
     act(() => {
@@ -354,7 +350,6 @@ describe('useExecutionPlayer', () => {
       result.current.play();
     });
 
-    // Same length, different array: a re-run of the same program still starts from scratch.
     rerender({ history: historyOf(10) });
 
     expect(result.current.stepIndex).toBe(0);
@@ -409,7 +404,6 @@ describe('useExecutionPlayer', () => {
     expect(result.current.isPlaying).toBe(false);
     expect(vi.getTimerCount()).toBe(0);
 
-    // A caller rendering a `[]` literal hands over a new array every time; still nothing to reset.
     rerender({ history: [] });
     expect(result.current.stepIndex).toBe(0);
   });

@@ -77,14 +77,6 @@ import {
   type ValueKind,
 } from './types';
 
-/**
- * Fetch-decode-execute over a `.class` file, recording one snapshot per executed instruction
- * (the state *before* it runs) plus a terminal one.
- *
- * The program runs to completion up front and the caller replays the history, so this is a
- * pure, deterministic function: same class file, same result. It never throws — every
- * failure comes back as an `ExecutionResult`.
- */
 export function execute(classFile: ClassFile, options: ExecuteOptions = {}): ExecutionResult {
   const maxSteps = atLeastOne(options.maxSteps, DEFAULT_MAX_STEPS);
   const entryName = options.entryMethod ?? DEFAULT_ENTRY_METHOD;
@@ -107,13 +99,9 @@ export function execute(classFile: ClassFile, options: ExecuteOptions = {}): Exe
   const writer = new SnapshotWriter();
   const prepared = new Map<MethodInfo, PreparedMethod>();
 
-  // One clock for the whole run: every frame stamps the values it produces with it.
   const clock: RunClock = { step: 0 };
   let entryFrame: Frame;
   try {
-    // Preparing the entry method is the one step outside the run loop that can fault (an
-    // unverifiable branch target), so it needs the same handling — without this `execute()`
-    // would throw a `VmFault` at its caller instead of returning a result.
     entryFrame = createFrame(prepare(prepared, entry.method, entry.code), [], clock);
   } catch (error) {
     return failedRun(error, snapshots, 0, entry.method.name);
@@ -152,18 +140,11 @@ export function execute(classFile: ClassFile, options: ExecuteOptions = {}): Exe
           sourceLineAt(frame),
         ),
       );
-      // Advance before dispatching: a call pushed by this instruction must leave the caller
-      // pointing at its continuation, which is where the frame resumes after the callee returns.
       frame.currentPc = offset;
-      // The snapshot just pushed is the state before this instruction, so anything the dispatch
-      // below produces is stamped with its index — the step a reader is sent to when they ask
-      // where a value came from.
       clock.step = snapshots.length - 1;
       setPc(frame, fetched.nextOffset);
       step(machine, frame, fetched.instruction);
     } catch (error) {
-      // A fault that names a Java exception is not the end of the run until the whole call
-      // stack has been asked whether it wants it (JVMS §2.10).
       if (
         isVmFault(error) &&
         error.location === undefined &&
@@ -185,22 +166,11 @@ export function execute(classFile: ClassFile, options: ExecuteOptions = {}): Exe
 
 export const DEFAULT_ENTRY_METHOD = 'main';
 
-/**
- * Hands an exception to the first handler on the call stack that wants it, unwinding frames
- * that have none (JVMS §2.10). `true` when the machine may carry on, `false` when the stack
- * ran out and the exception is uncaught — at which point the call stack has been emptied,
- * which is precisely what a real JVM does before the run ends.
- *
- * The frames popped on the way are gone from the next snapshot, so the reader watches the
- * stack unwind rather than being told that it did.
- */
 function dispatchThrow(machine: Machine, detail: VmFaultDetail): boolean {
   const thrown = thrownBy(detail);
   if (thrown === undefined) {
     return false;
   }
-  // Interned once and carried by handle, so a rethrow, a handler's local slot and the panel
-  // all name the same object.
   const handle =
     thrown.handle ?? machine.externals.intern({ className: thrown.className, label: thrown.label });
 
@@ -222,11 +192,6 @@ function dispatchThrow(machine: Machine, detail: VmFaultDetail): boolean {
   return false;
 }
 
-/**
- * The first row of this frame's exception table that covers the offset being executed and
- * catches the class thrown. Row order is the source order of the `catch` clauses, so the
- * first match is the one Java picks.
- */
 function handlerFor(frame: Frame, thrownClass: string): ExceptionTableEntry | undefined {
   return frame.method.code.exceptionTable?.find(
     (entry) =>
@@ -236,10 +201,6 @@ function handlerFor(frame: Frame, thrownClass: string): ExceptionTableEntry | un
   );
 }
 
-/**
- * A stopped run, with the history collected so far. Anything that is not a `VmFault` is a bug
- * in the interpreter rather than in the bytecode, and is rethrown rather than dressed up.
- */
 function failedRun(
   error: unknown,
   snapshots: readonly Snapshot[],
@@ -257,7 +218,6 @@ function failedRun(
   };
 }
 
-/** A limit of zero would produce an empty history, which reads as "nothing happened". */
 function atLeastOne(value: number | undefined, fallback: number): number {
   if (value === undefined || !Number.isFinite(value)) {
     return fallback;
@@ -265,14 +225,8 @@ function atLeastOne(value: number | undefined, fallback: number): number {
   return Math.max(1, Math.floor(value));
 }
 
-/**
- * Entry points the interpreter can start from. The `String[]` of `main` stays an empty slot
- * — nothing in the subset can allocate that array — and the no-argument forms exist so a
- * single method can be run directly.
- */
 const ENTRY_DESCRIPTORS: ReadonlySet<string> = new Set(['([Ljava/lang/String;)V', '()V', '()I']);
 
-/** The executable subset of JVMS §6.5, as a union type so the dispatch switch stays exhaustive. */
 const Op = {
   nop: 0x00,
   aconst_null: 0x01,
@@ -368,7 +322,6 @@ const Op = {
 
 type Op = (typeof Op)[keyof typeof Op];
 
-/** Opcodes `execute()` can run; everything else ends the run with `unsupported-opcode`. */
 export const EXECUTABLE_OPCODES: ReadonlySet<number> = new Set<number>(Object.values(Op));
 
 function isExecutable(opcode: number): opcode is Op {
@@ -380,15 +333,10 @@ interface Machine extends MachineState {
   readonly prepared: Map<MethodInfo, PreparedMethod>;
   readonly maxCallDepth: number;
   readonly callStack: Frame[];
-  /** The run's clock, so a call can stamp the callee's arguments with the invoke's step. */
   readonly clock: RunClock;
-  /** Shared by every frame of the run, and never unwound (JVMS §2.5.3). */
   readonly heap: Heap;
-  /** What the program has printed, in the order it printed it. */
   readonly console: ConsoleOutput;
-  /** Objects the machine names but does not model, by handle — see externals.ts. */
   readonly externals: ExternalPool;
-  /** Set when the entry frame returns a value — the result of the whole run. */
   returnValue: number | undefined;
 }
 
@@ -400,12 +348,6 @@ function fetchAt(frame: Frame): { readonly instruction: Instruction; readonly ne
   return fetched;
 }
 
-/**
- * No instruction starts at `pc`: either execution fell off the end of the method, or it
- * reached bytes the disassembler refused to decode (a variable-length instruction, a
- * reserved opcode, an operand cut short by the end of `code[]`). The opcode byte still
- * names the instruction, which is what the user needs to see.
- */
 function undecodable(frame: Frame): VmFault {
   const opcode = frame.method.code.code[frame.pc];
   if (opcode === undefined) {
@@ -524,8 +466,6 @@ function step(machine: Machine, frame: Frame, instruction: Instruction): void {
       popIntoReferenceLocal(frame, 3);
       break;
     case Op.iinc: {
-      // Increments the slot in place — the operand stack is not touched, which is why every
-      // `for` loop needs this instruction.
       const slot = operand(instruction, 0);
       storeLocal(frame, slot, iadd(loadLocal(frame, slot, 'int'), operand(instruction, 1)), 'int');
       break;
@@ -538,14 +478,12 @@ function step(machine: Machine, frame: Frame, instruction: Instruction): void {
       push(frame, machine.heap.lengthOf(pop(frame, 'ref')), 'int');
       break;
     case Op.iaload: {
-      // JVMS §6.5 iaload: `…, arrayref, index → …, value`, so the index comes off first.
       const index = pop(frame, 'int');
       const arrayref = pop(frame, 'ref');
       push(frame, machine.heap.loadInt(arrayref, index), 'int');
       break;
     }
     case Op.iastore: {
-      // JVMS §6.5 iastore: `…, arrayref, index, value →`, popped in reverse of that order.
       const value = pop(frame, 'int');
       const index = pop(frame, 'int');
       const arrayref = pop(frame, 'ref');
@@ -553,14 +491,6 @@ function step(machine: Machine, frame: Frame, instruction: Instruction): void {
       break;
     }
 
-    // The operand stack instructions are type-agnostic (JVMS §6.5 dup): duplicating a
-    // reference must not turn it into an int, so all of them move `StackValue`s.
-    //
-    // `pop2`, `dup2` and `dup2_x1` also have a form that moves a single category-2 value
-    // (`long`/`double`) instead of two category-1 ones. No value in this machine is
-    // category 2 — there are no `long` or `double` slots at all — so only the category-1
-    // form can occur, and the category-2 form is deliberately not implemented rather than
-    // half-implemented.
     case Op.pop:
       popAny(frame);
       break;
@@ -572,21 +502,18 @@ function step(machine: Machine, frame: Frame, instruction: Instruction): void {
       pushValues(frame, [peekAny(frame)]);
       break;
     case Op.dup_x1: {
-      // `…, value2, value1 → …, value1, value2, value1`
       const value1 = popAny(frame);
       const value2 = popAny(frame);
       pushValues(frame, [value1, value2, value1]);
       break;
     }
     case Op.dup2: {
-      // `…, value2, value1 → …, value2, value1, value2, value1`
       const value1 = popAny(frame);
       const value2 = popAny(frame);
       pushValues(frame, [value2, value1, value2, value1]);
       break;
     }
     case Op.dup2_x1: {
-      // `…, value3, value2, value1 → …, value2, value1, value3, value2, value1`
       const value1 = popAny(frame);
       const value2 = popAny(frame);
       const value3 = popAny(frame);
@@ -594,7 +521,6 @@ function step(machine: Machine, frame: Frame, instruction: Instruction): void {
       break;
     }
     case Op.swap: {
-      // `…, value2, value1 → …, value1, value2`
       const value1 = popAny(frame);
       const value2 = popAny(frame);
       pushValues(frame, [value1, value2]);
@@ -684,8 +610,6 @@ function step(machine: Machine, frame: Frame, instruction: Instruction): void {
     case Op.if_icmple:
       branchIf(frame, instruction, comparePair(frame, lessOrEqual));
       break;
-    // JVMS §6.5 if_acmp<cond>: two references are equal when they name the same object, which
-    // for this machine is the same handle — `null` included, as -1.
     case Op.if_acmpeq:
     case Op.if_acmpne: {
       const value2 = popReference(frame);
@@ -748,17 +672,14 @@ function step(machine: Machine, frame: Frame, instruction: Instruction): void {
   }
 }
 
-/** `iload`: the slot must already hold a value of the kind the instruction reads. */
 function pushLocal(frame: Frame, slot: number, kind: ValueKind): void {
   push(frame, loadLocal(frame, slot, kind), kind);
 }
 
-/** `istore`: what the instruction takes off the stack is what the slot then holds. */
 function popIntoLocal(frame: Frame, slot: number, kind: ValueKind): void {
   storeLocal(frame, slot, pop(frame, kind), kind);
 }
 
-/** `aload`/`astore` move whatever reference the slot holds, heap handle or external token. */
 function pushReferenceLocal(frame: Frame, slot: number): void {
   const held = loadReference(frame, slot);
   push(frame, held.value, held.kind);
@@ -769,19 +690,12 @@ function popIntoReferenceLocal(frame: Frame, slot: number): void {
   storeLocal(frame, slot, popped.value, popped.kind);
 }
 
-/** Pushes values bottom-first, so a list reads in the order JVMS §6.5 writes the result. */
 function pushValues(frame: Frame, values: readonly StackValue[]): void {
   for (const value of values) {
     push(frame, value.value, value.kind);
   }
 }
 
-/**
- * JVMS §6.5 newarray: `…, count → …, arrayref`.
- *
- * The element type is fixed by the instruction rather than by the stack, so it is rejected
- * before anything is popped — a `long[]` is not a program this interpreter can continue.
- */
 function allocateArray(machine: Machine, frame: Frame, atype: number): void {
   if (atype !== T_INT) {
     const element = arrayTypeName(atype);
@@ -803,7 +717,6 @@ const greaterOrEqual: IntComparison = (value1, value2) => value1 >= value2;
 const greater: IntComparison = (value1, value2) => value1 > value2;
 const lessOrEqual: IntComparison = (value1, value2) => value1 <= value2;
 
-/** JVMS §6.5 if_icmp<cond>: the stack holds `…, value1, value2`, so value2 comes off first. */
 function comparePair(frame: Frame, holds: IntComparison): boolean {
   const value2 = pop(frame, 'int');
   const value1 = pop(frame, 'int');
@@ -831,7 +744,6 @@ function branchIf(frame: Frame, instruction: Instruction, taken: boolean): void 
   }
 }
 
-/** Absolute target, already resolved by the disassembler from the signed delta (JVMS §6.5). */
 function branchTargetOf(instruction: Instruction): number {
   const { branchTarget } = instruction;
   if (branchTarget === undefined) {
@@ -843,13 +755,6 @@ function branchTargetOf(instruction: Instruction): number {
   return branchTarget;
 }
 
-/**
- * JVMS §6.5 tableswitch/lookupswitch: the arm whose match is the popped key, and the default
- * branch when none is. `tableswitch` states the same rule as a range check on [low, high],
- * which is the range its arms cover, so one lookup answers both instructions.
- *
- * The decoder puts the default first, which is the only arm without a match value.
- */
 function switchTargetOf(instruction: Instruction, key: number): number {
   const [fallback, ...arms] = instruction.switchTargets ?? [];
   if (fallback === undefined) {
@@ -861,12 +766,6 @@ function switchTargetOf(instruction: Instruction, key: number): number {
   return arms.find((arm) => arm.match === key)?.target ?? fallback.target;
 }
 
-/**
- * JVMS §6.5 athrow: `…, objectref → objectref`, and then the handler search takes over. The
- * object has to be one this machine already holds — which, since nothing here can construct an
- * exception, means one it threw earlier and a handler caught. Throwing a `String` constant is
- * a state the verifier rejects, and it is reported as one rather than unwound.
- */
 function throwFromStack(machine: Machine, frame: Frame): void {
   const handle = pop(frame, 'external');
   const value = machine.externals.at(handle);
@@ -886,22 +785,12 @@ function returnFromFrame(machine: Machine, returned: StackValue | undefined): vo
   }
   const caller = machine.callStack.at(-1);
   if (caller === undefined) {
-    // The result of the whole run, which the UI reports as a number; a reference leaving the
-    // entry method is a handle into a heap the run is about to end with, and says nothing.
     machine.returnValue = returned.kind === 'int' ? returned.value : undefined;
     return;
   }
   push(caller, returned.value, returned.kind);
 }
 
-/**
- * JVMS §6.5 ldc/ldc_w: an `int` is pushed as itself; a `String` constant becomes a token, so
- * it can be passed to a recognised method without the machine having to build a String object
- * (JVMS §5.1 interns one object per pool entry, which `ExternalPool` reproduces).
- *
- * Everything else the pool can hold there — `float`, a class literal, a method handle — has no
- * representation in this machine and is reported as such rather than pushed as some number.
- */
 function pushPoolConstant(machine: Machine, frame: Frame, poolIndex: number): void {
   const pool = machine.classFile.constantPool;
   const entry = poolEntry(pool, poolIndex);
@@ -921,7 +810,6 @@ function pushPoolConstant(machine: Machine, frame: Frame, poolIndex: number): vo
   throw new VmFault({ kind: 'unsupported-constant', target: describeConstant(entry, poolIndex) });
 }
 
-/** Tag names as JVMS §4.4 writes them, so an error can say `a Double constant`. */
 const TAG_NAMES: ReadonlyMap<number, string> = new Map(
   Object.entries(ConstantTag).map(([name, tag]) => [tag, name]),
 );
@@ -933,11 +821,6 @@ function describeConstant(entry: ConstantPoolEntry | undefined, index: number): 
     : `the ${named} constant at #${String(index)}`;
 }
 
-/**
- * JVMS §6.5 getstatic. There is no class initialisation and no static state here, so the only
- * fields that resolve are the ones `externals.ts` lists — `System.out` and, one day, whatever
- * else earns a row. The value pushed is a token, not an object.
- */
 function pushStaticField(machine: Machine, frame: Frame, poolIndex: number): void {
   const reference = resolveMemberReference(
     machine.classFile.constantPool,
@@ -953,20 +836,8 @@ function pushStaticField(machine: Machine, frame: Frame, poolIndex: number): voi
   push(frame, machine.externals.intern(value), 'external');
 }
 
-/** JVMS §4.1: every class this machine can build an instance of extends Object directly. */
 const OBJECT_CLASS = 'java/lang/Object';
 
-/**
- * JVMS §6.5 new: an uninitialised instance of the class the pool entry names.
- *
- * Only the class being executed can be instantiated, which is the boundary `invokestatic` has
- * always had and for the same reason: nothing here loads a second class file, so there is no
- * field table to give the object a shape.
- *
- * The instance appears on the stack before its constructor has run — that is the real order,
- * and it is worth seeing: `new` and `invokespecial` are two instructions, and between them
- * sits an object whose fields are all still at their defaults.
- */
 function allocateInstance(machine: Machine, frame: Frame, poolIndex: number): void {
   const className = classNameAt(machine.classFile.constantPool, poolIndex);
   if (className !== machine.classFile.thisClassName) {
@@ -978,21 +849,18 @@ function allocateInstance(machine: Machine, frame: Frame, poolIndex: number): vo
   push(frame, machine.heap.allocateInstance(className, fields), 'ref');
 }
 
-/** JVMS §6.5 getfield: `…, objectref → …, value`. */
 function readField(machine: Machine, frame: Frame, poolIndex: number): void {
   const reference = fieldReference(machine, poolIndex);
   const held = machine.heap.loadField(pop(frame, 'ref'), reference.name);
   push(frame, held.value, held.kind);
 }
 
-/** JVMS §6.5 putfield: `…, objectref, value →`, so the value comes off first. */
 function writeField(machine: Machine, frame: Frame, poolIndex: number): void {
   const reference = fieldReference(machine, poolIndex);
   const value = popAny(frame);
   machine.heap.storeField(pop(frame, 'ref'), reference.name, value.value, value.kind);
 }
 
-/** A Fieldref that names a field of the executed class; anything else has no object behind it. */
 function fieldReference(machine: Machine, poolIndex: number): MethodReference {
   const reference = resolveMemberReference(
     machine.classFile.constantPool,
@@ -1009,21 +877,10 @@ function fieldReference(machine: Machine, poolIndex: number): MethodReference {
   return reference;
 }
 
-/**
- * JVMS §6.5 invokespecial, which in this subset means one thing: a constructor.
- *
- * Two shapes reach it. `super()` compiles to `Object.<init>()V` on every class here, and there
- * is no Object to initialise — the receiver is popped and the call is over. The class's own
- * `<init>` is an ordinary method call with the new object in slot 0.
- *
- * Private and super-class method calls also use this opcode; neither can occur while a class
- * can only see itself, so they are reported rather than guessed at.
- */
 function invokeSpecial(machine: Machine, frame: Frame, poolIndex: number): void {
   const reference = resolveMethodref(machine.classFile.constantPool, poolIndex);
 
   if (reference.className === OBJECT_CLASS && reference.name === CONSTRUCTOR) {
-    // `Object.<init>` sets up nothing this machine models; the receiver is all it consumes.
     pop(frame, 'ref');
     return;
   }
@@ -1035,19 +892,9 @@ function invokeSpecial(machine: Machine, frame: Frame, poolIndex: number): void 
 
 const CONSTRUCTOR = '<init>';
 
-/**
- * JVMS §6.5 invokevirtual, restricted to the recognised members: the stack holds
- * `…, objectref, [arg1, …]`, so the arguments come off first and the receiver last.
- *
- * The receiver has to be a token of the class the reference names. Calling a listed method on
- * the wrong object — `PrintStream.println` on a `String` — is reported as the call it is,
- * rather than being answered with the output of the method that was not invoked.
- */
 function invokeVirtual(machine: Machine, frame: Frame, poolIndex: number): void {
   const reference = resolveMethodref(machine.classFile.constantPool, poolIndex);
 
-  // An instance method of the executed class is a frame like any other; only the receiver in
-  // slot 0 makes it different from a static call.
   if (reference.className === machine.classFile.thisClassName) {
     callWithin(machine, frame, reference, 'instance');
     return;
@@ -1071,11 +918,6 @@ function invokeVirtual(machine: Machine, frame: Frame, poolIndex: number): void 
   applyExternal(machine, frame, method, receiver, args);
 }
 
-/**
- * A call the machine answers itself rather than by pushing a frame. The result — an int or
- * nothing — goes straight back on the caller's stack, so from the bytecode's point of view
- * the call has simply returned.
- */
 function applyExternal(
   machine: Machine,
   frame: Frame,
@@ -1089,7 +931,6 @@ function applyExternal(
   }
 }
 
-/** Arguments were pushed left to right, so they come off the stack in reverse order. */
 function popArguments(
   machine: Machine,
   frame: Frame,
@@ -1115,8 +956,6 @@ function invokeStatic(machine: Machine, frame: Frame, poolIndex: number): void {
   const reference = resolveMethodref(machine.classFile.constantPool, poolIndex);
   const target = callTarget(reference);
   if (reference.className !== machine.classFile.thisClassName) {
-    // Outside the executed class, only the members `externals.ts` lists resolve — the class
-    // file names them but nothing here can load them.
     const method = EXTERNAL_METHODS.get(
       memberKey(reference.className, reference.name, reference.descriptor),
     );
@@ -1136,13 +975,6 @@ function invokeStatic(machine: Machine, frame: Frame, poolIndex: number): void {
   callWithin(machine, frame, reference, 'static');
 }
 
-/**
- * A call to a method of the class being executed: the one kind this machine resolves itself.
- *
- * `shape` decides two things at once — whether the method must be static, and whether a
- * receiver is popped after the arguments and laid into slot 0 (JVMS §2.6.1). Everything else,
- * including the depth limit, is the same for both, which is why they share this.
- */
 function callWithin(
   machine: Machine,
   frame: Frame,
@@ -1161,14 +993,10 @@ function callWithin(
   ) {
     throw new VmFault({ kind: 'unsupported-call', target });
   }
-  // Recursion without a base case would otherwise grow the history until the tab dies; a real
-  // JVM answers the same situation with StackOverflowError (JVMS §2.6.2).
   if (machine.callStack.length >= machine.maxCallDepth) {
     throw new VmFault({ kind: 'stack-overflow', limit: machine.maxCallDepth });
   }
 
-  // Arguments were pushed left to right, so they come off the stack in reverse order; the
-  // receiver was pushed before all of them, so it comes off last and sits in front of them.
   const slots = new Array<StackValue>(parameters.length);
   for (let index = parameters.length - 1; index >= 0; index -= 1) {
     const kind = parameters[index];
@@ -1212,11 +1040,6 @@ export interface EntryPoint {
   readonly code: CodeAttribute;
 }
 
-/**
- * The method a run starts from. Exported because the rule — static, with a Code attribute and
- * one of `ENTRY_DESCRIPTORS` — decides what the UI may offer as runnable; matching on the name
- * alone would list a method the interpreter then refuses to execute.
- */
 export function findEntryMethod(
   classFile: ClassFile,
   name: string = DEFAULT_ENTRY_METHOD,
@@ -1230,7 +1053,6 @@ export function findEntryMethod(
   return undefined;
 }
 
-/** Whether `execute()` could start from this method, its name aside. */
 export function isEntryMethod(method: MethodInfo): boolean {
   return (
     method.code !== undefined &&
@@ -1239,11 +1061,6 @@ export function isEntryMethod(method: MethodInfo): boolean {
   );
 }
 
-/**
- * The kind each parameter arrives as, or `undefined` for a descriptor this machine cannot
- * call: anything with a `long`, `float` or `double` in it, which needs slots it has no model
- * for. An `int` is a value and everything else in the subset is a reference.
- */
 function parameterKinds(descriptor: string): readonly ValueKind[] | undefined {
   const parsed = parseDescriptor(descriptor);
   if (parsed === undefined) {
@@ -1259,12 +1076,10 @@ function parameterKinds(descriptor: string): readonly ValueKind[] | undefined {
   return parsed.params.map((type) => (isIntType(type) ? 'int' : 'ref'));
 }
 
-/** A class or an array type — the two shapes a reference can have (JVMS §4.3.2). */
 function isReferenceType(type: JvmReturnType): boolean {
   return type.kind === 'class' || type.kind === 'array';
 }
 
-/** The class a `new` or a `catch` names, resolved through its Class entry. */
 function classNameAt(pool: ConstantPool, index: number): string {
   const entry = poolEntry(pool, index);
   if (entry?.tag !== ConstantTag.Class) {
@@ -1280,7 +1095,6 @@ function parseDescriptor(descriptor: string): MethodDescriptor | undefined {
     if (!isClassFileError(error)) {
       throw error;
     }
-    // A descriptor the class file itself got wrong — there is nothing callable behind it.
     return undefined;
   }
 }
@@ -1306,7 +1120,6 @@ interface MethodReference {
   readonly descriptor: string;
 }
 
-/** How a call is named in an error: `Factorial.factorial(I)I`, as the UI has always shown it. */
 function callTarget(reference: MethodReference): string {
   return `${reference.className}.${reference.name}${reference.descriptor}`;
 }
@@ -1315,10 +1128,6 @@ function resolveMethodref(pool: ConstantPool, index: number): MethodReference {
   return resolveMemberReference(pool, index, ConstantTag.Methodref, 'Methodref');
 }
 
-/**
- * JVMS §4.4.2: a Methodref and a Fieldref have the same shape — Class + NameAndType, all of
- * them Utf8 in the end — and differ only in their tag.
- */
 function resolveMemberReference(
   pool: ConstantPool,
   index: number,

@@ -16,13 +16,6 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import org.springframework.web.filter.CorsFilter;
 
-/**
- * Filter order on {@code /api/*}: CORS, then the rate limit, then the size cap. CORS goes first so
- * that a throttled or rejected request still carries {@code Access-Control-Allow-Origin} and the
- * page can read the error it caused — MVC's own CORS handling runs far too late for that, after
- * every filter has had its say. The limit comes before the size check so that a flood of oversized
- * bodies is throttled like any other flood; both decisions are made from headers alone.
- */
 @Configuration(proxyBeanMethods = false)
 class WebConfig {
 
@@ -30,7 +23,6 @@ class WebConfig {
     private static final int RATE_LIMIT_ORDER = Ordered.HIGHEST_PRECEDENCE + 50;
     private static final int SIZE_LIMIT_ORDER = Ordered.HIGHEST_PRECEDENCE + 100;
 
-    /** Room for the largest accepted source plus JSON escaping, and nothing beyond it. */
     private static final int MAX_JSON_STRING_LENGTH = 70 * 1024;
 
     private final CompileProperties properties;
@@ -52,8 +44,6 @@ class WebConfig {
         api.setAllowedHeaders(List.of("Content-Type"));
         api.setMaxAge(3600L);
 
-        // The browser probes /actuator/health before it reveals the editor, so that GET has to be
-        // readable cross-origin too — otherwise the feature stays hidden on any split deployment.
         CorsConfiguration health = new CorsConfiguration();
         health.setAllowedOrigins(List.of(properties.allowedOrigin()));
         health.setAllowedMethods(List.of("GET", "OPTIONS"));
@@ -79,7 +69,6 @@ class WebConfig {
         return registration;
     }
 
-    /** Scoped to the API so health checks are never throttled. */
     @Bean
     FilterRegistrationBean<RateLimitFilter> rateLimitFilterRegistration(ObjectMapper objectMapper) {
         FilterRegistrationBean<RateLimitFilter> registration = new FilterRegistrationBean<>(
@@ -89,11 +78,6 @@ class WebConfig {
         return registration;
     }
 
-    /**
-     * Jackson's default 20 MB string limit is two orders of magnitude past anything this API can
-     * use, and reaching it means the string was already allocated. This is the second line behind
-     * the request size filter, for a body that stays small but declares one enormous field.
-     */
     @Bean
     Jackson2ObjectMapperBuilderCustomizer boundedStringLength() {
         return builder -> builder.factory(JsonFactory.builder()

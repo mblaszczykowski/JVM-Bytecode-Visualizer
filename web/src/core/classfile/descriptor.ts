@@ -1,15 +1,5 @@
 import { ClassFileError } from './errors';
 
-/**
- * Field and method descriptor parser — JVMS §4.3.2 (FieldDescriptor) and §4.3.3
- * (MethodDescriptor).
- *
- * The grammar is implemented in full (`B C D F I J S Z`, `L<name>;`, `[`) even though the
- * interpreter only accepts `I` parameters and `I`/`V` return types. Enforcing that subset is
- * the interpreter's job — a parser that tells the truth about the file lets the error read
- * "unsupported parameter type: long" instead of "unknown descriptor".
- */
-
 export type PrimitiveTypeName =
   'boolean' | 'byte' | 'char' | 'short' | 'int' | 'long' | 'float' | 'double';
 
@@ -20,13 +10,11 @@ export interface PrimitiveType {
 
 export interface ClassType {
   readonly kind: 'class';
-  /** Internal name from the descriptor, e.g. `java/lang/String`. */
   readonly className: string;
 }
 
 export interface ArrayType {
   readonly kind: 'array';
-  /** Component type; multi-dimensional arrays are nested `ArrayType`s. */
   readonly elementType: JvmType;
 }
 
@@ -54,10 +42,8 @@ const PRIMITIVE_BY_TAG: Readonly<Record<string, PrimitiveTypeName | undefined>> 
   Z: 'boolean',
 };
 
-/** JVMS §4.3.2: an array descriptor is valid up to 255 dimensions. */
 const MAX_ARRAY_DIMENSIONS = 255;
 
-/** `"(II)I"` → two `int` parameters and an `int` return type. */
 export function parseMethodDescriptor(descriptor: string): MethodDescriptor {
   if (!descriptor.startsWith('(')) {
     throw malformed(descriptor, 0, 'a method descriptor must start with "("');
@@ -83,7 +69,6 @@ export function parseMethodDescriptor(descriptor: string): MethodDescriptor {
   return { params, returnType: returnType.type };
 }
 
-/** Field / local variable descriptor, e.g. `"[Ljava/lang/String;"` (JVMS §4.3.2). */
 export function parseFieldDescriptor(descriptor: string): JvmType {
   const parsed = parseFieldType(descriptor, 0);
   if (parsed.next !== descriptor.length) {
@@ -92,7 +77,6 @@ export function parseFieldDescriptor(descriptor: string): JvmType {
   return parsed.type;
 }
 
-/** Type name in Java source notation — for listings and UI messages. */
 export function formatJvmType(type: JvmReturnType): string {
   switch (type.kind) {
     case 'void':
@@ -108,7 +92,6 @@ export function formatJvmType(type: JvmReturnType): string {
 
 interface ParsedType<T> {
   readonly type: T;
-  /** Position of the first character after the parsed type. */
   readonly next: number;
 }
 
@@ -120,8 +103,6 @@ function parseReturnType(descriptor: string, position: number): ParsedType<JvmRe
 }
 
 function parseFieldType(descriptor: string, position: number): ParsedType<JvmType> {
-  // Dimensions are counted iteratively: a descriptor with thousands of "[" would blow the
-  // call stack if this recursed.
   let dimensions = 0;
   let cursor = position;
   while (descriptor[cursor] === '[') {

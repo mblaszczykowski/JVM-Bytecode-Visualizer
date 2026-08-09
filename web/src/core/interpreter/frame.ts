@@ -5,81 +5,37 @@ import type { ValueKind } from './types';
 
 export interface FetchedInstruction {
   readonly instruction: Instruction;
-  /** Offset of the following instruction — where the pc goes unless a branch moves it. */
   readonly nextOffset: number;
 }
 
-/**
- * A method ready to execute: disassembled once per run and cached, because the interpreter
- * revisits the same method on every loop iteration and every recursive call.
- */
 export interface PreparedMethod {
   readonly name: string;
   readonly descriptor: string;
   readonly code: CodeAttribute;
-  /** Instruction fetch by pc; a missing offset means undecodable bytes or past-the-end. */
   readonly flow: ReadonlyMap<number, FetchedInstruction>;
-  /** LocalVariableTable entries, kept with their pc ranges — a slot can name several variables. */
   readonly localVariables: readonly LocalVariableEntry[];
-  /** Memo of `localNamesAt`: one frozen array per pc the run actually visits. */
   readonly localNamesByPc: Map<number, readonly (string | undefined)[]>;
   readonly lineNumbers: readonly LineNumberEntry[];
 }
 
-/**
- * The step the machine is currently dispatching, shared by every frame of one run.
- *
- * Provenance is a fact about machine time, not about a frame: a value can be pushed onto a
- * caller's stack by a callee returning. One mutable holder passed down at frame creation keeps
- * `push` and `storeLocal` free of a step argument they would otherwise need at every one of
- * their call sites.
- */
 export interface RunClock {
   step: number;
 }
 
-/**
- * Frame of the JVM stack (JVMS §2.6). Mutable during execution — snapshots take the
- * immutable copies the outside world sees.
- */
 export interface Frame {
   readonly method: PreparedMethod;
-  /** Offset of the next instruction this frame will execute; written through `setPc`. */
   pc: number;
-  /**
-   * Offset of the instruction this frame is *in the middle of*, which is not `pc` — the run
-   * loop advances `pc` before dispatching, so that a call returns to the right place.
-   *
-   * Only the exception table needs the difference, and it needs it badly: a handler covers a
-   * range of offsets, and for a frame that is waiting on a callee the offset that has to fall
-   * inside that range is the call's, not the one after it. Kept per frame, so unwinding reads
-   * the right offset at every level without reconstructing it from instruction lengths.
-   */
   currentPc: number;
   readonly operandStack: number[];
-  /** Kind of each cell of `operandStack`, pushed and popped with it. */
   readonly operandKinds: ValueKind[];
-  /**
-   * Step that pushed each cell of `operandStack`, pushed and popped with it. This is what lets
-   * a reader ask where a value came from rather than only what it is.
-   */
   readonly operandOrigins: number[];
   readonly locals: (number | undefined)[];
-  /** Kind of each slot of `locals`; `undefined` exactly where the slot is uninitialised. */
   readonly localKinds: (ValueKind | undefined)[];
-  /** Step that last wrote each slot; `undefined` exactly where the slot is uninitialised. */
   readonly localOrigins: (number | undefined)[];
-  /** Shared with every other frame of the run — see `RunClock`. */
   readonly clock: RunClock;
-  /**
-   * Bumped by every mutation of this frame. A snapshot reuses the frozen copy it already
-   * emitted for an unchanged frame, which is what keeps a deep call stack from being copied
-   * once per step.
-   */
   version: number;
 }
 
-/** One cell of the operand stack, for the instructions that move values without typing them. */
 export interface StackValue {
   readonly value: number;
   readonly kind: ValueKind;
@@ -101,12 +57,6 @@ export function prepareMethod(method: MethodInfo, code: CodeAttribute): Prepared
   };
 }
 
-/**
- * Arguments land in slots 0..n-1, first argument first (JVMS §2.6.1). For an instance method
- * the receiver is the first of them, which is why `this` is slot 0 and why the caller assembles
- * the list rather than passing the arguments alone: each slot carries the kind it holds, and a
- * reference must not arrive looking like an int.
- */
 export function createFrame(
   method: PreparedMethod,
   args: readonly StackValue[],
@@ -118,7 +68,6 @@ export function createFrame(
   for (let slot = 0; slot < args.length; slot += 1) {
     locals[slot] = args[slot]?.value;
     localKinds[slot] = args[slot]?.kind;
-    // The arguments were written by the call, so they date from the invoke, not from slot 0.
     localOrigins[slot] = clock.step;
   }
   return {
@@ -136,11 +85,6 @@ export function createFrame(
   };
 }
 
-/**
- * Drops everything on the operand stack, which is what entering a handler does (JVMS §2.10):
- * the handler starts from a stack holding the exception and nothing else, whatever the
- * instruction that threw had half-finished building.
- */
 export function clearOperandStack(frame: Frame): void {
   frame.operandStack.length = 0;
   frame.operandKinds.length = 0;
@@ -160,11 +104,6 @@ export function push(frame: Frame, value: number, kind: ValueKind): void {
   frame.version += 1;
 }
 
-/**
- * Pops a value the instruction expects to be of `expected` kind. Reading a reference as an
- * int (or the reverse) is a state the JVM verifier rejects before the code ever runs
- * (JVMS §4.10), so it stops the run here rather than producing a plausible wrong number.
- */
 export function pop(frame: Frame, expected: ValueKind): number {
   const popped = popAny(frame);
   if (popped.kind !== expected) {
@@ -176,7 +115,6 @@ export function pop(frame: Frame, expected: ValueKind): number {
   return popped.value;
 }
 
-/** Pops whatever is on top — `pop` and `dup` move a value without caring what it is. */
 export function popAny(frame: Frame): StackValue {
   const value = frame.operandStack.pop();
   const kind = frame.operandKinds.pop();
@@ -188,11 +126,6 @@ export function popAny(frame: Frame): StackValue {
   return { value, kind };
 }
 
-/**
- * JVMS §6.5 astore: the slot of an `astore` holds a reference or a returnAddress — anything
- * the verifier does not call an int. A `String` constant and `System.out` are references as
- * far as the bytecode is concerned, so the check is "not an int" rather than "a heap handle".
- */
 export function popReference(frame: Frame): StackValue {
   const popped = popAny(frame);
   if (popped.kind === 'int') {
@@ -204,7 +137,6 @@ export function popReference(frame: Frame): StackValue {
   return popped;
 }
 
-/** `aload`: the mirror of `popReference` — the slot must hold something that is not an int. */
 export function loadReference(frame: Frame, slot: number): StackValue {
   const held = readSlot(frame, slot);
   if (held.kind === 'int') {
@@ -236,14 +168,11 @@ export function loadLocal(frame: Frame, slot: number, expected: ValueKind): numb
   return held.value;
 }
 
-/** The value in a slot, whatever kind it is — the type check belongs to the caller. */
 function readSlot(frame: Frame, slot: number): StackValue {
   checkSlot(frame, slot);
   const value = frame.locals[slot];
   const kind = frame.localKinds[slot];
   if (value === undefined || kind === undefined) {
-    // Slot 0 of `main` (the `String[] args` reference) ends up here: nothing in the executable
-    // subset can produce that array, so the slot stays empty rather than holding a fake handle.
     throw new VmFault({
       kind: 'invalid-state',
       message: `read from uninitialised local slot ${String(slot)}`,
@@ -266,14 +195,6 @@ const KIND_NAMES: Readonly<Record<ValueKind, string>> = {
   external: 'a standard library object',
 };
 
-/**
- * Names visible at `pc`, one per slot.
- *
- * JVMS §4.7.13: an entry names its slot only inside [start_pc, start_pc + length). javac
- * reuses one slot for disjoint scopes — two sequential `for (int i …)` loops share a slot —
- * so taking the first entry per slot would label the second loop with the first loop's name.
- * The answer only changes with the pc, so it is memoised per method.
- */
 export function localNamesAt(method: PreparedMethod, pc: number): readonly (string | undefined)[] {
   const memoised = method.localNamesByPc.get(pc);
   if (memoised !== undefined) {
@@ -307,8 +228,6 @@ function flowOf(
   codeLength: number,
 ): ReadonlyMap<number, FetchedInstruction> {
   const { instructions, truncatedAtOffset } = disassembled;
-  // Falling off the last decoded instruction must land on the undecodable bytes rather than
-  // past the end, so the run can report what actually stopped the disassembler.
   const endOffset = truncatedAtOffset ?? codeLength;
 
   const flow = new Map<number, FetchedInstruction>();
@@ -321,13 +240,6 @@ function flowOf(
   return flow;
 }
 
-/**
- * JVMS §4.9.1: a branch may only target the first byte of an instruction of the same method.
- * Checked once per method, so a target past the end of `code[]` or in the middle of another
- * instruction's operands is named as such, instead of surfacing later as whatever byte the
- * pc happened to land on. A switch is checked arm by arm, default included — every one of
- * them is a branch target and any of them can be the corrupt one.
- */
 function checkBranchTargets(
   methodName: string,
   instructions: readonly Instruction[],

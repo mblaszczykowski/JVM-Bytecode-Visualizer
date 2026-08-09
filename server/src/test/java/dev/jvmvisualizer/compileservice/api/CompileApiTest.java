@@ -29,7 +29,6 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.ResultActions;
 
-/** Contract tests for {@code POST /api/compile}: status codes and the exact JSON shape. */
 @SpringBootTest
 @AutoConfigureMockMvc
 @TestPropertySource(properties = "compile.rate-limit.requests-per-minute=1000")
@@ -72,7 +71,7 @@ class CompileApiTest {
 
         ByteBuffer classFile = ByteBuffer.wrap(Base64.getDecoder().decode(body.get("classFileBase64").asText()));
         assertThat(classFile.getInt()).isEqualTo(CLASS_FILE_MAGIC);
-        classFile.getShort(); // minor version
+        classFile.getShort();
         assertThat(classFile.getShort()).isEqualTo(JAVA_21_MAJOR_VERSION);
     }
 
@@ -98,7 +97,6 @@ class CompileApiTest {
                 .andReturn();
 
         JsonNode body = objectMapper.readTree(result.getResponse().getContentAsString());
-        // null className / classFileBase64 stay in the payload; jsonPath treats null as "does not exist"
         assertThat(fieldNames(body)).containsExactlyInAnyOrder("success", "className", "classFileBase64", "diagnostics");
         assertThat(body.get("className").isNull()).isTrue();
         assertThat(body.get("classFileBase64").isNull()).isTrue();
@@ -163,11 +161,6 @@ class CompileApiTest {
                 .andExpect(jsonPath("$.error").value("no-public-class"));
     }
 
-    /**
-     * A megabyte-scale body used to be parsed into the heap in full and measured afterwards, so a
-     * 19 MB {@code source} — comfortably inside Jackson's own limits — was an out-of-memory exit
-     * for one request. The filter answers from Content-Length alone, before anything is read.
-     */
     @Test
     void refusesAnOversizedBodyBeforeReadingIt() throws Exception {
         byte[] body = ("{\"source\":\"" + "x".repeat(2_000_000) + "\"}").getBytes(StandardCharsets.UTF_8);
@@ -181,7 +174,6 @@ class CompileApiTest {
         assertThat(Duration.ofNanos(System.nanoTime() - start)).isLessThan(Duration.ofSeconds(2));
     }
 
-    /** Second line: a body under the request cap whose one string is still far too long. */
     @Test
     void refusesASourceFieldLongerThanJacksonMayMaterialize() throws Exception {
         compile("x".repeat(100_000))
@@ -189,11 +181,6 @@ class CompileApiTest {
                 .andExpect(jsonPath("$.error").value("source-too-large"));
     }
 
-    /**
-     * The name scan used to be a regular expression whose modifier group recursed once per
-     * repetition: this source raised {@link StackOverflowError} out of the controller, past the
-     * advice, and the client got a 500 with no JSON body at all.
-     */
     @Test
     void answersTheModifierPayloadWithDiagnosticsRatherThanA500() throws Exception {
         String pathological = "public " + "final ".repeat(3_000) + "class Pathological { }";

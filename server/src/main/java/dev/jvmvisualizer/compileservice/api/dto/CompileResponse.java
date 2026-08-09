@@ -2,10 +2,6 @@ package dev.jvmvisualizer.compileservice.api.dto;
 
 import java.util.List;
 
-/**
- * Response body of {@code POST /api/compile}. Null fields stay in the payload on purpose: the
- * client contract defines {@code className} and {@code classFileBase64} as null on failure.
- */
 public record CompileResponse(boolean success, String className, String classFileBase64,
                               List<DiagnosticDto> diagnostics) {
 

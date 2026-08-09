@@ -7,7 +7,6 @@ import { constantPoolRowsOf, type ConstantPoolRow } from '../services/class-view
 
 import { ConstantPoolTable } from './ConstantPoolTable';
 
-/** The real constant pool of the committed `Factorial.class`. */
 const rows = constantPoolRowsOf(parseClassFile(readExampleBytes('Factorial.class')).constantPool);
 
 const METHODREF = 'Constant pool entry #7, Methodref, Factorial.factorial:(I)I';
@@ -46,7 +45,6 @@ describe('ConstantPoolTable', () => {
     const onSelectIndex = vi.fn();
     render(<ConstantPoolTable rows={rows} onSelectIndex={onSelectIndex} />);
 
-    // #7 names its Class (#8) and its NameAndType (#9) — JVMS §4.4.2.
     const methodref = within(rowAt(7));
     expect(methodref.getByRole('button', { name: 'Follow constant pool entry #8' })).toBeVisible();
 
@@ -82,7 +80,6 @@ describe('ConstantPoolTable', () => {
 
     const reachable = screen.getAllByRole('button').filter((button) => button.tabIndex === 0);
 
-    // The row itself, plus the two references it can be followed through.
     expect(reachable).toHaveLength(3);
     expect(reachable[0]).toHaveAccessibleName(METHODREF);
   });

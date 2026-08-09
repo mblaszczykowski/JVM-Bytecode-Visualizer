@@ -1,30 +1,4 @@
 #!/usr/bin/env node
-/**
- * Rebuilds the fixtures the `src/core` tests assert against: the class files under
- * `__fixtures__/`, the `javap` dumps the disassembler and parser are compared with, and the
- * `.stdout.txt` files that are the differential suite's expectations.
- *
- * Those expectations are only worth anything because a real JDK produced them. Editing one of
- * the `.java` sources without recompiling would leave a test asserting against output that no
- * longer belongs to it, and nothing else in the build would notice — so this script regenerates
- * every derived artifact from the source next to it, and CI fails on any resulting diff.
- *
- * Steps:
- *  1. `javac -g --release 21` into a temporary directory, then a major-version check — the same
- *     pinning build-fixtures.mjs does, and for the same reason: the committed class files must
- *     not change shape because a contributor upgraded their JDK.
- *  2. `java <Class>` for every runnable fixture, its standard output captured verbatim into
- *     `<Class>.stdout.txt`. This is the reference implementation's answer and the only reason
- *     the differential test proves anything.
- *  3. `javap` for every fixture that has a dump, normalised (see NORMALISATION below) and
- *     written back under the human-written `#` header the committed file already carries.
- *
- * Deterministic and idempotent: javac output carries no timestamps, the temporary directory is
- * removed afterwards, and the two parts of a `javap` dump that do not come from the class file
- * are normalised away. A second run produces byte-identical artifacts.
- *
- * Usage: `npm run fixtures:tests -w web` (requires the JDK named by REQUIRED_JAVAP_FEATURE).
- */
 
 import { execFileSync } from 'node:child_process';
 import {
@@ -43,42 +17,14 @@ import { fileURLToPath } from 'node:url';
 const FIXTURES_DIR = dirname(fileURLToPath(import.meta.url));
 const WEB_DIR = join(FIXTURES_DIR, '..');
 
-/** Java 21 (LTS), as everywhere else in this repository: major version 65 on every JDK >= 21. */
 const JAVA_RELEASE = '21';
 const EXPECTED_MAJOR_VERSION = 65;
 
-/**
- * The feature release whose `javap` wrote the committed dumps.
- *
- * `javac --release 21` pins the class file, but nothing pins the disassembler's own formatting:
- * JDK 25 widened the offset column of `javap -c` by two spaces, so a JDK 21 javap regenerates
- * the same instructions in a different layout and every dump appears to have drifted. The dumps
- * are byte-exact artifacts, so the tool that produces them is pinned like the class file is.
- */
 const REQUIRED_JAVAP_FEATURE = 25;
 
-/**
- * NORMALISATION — the two things a `javap -v` dump says about the file rather than about the
- * class, and which therefore cannot survive a rebuild:
- *
- *  • the `Classfile` line names the absolute path javap was given. Replaced by the bare file
- *    name, which is what the committed dumps carry.
- *  • the `Last modified` line is the class file's mtime, in the JVM's default locale. A file
- *    javac has just written is stamped "now", so the dump is taken from a copy whose mtime is
- *    pinned to the instant below and with the locale forced to English. Midday UTC, so that the
- *    date does not fall back a day on a runner east or west of Greenwich.
- */
 const PINNED_MTIME = new Date('2026-08-05T12:00:00Z');
 const ENGLISH_LOCALE = ['-J-Duser.language=en', '-J-Duser.country=US'];
 
-/**
- * Every fixture built from a `.java` source under `src/core`, with the artifacts derived from
- * it. `javap: 'verbose'` is `javap -v -p` (constant pool, attributes — what parser.test.ts
- * reads), `'code'` is `javap -c -p` (the instruction listing disassembler.test.ts parses).
- *
- * `runs` marks a fixture whose whole standard output is an expectation: the program prints
- * every value it computes, so `<Class>.stdout.txt` is the assertion in full.
- */
 const FIXTURES = Object.freeze([
   {
     className: 'Factorial',
@@ -90,7 +36,6 @@ const FIXTURES = Object.freeze([
     className: 'OpcodeZoo',
     directory: 'src/core/disassembler/__fixtures__',
     javap: 'code',
-    // Deliberately outside the executable subset — the decoder is what it is for.
     runs: false,
   },
   {
@@ -137,7 +82,6 @@ const FIXTURES = Object.freeze([
   },
 ]);
 
-/** Build failure carrying a message ready to show a human (no stack trace). */
 class FixtureBuildError extends Error {
   constructor(message) {
     super(message);
@@ -145,10 +89,6 @@ class FixtureBuildError extends Error {
   }
 }
 
-/**
- * Runs a JDK tool and returns its stdout. A tool failure is turned into a FixtureBuildError
- * carrying its output — a bare `execFileSync` loses stderr from the message.
- */
 function runTool(command, args) {
   try {
     return execFileSync(command, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
@@ -168,7 +108,6 @@ function sourcePath(fixture) {
 }
 
 function requirePinnedJavap() {
-  // `javap -version` prints the release alone: "25-ea", "21.0.1".
   const reported = runTool('javap', ['-version']).trim();
   const feature = Number(/^\d+/.exec(reported)?.[0]);
   if (feature !== REQUIRED_JAVAP_FEATURE) {
@@ -184,10 +123,6 @@ function requirePinnedJavap() {
   return reported;
 }
 
-/**
- * A `.java` file nobody declared would be compiled by nothing and checked by nothing, which is
- * the same hole this script exists to close, one level up.
- */
 function requireEverySourceDeclared() {
   const declared = new Set(FIXTURES.map((fixture) => sourcePath(fixture)));
   const undeclared = [];
@@ -230,11 +165,6 @@ function readMajorVersion(classesDir, className) {
   return Number(match[1]);
 }
 
-/**
- * The leading `#` block of a dump: prose that says what the fixture is for and which command
- * produced it. javap does not write it and this script does not rewrite it — it is the one part
- * of the file a human owns. A dump that does not exist yet gets a stub naming its command.
- */
 function headerOf(dumpPath, command) {
   let committed;
   try {
@@ -264,7 +194,6 @@ function dumpDisassembly(fixture, classesDir) {
   const flag = javap === 'verbose' ? '-v' : '-c';
   const dumpPath = join(WEB_DIR, fixture.directory, `${className}.javap.txt`);
 
-  // Pinned before the dump is taken, because `javap -v` reports the mtime it finds.
   utimesSync(join(classesDir, `${className}.class`), PINNED_MTIME, PINNED_MTIME);
   const raw = runTool('javap', [
     ...ENGLISH_LOCALE,
@@ -284,7 +213,6 @@ function dumpDisassembly(fixture, classesDir) {
   return `javap ${flag}`;
 }
 
-/** What the reference implementation printed, byte for byte. */
 function recordOutput(fixture, classesDir) {
   const stdout = runTool('java', ['-classpath', classesDir, fixture.className]);
   if (stdout === '') {

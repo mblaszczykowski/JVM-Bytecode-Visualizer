@@ -1,32 +1,23 @@
 /**
- * Bubble sort — the example that puts an array on the heap.
- *
- * <p>{@code {5, 3, 4, 1, 2}} is allocated with {@code newarray} and filled element by element
- * with {@code iastore}, then sorted in place: each pass walks the array with {@code iaload},
- * compares neighbours and swaps them, so the largest value left over bubbles to the end.
- *
- * <p>Two nested {@code for} loops, an inner bound that shrinks by one per pass and is read
- * back from {@code arraylength} every time, and a few hundred steps in which the array on the
- * heap changes with every swap — the local variables alone no longer tell the whole story.
- *
- * <p>There is no {@code System.out.println} and no static field; the result is stored in the
- * local variable {@code result}.
+ * Bubble sort, the one example that puts an array on the heap. {@code {5, 3, 4, 1, 2}} is
+ * allocated with {@code newarray}, filled element by element with {@code iastore} and then sorted
+ * in place: each pass walks the array with {@code iaload}, compares neighbours and swaps them, so
+ * the largest remaining value moves to the end. The inner bound shrinks by one per pass and is
+ * re-read from {@code arraylength} every time; the result is left in the local variable
+ * {@code result}.
  */
 public final class BubbleSort {
 
-    private BubbleSort() {
-        // Utility class — never instantiated.
-    }
+    private BubbleSort() {}
 
     /**
      * Sorts a fixed five-element array in place and reports its smallest element.
      *
-     * <p>The array is neither a parameter nor a return value: only {@code int} parameters and
-     * an {@code int}/{@code void} return type are supported, so the data is built here and the
-     * caller gets a single element of the sorted array back.
+     * <p>Only {@code int} parameters and an {@code int}/{@code void} return type are supported, so
+     * the array is built here rather than passed in, and the caller gets back one element of it.
      *
-     * @return {@code a[0]} after sorting, i.e. the minimum of the array — 5 before the sort
-     *     runs, so the value proves that it did
+     * @return {@code a[0]} after sorting, i.e. the minimum of the array, 1; the unsorted array
+     *     starts with 5, so the value shows the sort ran
      */
     static int sortedMinimum() {
         int[] a = {5, 3, 4, 1, 2};
@@ -44,8 +35,8 @@ public final class BubbleSort {
     }
 
     /**
-     * Interpreter entry point. The {@code args} parameter is deliberately unused — slot 0 of
-     * the {@code main} frame holds a sentinel that no supported instruction can read.
+     * Entry point. {@code args} is unused: slot 0 of the frame holds a sentinel that no supported
+     * instruction can read.
      */
     public static void main(String[] args) {
         int result = sortedMinimum(); // 1

@@ -18,7 +18,6 @@ import {
   type TimelineEventKind,
 } from './timeline';
 
-/** A shipped example run exactly as the application runs it. */
 function runOf(name: string): readonly Snapshot[] {
   return execute(parseClassFile(readExampleBytes(`${name}.class`))).snapshots;
 }
@@ -35,11 +34,9 @@ function mnemonicsAt(
 }
 
 describe('stepping targets', () => {
-  // main calls factorial, which recurses four deep: depth 1 at the ends, 5 in the middle.
   const factorial = depthsOf(runOf('Factorial'));
 
   it('runs a call to completion and stops after it returns', () => {
-    // Step 1 is the invokestatic in main; the whole recursion is steps 2–36.
     expect(factorial[1]).toBe(1);
     expect(stepOverTarget(factorial, 1)).toBe(37);
     expect(factorial[37]).toBe(1);
@@ -51,7 +48,6 @@ describe('stepping targets', () => {
   });
 
   it('leaves the frame on top rather than the one below it', () => {
-    // Step 28 is the deepest frame, factorial(1), alive for steps 26–30.
     expect(factorial[28]).toBe(5);
     expect(stepOutTarget(factorial, 28)).toBe(31);
     expect(factorial[31]).toBe(4);
@@ -68,7 +64,6 @@ describe('stepping targets', () => {
   });
 
   it('reports no target when the run ends inside the callee', () => {
-    // A history cut short by the step limit never comes back down to the caller's depth.
     const cutShort = [1, 2, 3, 4];
     expect(stepOverTarget(cutShort, 1)).toBeUndefined();
     expect(stepOutTarget(cutShort, 1)).toBeUndefined();
@@ -167,8 +162,6 @@ describe('timelineEventsOf', () => {
     const branches = snapshots.filter(
       (snapshot) => snapshot.currentInstruction?.branchTarget !== undefined,
     );
-    // The run executes far more branch instructions than it takes: the loops fall through
-    // on every iteration but the last.
     expect(taken.length).toBeLessThan(branches.length);
   });
 
@@ -231,7 +224,6 @@ describe('bucketEvents', () => {
   });
 
   it('keeps the most specific event where several share a bucket', () => {
-    // The depth chart already draws the call; the heap write is the thing it cannot show.
     expect(
       bucketEvents(
         [

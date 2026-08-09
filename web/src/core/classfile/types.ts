@@ -1,6 +1,3 @@
-/** Model of the `.class` parser result. */
-
-/** Constant pool entry tags — JVMS §4.4, table 4.4-B. */
 export const ConstantTag = {
   Utf8: 1,
   Integer: 3,
@@ -23,7 +20,6 @@ export const ConstantTag = {
 
 export type ConstantTag = (typeof ConstantTag)[keyof typeof ConstantTag];
 
-/** Tags read only so the parser can correctly advance past them. */
 export type UninterpretedConstantTag =
   | typeof ConstantTag.Float
   | typeof ConstantTag.Long
@@ -38,19 +34,16 @@ export type UninterpretedConstantTag =
 
 export interface Utf8Constant {
   readonly tag: typeof ConstantTag.Utf8;
-  /** Decoded modified UTF-8 (JVMS §4.4.7). */
   readonly value: string;
 }
 
 export interface IntegerConstant {
   readonly tag: typeof ConstantTag.Integer;
-  /** Signed value (int32) — JVMS §4.4.4. */
   readonly value: number;
 }
 
 export interface ClassConstant {
   readonly tag: typeof ConstantTag.Class;
-  /** Index of the Utf8 entry holding the internal name, e.g. `java/lang/Object`. */
   readonly nameIndex: number;
 }
 
@@ -77,10 +70,6 @@ export interface NameAndTypeConstant {
   readonly descriptorIndex: number;
 }
 
-/**
- * An entry of known length whose contents the MVP does not need. Keeping the tag alone is
- * enough to hold the pool indices in place and still name the entry kind in the UI.
- */
 export interface UninterpretedConstant {
   readonly tag: UninterpretedConstantTag;
 }
@@ -95,10 +84,6 @@ export type ConstantPoolEntry =
   | NameAndTypeConstant
   | UninterpretedConstant;
 
-/**
- * A 1-indexed pool: `[0]` is always `null`, and so is the second slot of every
- * `Long`/`Double` entry (JVMS §4.4.5).
- */
 export type ConstantPool = readonly (ConstantPoolEntry | null)[];
 
 export interface LineNumberEntry {
@@ -111,26 +96,14 @@ export interface LocalVariableEntry {
   readonly length: number;
   readonly name: string;
   readonly descriptor: string;
-  /** Slot number in the frame's local variable array. */
   readonly index: number;
 }
 
-/**
- * One row of the exception table (JVMS §4.7.3): a handler, the range of code it covers and
- * the class it catches.
- *
- * The rows are ordered, and that order is the language's: `catch (ArithmeticException e)`
- * before `catch (Exception e)` is two rows, and the first one that matches wins. A `finally`
- * block and a `catch (Throwable)` both compile to a row that catches everything.
- */
 export interface ExceptionTableEntry {
   readonly startPc: number;
-  /** Exclusive — the handler covers `[startPc, endPc)`. */
   readonly endPc: number;
   readonly handlerPc: number;
-  /** Pool index of the caught class, or 0 for "any throwable". */
   readonly catchTypeIndex: number;
-  /** Internal name of the caught class, e.g. `java/lang/ArithmeticException`; absent when 0. */
   readonly catchType?: string;
 }
 
@@ -138,11 +111,8 @@ export interface CodeAttribute {
   readonly maxStack: number;
   readonly maxLocals: number;
   readonly code: Uint8Array;
-  /** Present when the class was compiled with line information (javac emits it by default). */
   readonly lineNumberTable?: readonly LineNumberEntry[];
-  /** Present only with `javac -g` — without it the UI has no local variable names. */
   readonly localVariableTable?: readonly LocalVariableEntry[];
-  /** Absent for a method with no `try` in it, which is most of them. */
   readonly exceptionTable?: readonly ExceptionTableEntry[];
 }
 
@@ -156,26 +126,21 @@ export interface MethodInfo {
   readonly name: string;
   readonly descriptor: string;
   readonly accessFlags: number;
-  /** Absent for `abstract`/`native` methods (JVMS §4.6). */
   readonly code?: CodeAttribute;
 }
 
 export interface ClassFile {
   readonly minorVersion: number;
-  /** 65 = Java 21 (JVMS §4.1, table 4.1-A). */
   readonly majorVersion: number;
   readonly constantPool: ConstantPool;
   readonly accessFlags: number;
-  /** Internal name, e.g. `Factorial` — resolved from the constant pool. */
   readonly thisClassName: string;
-  /** Empty only for `java/lang/Object`, the sole class without a superclass (JVMS §4.1). */
   readonly superClassName: string;
   readonly interfaceNames: readonly string[];
   readonly fields: readonly FieldInfo[];
   readonly methods: readonly MethodInfo[];
 }
 
-/** Subset of the access flags from JVMS §4.6, table 4.6-A, used by the interpreter and UI. */
 export const AccessFlag = {
   Public: 0x0001,
   Private: 0x0002,

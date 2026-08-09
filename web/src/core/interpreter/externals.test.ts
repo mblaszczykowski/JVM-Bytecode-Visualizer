@@ -7,18 +7,8 @@ import { formatVmError } from './errors';
 import { execute } from './interpreter';
 import type { ExecutionResult, Snapshot } from './types';
 
-/**
- * The recognised members of the standard library, driven from hand-written bytecode.
- *
- * The differential suite already proves that a real `System.out.println` program prints what
- * `java` prints; what is left to pin down is everything a compiler would not emit — a field
- * nobody models, a method invoked on the wrong object, a constant the machine cannot push —
- * each of which has to stop the run with an error that names what was attempted.
- */
-
 const PRINT_STREAM = 'java/io/PrintStream';
 
-/** Big-endian `u2` operand of an instruction that addresses the constant pool (JVMS §4.1). */
 function u2(index: number): readonly number[] {
   return [(index >> 8) & 0xff, index & 0xff];
 }
@@ -39,7 +29,6 @@ function consoleOf(program: Program): readonly string[] {
   return expectCompleted(run(program)).snapshots.at(-1)?.consoleOutput ?? [];
 }
 
-/** `getstatic java/lang/System.out` — the instruction every printing program starts with. */
 function systemOut(pool: ConstantPoolBuilder): readonly number[] {
   return [0xb2, ...u2(pool.fieldref('java/lang/System', 'out', 'Ljava/io/PrintStream;'))];
 }
@@ -48,10 +37,6 @@ function printStream(pool: ConstantPoolBuilder, name: string, descriptor: string
   return pool.methodref(PRINT_STREAM, name, descriptor);
 }
 
-/**
- * `getstatic System.out; <argument>; invokevirtual <member>` — the three instructions javac
- * emits for every call on System.out, with the argument pushed in between.
- */
 function printCall(
   pool: ConstantPoolBuilder,
   member: number,
@@ -60,7 +45,7 @@ function printCall(
   return [...systemOut(pool), ...argument, 0xb6, ...u2(member)];
 }
 
-describe('execute — printing through System.out', () => {
+describe('execute: printing through System.out', () => {
   it('prints an int the way Java renders it', () => {
     const pool = new ConstantPoolBuilder();
     const println = printStream(pool, 'println', '(I)V');
@@ -68,7 +53,6 @@ describe('execute — printing through System.out', () => {
     expect(
       consoleOf({
         pool,
-        // getstatic System.out; bipush 42; invokevirtual println(I)V; return
         code: [...systemOut(pool), 0x10, 42, 0xb6, ...u2(println), 0xb1],
       }),
     ).toEqual(['42']);
@@ -79,14 +63,13 @@ describe('execute — printing through System.out', () => {
     const asBoolean = printStream(pool, 'println', '(Z)V');
     const asChar = printStream(pool, 'println', '(C)V');
 
-    // The descriptor decides, not the value: 0, 1 and 65 are three ints on the stack.
     expect(
       consoleOf({
         pool,
         code: [
-          ...printCall(pool, asBoolean, [0x03]), // println(false)
-          ...printCall(pool, asBoolean, [0x04]), // println(true)
-          ...printCall(pool, asChar, [0x10, 65]), // println('A')
+          ...printCall(pool, asBoolean, [0x03]),
+          ...printCall(pool, asBoolean, [0x04]),
+          ...printCall(pool, asChar, [0x10, 65]),
           0xb1,
         ],
       }),
@@ -102,10 +85,10 @@ describe('execute — printing through System.out', () => {
       consoleOf({
         pool,
         code: [
-          ...printCall(pool, print, [0x04]), // print(1)
-          ...printCall(pool, print, [0x05]), // print(2)
-          ...printCall(pool, println), //       println()
-          ...printCall(pool, print, [0x06]), // print(3)
+          ...printCall(pool, print, [0x04]),
+          ...printCall(pool, print, [0x05]),
+          ...printCall(pool, println),
+          ...printCall(pool, print, [0x06]),
           0xb1,
         ],
       }),
@@ -120,7 +103,6 @@ describe('execute — printing through System.out', () => {
     expect(
       consoleOf({
         pool,
-        // getstatic System.out; ldc "one\ntwo\n"; invokevirtual print(String)V; return
         code: [...systemOut(pool), 0x12, text, 0xb6, ...u2(print), 0xb1],
       }),
     ).toEqual(['one', 'two']);
@@ -129,7 +111,7 @@ describe('execute — printing through System.out', () => {
   it('names System.out on the operand stack instead of leaving a bare number', () => {
     const pool = new ConstantPoolBuilder();
     const snapshots = expectCompleted(
-      run({ pool, code: [...systemOut(pool), 0x57, 0xb1] }), // getstatic; pop; return
+      run({ pool, code: [...systemOut(pool), 0x57, 0xb1] }),
     ).snapshots;
     const afterGetstatic = snapshots[1];
 
@@ -138,13 +120,12 @@ describe('execute — printing through System.out', () => {
   });
 });
 
-describe('execute — ldc', () => {
+describe('execute: ldc', () => {
   it('pushes an int constant from the pool', () => {
     const pool = new ConstantPoolBuilder();
     const constant = pool.integer(123_456_789);
     const classFile = syntheticClass({
       pool,
-      // ldc #constant; ireturn
       methods: [{ name: 'main', descriptor: '()I', code: [0x12, constant, 0xac] }],
     });
 
@@ -166,7 +147,6 @@ describe('execute — ldc', () => {
     const pool = new ConstantPoolBuilder();
     const text = pool.stringEntry('shared');
     const snapshots: readonly Snapshot[] = expectCompleted(
-      // ldc; ldc; astore_1; astore_2; return — two loads of the one pooled string
       run({ pool, code: [0x12, text, 0x12, text, 0x4c, 0x4d, 0xb1] }),
     ).snapshots;
     const beforeStore = snapshots[2];
@@ -191,7 +171,7 @@ describe('execute — ldc', () => {
     expect(formatVmError(error)).toContain('ldc can push an int or a String constant');
   });
 
-  it('names an index that resolves to nothing at all', () => {
+  it('names an index that resolves to nothing', () => {
     const pool = new ConstantPoolBuilder();
     const error = expectVmError(run({ pool, code: [0x12, 200, 0xb1] }));
 
@@ -202,7 +182,7 @@ describe('execute — ldc', () => {
   });
 });
 
-describe('execute — the members it does not recognise', () => {
+describe('execute: unrecognised members', () => {
   it('refuses a static field outside the table', () => {
     const pool = new ConstantPoolBuilder();
     const field = pool.fieldref('java/lang/System', 'in', 'Ljava/io/InputStream;');
@@ -236,7 +216,6 @@ describe('execute — the members it does not recognise', () => {
     const pool = new ConstantPoolBuilder();
     const text = pool.stringEntry('not a stream');
     const println = printStream(pool, 'println', '()V');
-    // ldc "not a stream"; invokevirtual PrintStream.println()V; return
     const error = expectVmError(run({ pool, code: [0x12, text, 0xb6, ...u2(println), 0xb1] }));
 
     expect(error).toEqual({
@@ -250,7 +229,6 @@ describe('execute — the members it does not recognise', () => {
   it('refuses a virtual call on something that is not an object at all', () => {
     const pool = new ConstantPoolBuilder();
     const println = printStream(pool, 'println', '()V');
-    // iconst_1; invokevirtual println()V — an int where the receiver belongs
     const error = expectVmError(run({ pool, code: [0x04, 0xb6, ...u2(println), 0xb1] }));
 
     expect(error).toMatchObject({
@@ -269,7 +247,7 @@ describe('execute — the members it does not recognise', () => {
   });
 });
 
-describe('execute — the java.lang.Math intrinsics', () => {
+describe('execute: java.lang.Math intrinsics', () => {
   function callMath(name: string, descriptor: string, args: readonly number[]): ExecutionResult {
     const pool = new ConstantPoolBuilder();
     const method = pool.methodref('java/lang/Math', name, descriptor);
@@ -280,7 +258,6 @@ describe('execute — the java.lang.Math intrinsics', () => {
           {
             name: 'main',
             descriptor: '()I',
-            // Each argument arrives through `ldc`, so the full int range is reachable.
             code: [
               ...args.flatMap((value) => [0x12, pool.integer(value)]),
               0xb8,
@@ -319,14 +296,13 @@ describe('execute — the java.lang.Math intrinsics', () => {
     }
   });
 
-  it('leaves the arguments in declaration order, not in stack order', () => {
-    // A reversed argument list would answer 2 for floorDiv(9, 4) rather than 0.
+  it('passes arguments in declaration order', () => {
     expect(expectCompleted(callMath('floorDiv', '(II)I', [9, 4])).returnValue).toBe(2);
     expect(expectCompleted(callMath('floorDiv', '(II)I', [4, 9])).returnValue).toBe(0);
   });
 });
 
-describe('execute — references to external objects in local slots', () => {
+describe('execute: external object references in local slots', () => {
   it('stores and loads a String constant like any other reference', () => {
     const pool = new ConstantPoolBuilder();
     const text = pool.stringEntry('via a local');
@@ -335,7 +311,6 @@ describe('execute — references to external objects in local slots', () => {
     expect(
       consoleOf({
         pool,
-        // ldc "via a local"; astore_1; getstatic System.out; aload_1; println(String); return
         code: [0x12, text, 0x4c, ...systemOut(pool), 0x2b, 0xb6, ...u2(println), 0xb1],
       }),
     ).toEqual(['via a local']);
@@ -343,7 +318,6 @@ describe('execute — references to external objects in local slots', () => {
 
   it('refuses to read an int slot as a reference', () => {
     const pool = new ConstantPoolBuilder();
-    // iconst_1; istore_1; aload_1; return
     const error = expectVmError(run({ pool, code: [0x04, 0x3c, 0x2b, 0xb1] }));
 
     expect(error).toMatchObject({
@@ -354,7 +328,6 @@ describe('execute — references to external objects in local slots', () => {
 
   it('refuses to store an int through astore', () => {
     const pool = new ConstantPoolBuilder();
-    // iconst_1; astore_1; return
     const error = expectVmError(run({ pool, code: [0x04, 0x4c, 0xb1] }));
 
     expect(error).toMatchObject({

@@ -1,17 +1,3 @@
-/**
- * The short form of `docs/jvm-primer.md`: a few sentences per concept the panels put on
- * screen, in the same voice, for the reader who meets the word here rather than in a
- * specification.
- *
- * The primer stays the authority. Every entry names the section it condenses, and every rule
- * it asserts cites the same JVMS section the primer cites for that rule — `glossary.test.ts`
- * reads the primer and fails when either link goes stale, so the two cannot drift into two
- * accounts of the same machine.
- *
- * Per-concept help, not per-instruction help: what one mnemonic does is `explainMnemonic`,
- * which the listing already carries on every row.
- */
-
 export type GlossaryTermId =
   | 'operand-stack'
   | 'call-stack'
@@ -24,7 +10,6 @@ export type GlossaryTermId =
   | 'descriptor'
   | 'line-number-table';
 
-/** The section of `docs/jvm-primer.md` this entry is condensed from. */
 export interface PrimerReference {
   readonly section: number;
   readonly title: string;
@@ -33,9 +18,7 @@ export interface PrimerReference {
 export interface GlossaryEntry {
   readonly id: GlossaryTermId;
   readonly term: string;
-  /** What the reader is asking when they reach for this — also the label of every trigger. */
   readonly question: string;
-  /** Backticks mark code; the dialog renders them as monospace. */
   readonly paragraphs: readonly string[];
   readonly primer: PrimerReference;
   readonly related: readonly GlossaryTermId[];
@@ -52,8 +35,8 @@ const ENTRIES: Readonly<Record<GlossaryTermId, GlossaryEntry>> = {
         'and pushes their sum (JVMS §2.6.2).',
       'It belongs to one frame and is empty when that frame is created, so this panel always ' +
         'shows the stack of the method currently executing. Between `iadd` and the `istore` ' +
-        'that follows it, the result exists only here — it has no name yet, and that is the ' +
-        'state a debugger over source code cannot show you.',
+        'that follows it, the result exists only here and has no name yet, which is a state a ' +
+        'source-level debugger cannot show.',
       'Typical depth is two or three. javac computes the deepest a method can ever go and ' +
         'records it as `max_stack` in the Code attribute (JVMS §4.7.3), so the size is fixed ' +
         'before the method runs.',
@@ -67,12 +50,12 @@ const ENTRIES: Readonly<Record<GlossaryTermId, GlossaryEntry>> = {
     term: 'Call stack',
     question: 'What is the call stack?',
     paragraphs: [
-      'The other stack, and the one with nothing to do with operands: it holds one frame per ' +
-        'method invocation in progress (JVMS §2.5.2). Every call pushes a frame, every return ' +
-        'pops one.',
+      'The second stack, unrelated to the operand stack: it holds one frame per method ' +
+        'invocation in progress (JVMS §2.5.2). Every call pushes a frame, every return pops ' +
+        'one.',
       'The frame executing right now is drawn at the bottom of the list, beside the panels ' +
         'that describe it, with the entry method at the top. Its depth is what the chart under ' +
-        'the scrubber plots across the whole run — recursion is the shape that goes up and ' +
+        'the scrubber plots across the whole run; recursion is the shape that goes up and ' +
         'comes back down.',
       'This is the stack that overflows into `StackOverflowError`. An operand stack cannot ' +
         'overflow at run time, because its maximum was computed at compile time.',
@@ -89,13 +72,13 @@ const ENTRIES: Readonly<Record<GlossaryTermId, GlossaryEntry>> = {
       'A frame is created on every method invocation and destroyed when that invocation ' +
         'completes, whether it returns or throws (JVMS §2.6). It holds three things: this ' +
         "method's local variable slots, its own operand stack, and where execution has reached.",
-      'Both areas are per frame, and that is the entire reason recursion works. ' +
-        '`factorial(3)` and `factorial(2)` are the same code with the same slot numbers, but ' +
-        'each invocation has an array of slots of its own; nothing is saved and restored, ' +
-        'because the frames never shared storage.',
+      'Both areas are per frame, which is why recursion works. `factorial(3)` and ' +
+        '`factorial(2)` are the same code with the same slot numbers, but each invocation has ' +
+        'an array of slots of its own; nothing is saved and restored, because the frames never ' +
+        'shared storage.',
       'The sizes are fixed when the frame is created, from `max_locals` and `max_stack` in the ' +
-        "method's Code attribute (JVMS §4.7.3) — the `max 2/1` in the Bytecode panel header. A " +
-        'frame cannot grow.',
+        "method's Code attribute (JVMS §4.7.3), shown as `max 2/1` in the Bytecode panel " +
+        'header. A frame cannot grow.',
     ],
     primer: { section: 3, title: 'The frame' },
     related: ['call-stack', 'local-variable-slot', 'program-counter'],
@@ -114,7 +97,7 @@ const ENTRIES: Readonly<Record<GlossaryTermId, GlossaryEntry>> = {
         "consecutive slots, which is why a method's slot count is not its variable count.",
       'The names in this panel are not in the bytecode either. They come from the optional ' +
         '`LocalVariableTable` that javac emits with `-g`, which maps a slot to a name over a ' +
-        'range of byte offsets (JVMS §4.7.13) — so two variables whose scopes do not overlap ' +
+        'range of byte offsets (JVMS §4.7.13), so two variables whose scopes do not overlap ' +
         'can share one slot. Load a class compiled without `-g` and the panel can only say ' +
         '`slot 1`.',
     ],
@@ -131,7 +114,7 @@ const ENTRIES: Readonly<Record<GlossaryTermId, GlossaryEntry>> = {
         'being executed (JVMS §2.5.1). The highlighted row of the Bytecode panel is where it ' +
         'points.',
       'That address is a byte offset into the method, not a line number and not a step count. ' +
-        '`bipush 6` occupies offsets 0 and 1 — one opcode byte and one operand byte — so the ' +
+        '`bipush 6` occupies offsets 0 and 1 (one opcode byte, one operand byte), so the ' +
         'instruction after it begins at offset 2, which is what the left column of the listing ' +
         'counts.',
       'JVMS §2.5.1 gives the pc to the thread. This interpreter keeps one on every frame, ' +
@@ -149,12 +132,11 @@ const ENTRIES: Readonly<Record<GlossaryTermId, GlossaryEntry>> = {
     paragraphs: [
       'One byte names the operation, and the mnemonic is that byte written out. 150 of the 205 ' +
         'opcodes in the table take no operand bytes at all: `iadd` never has to say where its ' +
-        'inputs are, because the top of the operand stack is the only answer available.',
+        'inputs are, because they can only be the top of the operand stack.',
       'The type is in the mnemonic rather than in the values. `iadd` adds ints, `ladd` adds ' +
         'longs, `dadd` adds doubles (JVMS §2.11.1); the stack carries no types at run time, ' +
-        'and a verification pass proves before execution that they line up (JVMS §4.10). That ' +
-        'is why the `i` prefix is everywhere here — the executable subset is the int ' +
-        'instructions.',
+        'and a verification pass proves before execution that they line up (JVMS §4.10). The ' +
+        '`i` prefix is everywhere here because the executable subset is the int instructions.',
       'What a particular mnemonic does is on the row itself: every instruction in the listing ' +
         'carries its own description. JVMS §6.5 is the complete reference, one entry per ' +
         'opcode.',
@@ -168,9 +150,9 @@ const ENTRIES: Readonly<Record<GlossaryTermId, GlossaryEntry>> = {
     term: 'Branch target',
     question: 'What is a branch target?',
     paragraphs: [
-      'Where a jump goes, printed as an absolute byte offset — `if_icmpgt 7` continues at ' +
-        'offset 7 — exactly as `javap -c` prints it. The arcs in the gutter draw the same ' +
-        'thing, from the branch to its target.',
+      'Where a jump goes, printed as an absolute byte offset, exactly as `javap -c` prints it: ' +
+        '`if_icmpgt 7` continues at offset 7. The arcs in the gutter draw the same thing, from ' +
+        'the branch to its target.',
       'The class file does not store that number. A branch holds a signed 16-bit delta ' +
         'relative to the offset of its own opcode (JVMS §6.5 `if_icmp<cond>`); this ' +
         'disassembler and javap both do the addition for you.',
@@ -186,12 +168,12 @@ const ENTRIES: Readonly<Record<GlossaryTermId, GlossaryEntry>> = {
     term: 'Constant pool',
     question: 'What is the constant pool?',
     paragraphs: [
-      'Bytecode contains no strings, class names or signatures — only small integers indexing ' +
+      'Bytecode contains no strings, class names or signatures, only small integers indexing ' +
         'a per-class table (JVMS §4.4). `javap` and the Bytecode panel both print those ' +
         'indices as `#7`.',
       'The entries form a chain, because names bottom out in `Utf8` entries: a `Methodref` ' +
         'names a `Class` and a `NameAndType`, and those name the strings. Reading ' +
-        '`invokestatic #7` as `Factorial.factorial:(I)I` is a walk down that chain — a ' +
+        '`invokestatic #7` as `Factorial.factorial:(I)I` is a walk down that chain: a ' +
         'symbolic reference being resolved, which is what lets a class be compiled against a ' +
         'version of another class that no longer exists at run time (JVMS §5.4.3).',
       'Two details catch people out in a raw dump: the pool is 1-indexed, so index 0 is never ' +
@@ -216,8 +198,7 @@ const ENTRIES: Readonly<Record<GlossaryTermId, GlossaryEntry>> = {
         'returns one; `([Ljava/lang/String;)V` is `void main(String[])`; `(II)Z` is two ints ' +
         'in and a boolean out.',
       'The parentheses are what make it parseable one character at a time: parameters are read ' +
-        'until the `)`, so nothing needs a separator and nothing is ambiguous. It is not meant ' +
-        'to be pretty, it is meant to be unambiguous.',
+        'until the `)`, so nothing needs a separator and nothing is ambiguous.',
     ],
     primer: { section: 6, title: 'Descriptors' },
     related: ['constant-pool', 'local-variable-slot'],
@@ -236,20 +217,15 @@ const ENTRIES: Readonly<Record<GlossaryTermId, GlossaryEntry>> = {
         'loop compiles its initialiser and its increment into different parts of the method, ' +
         'both attributed to the line the `for` is written on. To find the line for a given pc, ' +
         'take the entry with the largest `start_pc` that is not greater than it.',
-      'That single rule is why the highlighted source line appears to jump backwards while a ' +
-        'loop runs — it is the increment, not an artefact. Compile without `-g` and the ' +
-        'attribute is absent: the bytecode still runs, and the Source panel simply has nothing ' +
-        'to highlight.',
+      'That rule is why the highlighted source line appears to jump backwards while a loop ' +
+        'runs: it is the increment. Compile without `-g` and the attribute is absent, so the ' +
+        'bytecode still runs and the Source panel has nothing to highlight.',
     ],
     primer: { section: 7, title: 'From a byte offset back to a line of source' },
     related: ['program-counter', 'local-variable-slot'],
   },
 };
 
-/**
- * Reading order rather than alphabetical: the two stacks first, then what contains them, then
- * the parts of the class file the listing points into.
- */
 const READING_ORDER: readonly GlossaryTermId[] = [
   'operand-stack',
   'call-stack',
@@ -269,14 +245,6 @@ export function glossaryEntry(id: GlossaryTermId): GlossaryEntry {
   return ENTRIES[id];
 }
 
-/**
- * The term a panel is about, keyed by the name in its header. A panel header is the one place
- * every panel already names the concept it draws, so the affordance is derived from that name
- * instead of being threaded through every panel as a prop.
- *
- * Panels that show a run's product rather than a mechanism — Result, Console, Heap — are
- * deliberately absent: there is no concept behind them the primer teaches.
- */
 const TERM_BY_PANEL: Readonly<Record<string, GlossaryTermId>> = {
   Source: 'line-number-table',
   'Class file': 'constant-pool',

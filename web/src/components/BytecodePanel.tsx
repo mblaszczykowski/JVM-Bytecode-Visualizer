@@ -29,58 +29,22 @@ interface BytecodePanelProps {
   readonly maxStack: number;
   readonly maxLocals: number;
   readonly instructions: readonly Instruction[];
-  /**
-   * `pc` of the top frame — the offset of the instruction about to run.
-   * `undefined` when the call stack is empty (terminal snapshot).
-   */
   readonly currentOffset: number | undefined;
-  /**
-   * Constant pool of the class the listing came from. Needed to resolve the descriptor behind
-   * an `invokestatic`; without it the stack column has nothing to say and is left off.
-   */
   readonly constantPool?: ConstantPool | undefined;
-  /**
-   * What javac was compiling here, keyed by the offset the construct starts at. A loop, a
-   * boxing call, the `super()` nobody wrote — the things a listing cannot say on its own.
-   */
   readonly constructs?: ReadonlyMap<number, Construct> | undefined;
-  /** javap-style trailing comments, keyed by instruction offset. */
   readonly comments?: ReadonlyMap<number, string> | undefined;
-  /** Offsets never reached in this run — dimmed, because they did not shape the result. */
   readonly deadOffsets?: ReadonlySet<number> | undefined;
-  /**
-   * Offset where decoding stopped. Variable-length instructions cannot be skipped reliably,
-   * so the rest of the method is reported as undecoded instead of being guessed at.
-   */
   readonly truncatedAtOffset?: number | undefined;
   readonly next?: NextInstructionCardProps | undefined;
-  /** What each mnemonic does, regardless of this run — the tooltip on any row. */
   readonly help?: ReadonlyMap<string, string> | undefined;
-  /** First step of the run that stood at each offset; a row without one cannot be sought to. */
   readonly stepForOffset?: ReadonlyMap<number, number> | undefined;
   readonly onSeek?: ((step: number) => void) | undefined;
-  /**
-   * Constant pool index the reader is following. Every `#n` naming it is marked, and with no
-   * pc to follow the listing scrolls to the first of them.
-   */
   readonly selectedConstant?: number | undefined;
-  /** Follow a `#n` operand into the constant pool table; omitted, the operands stay text. */
   readonly onSelectConstant?: ((index: number) => void) | undefined;
-  /**
-   * 1-based source line each offset compiled from (JVMS §4.7.12), so a row can say which line
-   * it belongs to. Absent for an uploaded class with no LineNumberTable.
-   */
   readonly sourceLineForOffset?: ReadonlyMap<number, number> | undefined;
-  /**
-   * Source line the reader is pointing at, from either code panel. Every instruction that
-   * compiled from it is marked — deliberately weaker than the accent, which means "current".
-   */
   readonly linkedLine?: number | undefined;
-  /** Pointer or focus moved onto a row, or off the listing entirely (`undefined`). */
   readonly onLinkedLineChange?: ((line: number | undefined) => void) | undefined;
-  /** Slide the highlight between instructions; switched off above 4× playback. */
   readonly animateHighlight?: boolean;
-  /** Silences the live region during playback — one announcement per tick is unusable. */
   readonly isPlaying?: boolean;
   readonly className?: string;
 }
@@ -88,7 +52,6 @@ interface BytecodePanelProps {
 interface ConstantLinkProps {
   readonly token: OperandToken;
   readonly index: number;
-  /** Position of this link among the listing's links — the roving tabindex counts these. */
   readonly position: number;
   readonly navigation: RowNavigation;
   readonly isFollowed: boolean;
@@ -96,14 +59,6 @@ interface ConstantLinkProps {
   readonly onSelect: (index: number) => void;
 }
 
-/**
- * A `#n` operand as what it is: a lookup into a table the reader can open. It sits above the
- * row's seek overlay (`z-10`) so the click lands here, and its horizontal padding is cancelled
- * by an equal negative margin — the row is 26px of fixed rhythm and a link may not widen it.
- *
- * The followed entry wears the pool-reference grammar of design §2.4 rather than the pc
- * highlight: two accents claiming "current" in one row would read as one thing.
- */
 function ConstantLink({
   token,
   index,
@@ -144,15 +99,6 @@ interface StackEffectCellProps {
   readonly isCurrent: boolean;
 }
 
-/**
- * Right-hand column of the listing: what the instruction takes off the operand stack and what
- * it leaves behind. Two fixed-width cells rather than free text, so the signs line up into a
- * column; grey and one step down the type scale, because blue means "current" and the
- * disassembly itself has to keep reading as one block (design §12).
- *
- * `aria-hidden`, and not out of laziness: four hundred rows of "minus two plus one" is
- * unusable. The panel's live region carries the effect of the instruction that matters.
- */
 function StackEffectCell({ effect, isCurrent }: StackEffectCellProps) {
   return (
     <span
@@ -205,11 +151,6 @@ export function BytecodePanel({
 }: BytecodePanelProps) {
   const [activeIndex, setActiveIndex] = useState<number | undefined>(undefined);
 
-  /**
-   * Pointer or focus on a row, which drives two things at once: the branch arcs that touch it
-   * and the source line it compiled from. Keeping them on one call is what makes the link
-   * work from the keyboard as well as from the mouse.
-   */
   const pointAt = (index: number | undefined) => {
     setActiveIndex(index);
     if (onLinkedLineChange === undefined) {
@@ -224,8 +165,6 @@ export function BytecodePanel({
   );
   const current = currentIndex < 0 ? undefined : instructions[currentIndex];
 
-  // Instruction indices that name a pool entry, so the `#n` links form a list of their own:
-  // one tab stop for the whole listing rather than one per instruction.
   const constantRows = instructions
     .map((instruction, index) => ({ index, constant: constantIndexOf(instruction) }))
     .filter((row): row is { index: number; constant: number } => row.constant !== undefined);
@@ -236,17 +175,11 @@ export function BytecodePanel({
     'data-constant-row',
   );
 
-  // A pc always wins the scroll: it moves on its own and the reader is watching it. The
-  // followed constant only drives it where there is no run to follow.
   const followedIndex = constantRows[followedRow]?.index;
   const constantPositionOf = new Map(constantRows.map((row, position) => [row.index, position]));
   const contentRef = useScrollFollow(currentIndex < 0 ? followedIndex : currentIndex);
   const rows = useRowNavigation(instructions.length, currentIndex < 0 ? undefined : currentIndex);
 
-  /**
-   * `(I)I` is the header's most cryptic three characters and the reader meets the notation
-   * here first, so the notation itself is the way to the explanation of it.
-   */
   const meta = (
     <>
       {methodName}
@@ -268,7 +201,6 @@ export function BytecodePanel({
       className={className}
       footer={next === undefined ? undefined : <NextInstructionCard {...next} />}
     >
-      {/* The highlight must not be the only carrier of "which step is this". */}
       <p className="sr-only" aria-live={isPlaying ? 'off' : 'polite'}>
         {current === undefined
           ? 'No active instruction.'
@@ -281,14 +213,13 @@ export function BytecodePanel({
           pointAt(undefined);
         }}
       >
-        {/* Arcs follow the pointer and the keyboard alike, so they are not a mouse-only story. */}
         <BranchGutter
           instructions={instructions}
           currentIndex={currentIndex < 0 ? undefined : currentIndex}
           hoveredIndex={activeIndex}
         />
 
-        {/* `isolate` keeps the highlight's negative z-index from sinking below the panel. */}
+        {}
         <ol className="isolate pl-6">
           {instructions.map((instruction, index) => {
             const isCurrent = index === currentIndex;
@@ -298,8 +229,6 @@ export function BytecodePanel({
             const explanation = help?.get(instruction.mnemonic);
             const step = stepForOffset?.get(instruction.offset);
             const construct = constructs?.get(instruction.offset);
-            // Hover and focus mark the whole group an instruction belongs to, not the one row
-            // under the pointer: "line 29 compiled to these five" is the relationship on show.
             const isLinked =
               !isCurrent &&
               linkedLine !== undefined &&
@@ -330,22 +259,14 @@ export function BytecodePanel({
                 >
                   {instruction.offset}
                 </span>
-                {/* Mnemonics are never colour-coded: the listing has to read as one block. */}
                 <span className={`w-[106px] shrink-0 ${isUnsupported ? 'text-error' : ''}`}>
                   {instruction.mnemonic}
                 </span>
                 {instruction.operands.length === 0 ? null : (
                   <span>
                     {operandTokens(instruction).map((token, position) => (
-                      // Operands are positional; the index is the only stable key they have.
                       <Fragment key={`${String(position)}:${token.text}`}>
                         {position === 0 ? null : <span className="text-fg-3">, </span>}
-                        {/*
-                          Blue means "current state", so only operands that point elsewhere in
-                          the class file are coloured — a slot or an immediate is just a number.
-                          A pool index points at a row of a table that is on screen, so it is
-                          the one operand that is also a link.
-                        */}
                         {token.constantIndex === undefined || onSelectConstant === undefined ? (
                           <span
                             className={
@@ -373,11 +294,6 @@ export function BytecodePanel({
                   <span className={isCurrent ? 'text-accent-dim' : 'text-fg-3'}>{comment}</span>
                 )}
                 <span className="grow" />
-                {/*
-                  What the Java was, on the row where it starts. Grey and lower case: this is a
-                  note about the source, not a fact about the machine, and the accent means the
-                  machine. The `title` carries the sentence the tag has no room for.
-                */}
                 {construct === undefined ? null : (
                   <span
                     data-testid="construct-tag"
@@ -389,8 +305,7 @@ export function BytecodePanel({
                   </span>
                 )}
                 {isUnsupported ? <Pill tone="error">unsupported</Pill> : null}
-                {/* Always rendered once there is a pool, empty cells included — a column that
-                    moves from row to row is not a column. */}
+                {}
                 {constantPool === undefined ? null : (
                   <StackEffectCell
                     effect={stackEffectOf(instruction, constantPool)}
@@ -417,7 +332,6 @@ export function BytecodePanel({
                     onBlur={() => {
                       pointAt(undefined);
                     }}
-                    // The row is already drawn; this only has to be the target you can hit.
                     className="focus-ring absolute inset-0 rounded-code"
                   />
                 )}

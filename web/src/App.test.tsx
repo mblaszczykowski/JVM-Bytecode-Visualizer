@@ -20,7 +20,6 @@ import { inlineRunner, RunCancelled, type ProgramRunner } from './services/progr
 
 const FACTORIAL_STEPS = 40;
 
-/** However many examples ship: this suite is about the screen, not about the catalogue. */
 function exampleCount(): number {
   return (readExampleManifest() as { examples: readonly unknown[] }).examples.length;
 }
@@ -30,7 +29,6 @@ const COMPILE_API = 'http://compile.test';
 const HEALTH_URL = `${COMPILE_API}/actuator/health`;
 const COMPILE_URL = `${COMPILE_API}/api/compile`;
 
-/** Renders the app and waits for the manifest to arrive. */
 async function openApp(compileApiUrl?: string) {
   render(<App compileApiUrl={compileApiUrl} />);
   await screen.findByRole('radio', { name: 'Factorial' });
@@ -56,11 +54,9 @@ function chooseFile(file: File): void {
 
 interface HeldAnswer {
   readonly route: FakeRoute;
-  /** Lands the answer and lets React process everything that follows from it. */
   readonly land: (response: Response | Error) => Promise<void>;
 }
 
-/** A request the test keeps in flight, so a later event can be raced against it. */
 function heldAnswer(): HeldAnswer {
   let settle: (response: Response | Error) => void = () => undefined;
   const pending = new Promise<Response>((resolve, reject) => {
@@ -86,8 +82,6 @@ function heldAnswer(): HeldAnswer {
 
 afterEach(() => {
   vi.unstubAllGlobals();
-  // The app writes the position of the run into the hash, and jsdom keeps one document for the
-  // whole file — without this the next mount would open on the previous test's example.
   window.history.replaceState(null, '', '/');
 });
 
@@ -105,7 +99,6 @@ describe('welcome screen', () => {
     stubFetch(exampleRoutes());
     await openApp();
 
-    // The count belongs to the manifest, not to this test: examples come and go.
     expect(screen.getAllByTestId('welcome-example').length).toBe(exampleCount());
     expect(screen.getByText(/one bytecode instruction at a time/)).toBeVisible();
     expect(screen.queryByTestId('step-counter')).not.toBeInTheDocument();
@@ -119,11 +112,10 @@ describe('welcome screen', () => {
     const [factorial] = screen.getAllByTestId('welcome-example');
 
     expect(factorial).toHaveTextContent('Five frames deep and back: 4! = 24.');
-    // The long text belongs to the toolbar tooltip, not to the card.
-    expect(factorial).not.toHaveTextContent('the clearest way to see');
+    expect(factorial).not.toHaveTextContent('resumes a method exactly where it left off');
     expect(screen.getByRole('radio', { name: 'Factorial' })).toHaveAttribute(
       'title',
-      expect.stringContaining('the clearest way to see'),
+      expect.stringContaining('resumes a method exactly where it left off'),
     );
   });
 
@@ -155,7 +147,6 @@ describe('welcome screen', () => {
     stubFetch({ ...exampleRoutes(), [exampleUrl(MANIFEST_FILE)]: manifest.route });
     render(<App />);
 
-    // The reader does not wait for the examples: a drop lands while they are still in flight.
     chooseFile(uploadFile('Gcd.class', new Uint8Array(readExampleBytes('Gcd.class'))));
     await screen.findByTestId('step-counter');
 
@@ -163,7 +154,6 @@ describe('welcome screen', () => {
 
     expect(screen.getByTestId('step-counter')).toHaveTextContent(`step 1 / ${String(GCD_STEPS)}`);
     expect(screen.getByTestId('current-instruction')).toBeInTheDocument();
-    // Only the examples are gone, and the banner says so.
     expect(screen.getByTestId('error-banner')).toHaveTextContent('Could not download');
     expect(screen.queryByRole('radio', { name: 'Factorial' })).not.toBeInTheDocument();
   });
@@ -197,11 +187,9 @@ describe('running an example', () => {
     expect(chain.getByText('#7')).toBeInTheDocument();
     expect(chain.getByText('Methodref')).toBeInTheDocument();
     expect(chain.getByText('Factorial.factorial:(I)I')).toBeInTheDocument();
-    // The card resolves the call, not just the premise: where control goes and where it
-    // comes back to.
     expect(
       screen.getByText(
-        'Pops 4 and calls factorial(I)I with it in slot 0 — the callee starts at pc 0 and ' +
+        'Pops 4 and calls factorial(I)I with it in slot 0. The callee starts at pc 0 and ' +
           'main resumes at pc 4.',
       ),
     ).toBeInTheDocument();
@@ -214,7 +202,7 @@ describe('running an example', () => {
     seekTo(4);
 
     expect(screen.getByText('pc 0–2')).toBeInTheDocument();
-    expect(screen.getByText('LineNumberTable · largest startPc ≤ 2 → line 26')).toBeInTheDocument();
+    expect(screen.getByText('LineNumberTable · largest startPc ≤ 2 → line 17')).toBeInTheDocument();
   });
 
   it('follows the recursion down to five frames and back', async () => {
@@ -247,7 +235,6 @@ describe('running an example', () => {
     expect(card.getByText('5 frames')).toBeInTheDocument();
     expect(card.getByText(/Matches the value a real JVM computed/)).toBeInTheDocument();
 
-    // The frame that produced it is still described, instead of blanking with the stack.
     const locals = within(screen.getByRole('region', { name: 'Locals' }));
     expect(locals.getByText('result')).toBeInTheDocument();
     expect(locals.getByText('24')).toBeInTheDocument();
@@ -272,7 +259,7 @@ describe('running an example', () => {
     await openFactorial();
     seekTo(20);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Go to line 27' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Go to line 18' }));
 
     expect(screen.getByTestId('current-source-line')).toHaveTextContent('return 1;');
   });
@@ -302,11 +289,6 @@ describe('running an example', () => {
   });
 });
 
-/**
- * A runner that answers the first `settled` runs the way this thread always did, and then
- * holds every run after that open — the only way to catch a load mid-flight, since a real
- * one is over before an assertion can run.
- */
 function stallingRunner(settled: number, cancellable = true): ProgramRunner {
   let runs = 0;
   return {
@@ -349,7 +331,6 @@ describe('giving up on a run', () => {
     fireEvent.click(await screen.findByRole('radio', { name: 'Factorial' }));
     await screen.findByTestId('step-counter');
 
-    // The scenario the step-limit banner creates: a second run, thought better of.
     fireEvent.click(screen.getByRole('radio', { name: 'GCD' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Cancel' }));
 
@@ -358,7 +339,6 @@ describe('giving up on a run', () => {
     );
     expect(screen.getByRole('region', { name: 'Source' })).toHaveTextContent('Factorial.java');
     expect(screen.queryByTestId('panel-skeleton')).not.toBeInTheDocument();
-    // The abandoned run must not land on the screen it was given up on.
     expect(screen.queryByTestId('error-banner')).not.toBeInTheDocument();
   });
 
@@ -510,8 +490,6 @@ describe('uploads', () => {
 
     chooseFile(uploadFile('notes.txt', new TextEncoder().encode('just some text')));
 
-    // The welcome screen owns the whole grid, so the message belongs inside it — not pinned
-    // to the bottom of the shell, half a screen away from the zone that produced it.
     const banner = await screen.findByTestId('error-banner');
     expect(banner.closest('footer')).toBeNull();
     expect(screen.getByTestId('welcome-screen')).toContainElement(banner);
@@ -544,9 +522,8 @@ describe('uploads', () => {
     const banner = await screen.findByTestId('error-banner');
     expect(banner).toHaveAttribute('data-severity', 'warning');
     expect(banner).toHaveTextContent(
-      'Stopped after 20,000 steps — the program probably does not terminate.',
+      'Stopped after 20,000 steps: the program probably does not terminate.',
     );
-    // The history collected so far stays playable — that is the point of recording it.
     expect(screen.getByTestId('step-counter')).toHaveTextContent('step 1 / 20000');
 
     fireEvent.click(screen.getByRole('button', { name: 'Raise the limit' }));
@@ -570,7 +547,6 @@ describe('uploads', () => {
 });
 
 describe('exploring a class file with nothing to run', () => {
-  /** The largest failure bucket of the measured set: a class with no runnable entry point. */
   async function openLibrary(): Promise<void> {
     stubFetch(exampleRoutes());
     await openApp();
@@ -583,7 +559,6 @@ describe('exploring a class file with nothing to run', () => {
 
     expect(screen.queryByTestId('welcome-screen')).not.toBeInTheDocument();
     expect(screen.getByRole('region', { name: 'Bytecode' })).toBeInTheDocument();
-    // Nothing ran, so there is no history and no transport over it.
     expect(screen.queryByTestId('step-counter')).not.toBeInTheDocument();
   });
 
@@ -685,13 +660,11 @@ describe('a class whose entry point is not called main', () => {
 
     const bytecode = screen.getByRole('region', { name: 'Bytecode' });
     expect(bytecode).toHaveTextContent('step(I)I');
-    // The listing is browsed, not replayed: nothing in it is the current instruction.
     expect(within(bytecode).queryByTestId('current-instruction')).not.toBeInTheDocument();
     expect(screen.queryByTestId('next-instruction-card')).not.toBeInTheDocument();
   });
 });
 
-/** The picker row for one method, by the `name + descriptor` that identifies it. */
 function rowFor(signature: string): HTMLElement {
   const row = screen
     .getAllByTestId('method-row')
@@ -736,7 +709,6 @@ function compileRoutes(compileRoute: FakeRoute, healthRoute: FakeRoute = healthy
   return { ...exampleRoutes(), [HEALTH_URL]: healthRoute, [COMPILE_URL]: compileRoute };
 }
 
-/** Opens the editor from the toolbar once the health check has let it appear. */
 async function openEditor(): Promise<HTMLElement> {
   fireEvent.click(await screen.findByRole('button', { name: 'Write Java…' }));
   return screen.getByLabelText('Java source');
@@ -791,7 +763,6 @@ describe('the compile editor', () => {
       expect.objectContaining({ method: 'POST', body: JSON.stringify({ source: GCD_SOURCE }) }),
     );
 
-    // The source panel shows the .java that was written, not a placeholder.
     const source = screen.getByRole('region', { name: 'Source' });
     expect(source).toHaveTextContent('Gcd.java');
     expect(source).toHaveTextContent('static int gcd(int a, int b)');
@@ -859,7 +830,6 @@ describe('the compile editor', () => {
 
     await held.land(diagnosticsResponse("';' expected"));
 
-    // Nothing reopens behind the reader's back and nothing lands in the banner.
     expect(screen.queryByTestId('compile-editor')).not.toBeInTheDocument();
     expect(screen.queryByTestId('compile-diagnostic')).not.toBeInTheDocument();
     expect(screen.queryByTestId('error-banner')).not.toBeInTheDocument();
@@ -904,7 +874,6 @@ describe('the compile editor', () => {
     down = false;
     fireEvent.click(screen.getByRole('button', { name: 'Compile' }));
 
-    // javac answering at all is proof the service came back.
     expect(await screen.findByTestId('compile-diagnostic')).toBeInTheDocument();
     expect(screen.getByTestId('compiler-health')).toHaveAttribute('data-status', 'online');
     expect(screen.queryByTestId('error-banner')).not.toBeInTheDocument();
@@ -953,7 +922,6 @@ describe('the compile editor', () => {
       `step 1 / ${String(FACTORIAL_STEPS)}`,
     );
 
-    // The shortcuts are still live — they only stepped aside for the text field.
     fireEvent.keyDown(document.body, { key: 'ArrowRight' });
     expect(screen.getByTestId('step-counter')).toHaveTextContent(
       `step 2 / ${String(FACTORIAL_STEPS)}`,

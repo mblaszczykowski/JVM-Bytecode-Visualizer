@@ -18,20 +18,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-/**
- * Annotation processing is the only way user input can get code executed inside javac, so the
- * option gets a behavioural test and not just an assertion on the option list.
- *
- * <p>The control compilation puts {@link MarkerProcessor} on javac's processor path with
- * processing left on, and the processor records itself in a system property — proving the marker
- * mechanism works and that this source triggers it. The service compiler then compiles the same
- * source and the marker must stay unset: {@code -proc:none} plus the empty user class path leave
- * javac no way to discover or run a processor.
- *
- * <p>The service registration lives under {@code processor-path/} rather than at the test
- * classpath root, so it is only ever visible to javac when a test asks for it — never to the build
- * that compiles these tests.
- */
 class AnnotationProcessingDisabledTest {
 
     private static final String ANNOTATED_SOURCE = """

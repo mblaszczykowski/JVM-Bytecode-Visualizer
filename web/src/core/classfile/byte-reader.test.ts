@@ -7,7 +7,7 @@ function readerOf(...bytes: number[]): ByteReader {
   return new ByteReader(Uint8Array.from(bytes).buffer);
 }
 
-describe('ByteReader — unsigned reads', () => {
+describe('ByteReader: unsigned reads', () => {
   it('reads u1, u2 and u4 big-endian (JVMS §4.1)', () => {
     const reader = readerOf(0x2a, 0x01, 0x02, 0xca, 0xfe, 0xba, 0xbe);
 
@@ -23,7 +23,7 @@ describe('ByteReader — unsigned reads', () => {
   });
 });
 
-describe('ByteReader — signed reads', () => {
+describe('ByteReader: signed reads', () => {
   it('reads 0xFF as -1 via readI1 and as 255 via readU1', () => {
     expect(readerOf(0xff).readI1()).toBe(-1);
     expect(readerOf(0xff).readU1()).toBe(255);
@@ -42,7 +42,7 @@ describe('ByteReader — signed reads', () => {
   });
 });
 
-describe('ByteReader — cursor', () => {
+describe('ByteReader: cursor', () => {
   it('advances the offset by the read size and decreases remaining', () => {
     const reader = readerOf(1, 2, 3, 4, 5, 6, 7);
     expect(reader.offset).toBe(0);
@@ -65,7 +65,7 @@ describe('ByteReader — cursor', () => {
     expect(reader.readU1()).toBe(4);
   });
 
-  it('readBytes returns a copy — mutating the result leaves the source buffer alone', () => {
+  it('readBytes returns a copy, so mutating it leaves the source buffer alone', () => {
     const source = Uint8Array.from([0x0a, 0x0b, 0x0c]);
     const reader = new ByteReader(source.buffer);
 
@@ -84,7 +84,7 @@ describe('ByteReader — cursor', () => {
   });
 });
 
-describe('ByteReader — reading past the buffer', () => {
+describe('ByteReader: reading past the buffer', () => {
   it('reports a typed truncated error instead of a DataView RangeError', () => {
     const reader = readerOf(0x01, 0x02);
 
@@ -136,7 +136,7 @@ describe('ByteReader — reading past the buffer', () => {
   });
 });
 
-describe('ByteReader — subReader', () => {
+describe('ByteReader: subReader', () => {
   it('limits reads to the given length and moves the parent cursor past the block', () => {
     const reader = readerOf(0xaa, 0xbb, 0xcc, 0xdd);
 

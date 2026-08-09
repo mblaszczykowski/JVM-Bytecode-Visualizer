@@ -23,7 +23,6 @@ describe('ErrorBoundary', () => {
   });
 
   it('replaces a failed render with the fallback instead of a blank screen', () => {
-    // React reports the caught error itself; the test output does not need it twice.
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
 
     render(

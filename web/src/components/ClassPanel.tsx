@@ -17,12 +17,10 @@ export interface ClassPanelProps {
   readonly entryMethod?: MethodListing | undefined;
   readonly selectedConstant?: number | undefined;
   readonly onSelectConstant?: ((index: number) => void) | undefined;
-  /** Rendered in the panel header in place of the title — the Source/Class switch. */
   readonly titleControl?: ReactNode;
   readonly className?: string;
 }
 
-/** Hierarchy inside the glass comes from opacity and hairlines, never from a border. */
 function Hairline() {
   return <div aria-hidden="true" className="mx-4 h-px shrink-0 bg-line" />;
 }
@@ -31,14 +29,6 @@ function SectionHeading({ children }: { readonly children: ReactNode }) {
   return <h3 className="px-4 pb-2 text-meta font-medium text-fg-3">{children}</h3>;
 }
 
-/**
- * The class file as `javap -v` opens it: who the class is, what it declares, and the pool
- * every one of those declarations is spelled out of.
- *
- * None of it depends on a run. A class whose every method takes arguments has nothing this
- * machine can execute and still has all of this to read, which is the whole point of the
- * panel — a parse that cannot be replayed is not a failure, it is a class file.
- */
 export function ClassPanel({
   classFile,
   methods,
@@ -51,8 +41,6 @@ export function ClassPanel({
   titleControl,
   className = '',
 }: ClassPanelProps) {
-  // The compiler memoises this file anyway; the intent is the point. Resolving every entry of
-  // the pool of a real class file is a few hundred lookups, and none of them depend on a step.
   const facts = useMemo(() => classFactsOf(classFile), [classFile]);
   const fields = useMemo(() => fieldRowsOf(classFile), [classFile]);
   const constants = useMemo(() => constantPoolRowsOf(classFile.constantPool), [classFile]);
@@ -76,7 +64,6 @@ export function ClassPanel({
               <dt className="w-[86px] shrink-0 font-mono text-meta text-fg-3">{fact.label}</dt>
               <dd className="min-w-0">
                 <span className="font-mono text-label break-all text-fg-2">{fact.value}</span>
-                {/* `65.0` is a number; `class file format of Java 21` is what it means. */}
                 {fact.note === undefined ? null : (
                   <span className="pl-2 text-meta text-fg-3">{fact.note}</span>
                 )}
@@ -85,7 +72,6 @@ export function ClassPanel({
           ))}
         </dl>
 
-        {/* A section permanently reading "no fields" would be a fixture that says nothing. */}
         {fields.length === 0 ? null : (
           <>
             <Hairline />
@@ -140,7 +126,6 @@ export function ClassPanel({
   );
 }
 
-/** The header carries the whole internal name; the panel metadata only has room for the class. */
 function simpleNameOf(internalName: string): string {
   return internalName.slice(internalName.lastIndexOf('/') + 1);
 }

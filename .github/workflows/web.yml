@@ -39,8 +39,6 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # The repository is formatted by Prettier and .prettierrc is committed; without this the
-      # only thing enforcing it is whether the author happened to have format-on-save enabled.
       - name: Check formatting
         run: npm run format:check
 
@@ -50,25 +48,15 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      # Coverage, not a bare run: the src/core thresholds in vite.config.ts are the gate.
       - name: Test
         run: npm run test:coverage -w web
 
       - name: Build
         run: npm run build
 
-      # ADR-0006 measured what this application costs a browser and changed the architecture on
-      # the strength of it; nothing enforced any of it afterwards. A bundle grows a hundred
-      # kilobytes one reasonable-looking dependency at a time, and this is what makes the
-      # hundredth kilobyte a decision rather than an accident.
       - name: Check the bundle budget
         run: npm run size -w web
 
-  # The parser and the disassembler against eight thousand class files from Maven Central —
-  # javac across a decade, plus kotlinc and scalac, which emit shapes javac never does. Every
-  # other suite asserts against fixtures this repository built, and so can only find the cases
-  # someone thought of; this one is the evidence that the two pure stages hold on code nobody
-  # here wrote. Its own job because it is the only one that needs the network.
   corpus:
     name: parses the real world
     runs-on: ubuntu-latest
@@ -82,8 +70,6 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
-      # Keyed on the fetch script, which is where the versions and their checksums live: a
-      # changed corpus is a changed key, and an unchanged one is never downloaded twice.
       - name: Restore the corpus
         uses: actions/cache@v4
         with:
@@ -99,12 +85,6 @@ jobs:
       - name: Scan it
         run: npm run test:corpus -w web
 
-  # Separate job, because it is the only one that needs a JDK: it recompiles every committed
-  # Java source and re-runs it on a real JVM, so a drift between a source, its class file and
-  # the result recorded next to it cannot reach main unnoticed. That covers the examples the
-  # application ships and the fixtures src/core is tested against — the latter matter most,
-  # because their whole value is that a reference implementation, and not a reading of the
-  # specification, produced the expected output.
   fixtures:
     name: fixtures match the JDK
     runs-on: ubuntu-latest
@@ -118,9 +98,8 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
-      # 25 rather than the 21 the class files target: `javac --release 21` pins those on any
-      # JDK, but the committed javap dumps are byte-exact and javap changed its disassembly
-      # layout in 25. build-test-fixtures.mjs refuses to run on another release.
+      # 25, not the 21 the class files target: javap changed its disassembly layout in 25 and
+      # the committed dumps are byte-exact. build-test-fixtures.mjs refuses any other release.
       - name: Setup JDK
         uses: actions/setup-java@v4
         with:
@@ -136,8 +115,7 @@ jobs:
       - name: Rebuild the test fixtures
         run: npm run fixtures:tests -w web
 
-      # `git add` first: a rebuild that produced a file nobody committed is drift too, and a
-      # plain `git diff` would not see it.
+      # git add first, so the diff sees newly produced files too.
       - name: Fail on any drift
         run: |
           git add --all \

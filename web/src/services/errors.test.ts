@@ -12,7 +12,6 @@ import {
 } from './errors';
 import { ExampleLoadError } from './examples';
 
-/** One row per failure the user can actually reach — the wording is part of the contract. */
 const CASES: readonly {
   readonly name: string;
   readonly error: AppError;
@@ -71,7 +70,7 @@ const CASES: readonly {
     severity: 'error',
     message:
       'Unsupported call: java/lang/Math.max(II)I (pc 7, method main). This interpreter resolves ' +
-      'calls inside the class it is executing only, and only to its static int methods — there ' +
+      'calls inside the class it is executing only, and only to its static int methods. There ' +
       'is no Java library behind it. The history up to this point is still playable.',
   },
   {
@@ -107,7 +106,7 @@ const CASES: readonly {
     },
     severity: 'error',
     message:
-      'StackOverflowError: too many nested calls — the call stack reached its limit of 1,500 frames (pc 10, method sum). Recursion without a reachable base case ends up here.',
+      'StackOverflowError: the call stack reached its limit of 1,500 frames (pc 10, method sum). Recursion without a reachable base case ends up here.',
   },
   {
     name: 'branch into the middle of an instruction',
@@ -219,7 +218,7 @@ const CASES: readonly {
     severity: 'error',
     message:
       'OutOfMemoryError (pc 31, method sort). Recording the arrays this run writes to would ' +
-      'have cost 24,010,000 copied elements, and the budget is 24,000,000 — every step that ' +
+      'have cost 24,010,000 copied elements, and the budget is 24,000,000. Every step that ' +
       'writes to an array keeps its own copy, so a large array written in a loop costs far ' +
       'more than the array itself. The history up to this point is still playable.',
   },
@@ -237,9 +236,9 @@ const CASES: readonly {
     },
     severity: 'error',
     message:
-      'ArithmeticException: / by zero (pc 12, method divide). It was thrown and nothing on ' +
-      'the call stack caught it, so the run ended the way a real JVM ends one: every frame ' +
-      'unwound. Scrub back to watch the stack come apart. ' +
+      'ArithmeticException: / by zero (pc 12, method divide). Nothing on the call stack ' +
+      'caught it, so every frame was unwound and the run ended, exactly as a real JVM would ' +
+      'end it. Scrub back to watch the stack unwind. ' +
       'The history up to this point is still playable.',
   },
   {
@@ -256,7 +255,7 @@ const CASES: readonly {
     severity: 'error',
     message:
       'Unsupported field: java/lang/System.in:Ljava/io/InputStream; (pc 3, method main). This ' +
-      'interpreter models a short list of external members — System.out among them — and no ' +
+      'interpreter models a short list of external members (System.out among them) and no ' +
       'instance state at all, so there is no object here to read the field from. The history ' +
       'up to this point is still playable.',
   },
@@ -282,8 +281,8 @@ const CASES: readonly {
     error: { kind: 'no-entry-point', className: 'Library' },
     severity: 'info',
     message:
-      'Library has no method this machine can start from — a run needs a static method it can ' +
-      'enter with no argument values. Nothing is missing from the file itself: the constant ' +
+      'Library has no method this machine can start from: a run needs a static method it can ' +
+      'enter with no argument values. Nothing is missing from the file itself; the constant ' +
       'pool, the fields and every method listing are on screen to read.',
   },
   {
@@ -291,7 +290,7 @@ const CASES: readonly {
     error: { kind: 'step-limit', limit: 20_000 },
     severity: 'warning',
     message:
-      'Stopped after 20,000 steps — the program probably does not terminate. Showing the history up to this point.',
+      'Stopped after 20,000 steps: the program probably does not terminate. Showing the history up to this point.',
   },
   {
     name: 'oversized upload',
@@ -303,7 +302,7 @@ const CASES: readonly {
     },
     severity: 'error',
     message:
-      '"Huge.class" is 1.4 MiB — the upload limit is 512 KiB. Class files this large are not hand-written Java.',
+      '"Huge.class" is 1.4 MiB; the upload limit is 512 KiB. Class files this large are not hand-written Java.',
   },
   {
     name: 'unreadable upload',

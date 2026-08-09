@@ -18,7 +18,7 @@ describe('CapabilityNote', () => {
     const summary = screen.getByTestId('welcome-capabilities').querySelector('summary');
 
     expect(summary).toHaveTextContent(
-      /Runs the integer subset of the JVM — \d+ of \d+ instructions\./,
+      /Runs the integer subset of the JVM: \d+ of \d+ instructions\./,
     );
     expect(summary).toHaveTextContent('stop on an instruction this machine does not implement');
   });
@@ -43,13 +43,11 @@ describe('CapabilityNote', () => {
     expect(note).not.toHaveAttribute('open');
   });
 
-  it('is keyboard operable and draws the focus ring this app uses on glass', () => {
+  it('is keyboard operable and keeps the focus ring', () => {
     render(<CapabilityNote />);
 
     const summary = screen.getByTestId('welcome-capabilities').querySelector('summary');
 
-    // `<summary>` takes a tab stop and toggles on Enter by itself; the ring is the part a
-    // stylesheet can lose.
     expect(summary).toBeInstanceOf(HTMLElement);
     expect(summary?.className).toContain('focus-ring');
   });
@@ -79,11 +77,11 @@ describe('CapabilityNote', () => {
     );
   });
 
-  it('mentions the one limit no opcode expresses — calls never leave the uploaded class', () => {
+  it('mentions the one limit no opcode expresses: calls never leave the uploaded class', () => {
     render(<CapabilityNote />);
 
     expect(
-      screen.getByText(/Everything resolves inside the uploaded class only/),
+      screen.getByText(/Everything must resolve inside the uploaded class/),
     ).toBeInTheDocument();
   });
 

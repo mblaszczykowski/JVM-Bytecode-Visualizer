@@ -34,7 +34,7 @@ import {
 
 const FACTORIAL_ENTRY = {
   id: 'factorial',
-  title: 'Factorial — recursion',
+  title: 'Factorial: recursion',
   tagline: 'Five frames deep and back: 4! = 24.',
   description: 'Recursive 4! = 24.',
   classFile: 'Factorial.class',
@@ -60,7 +60,6 @@ function listing(program: LoadedProgram, name: string, descriptor: string): Meth
   return found;
 }
 
-/** `main` executing `code`, with no source and no line table unless the test adds one. */
 function syntheticMain(code: readonly number[]): ClassFile {
   return syntheticClass({
     methods: [{ name: 'main', descriptor: '([Ljava/lang/String;)V', code }],
@@ -92,9 +91,7 @@ describe('buildProgram', () => {
     const program = factorialProgram();
     const factorial = listing(program, 'factorial', '(I)I');
 
-    // factorial(4) takes both branches, so nothing in it stays dead...
     expect(deadOffsetsOf(factorial).size).toBe(0);
-    // ...while the constructor is never executed by the interpreter.
     const constructor = listing(program, '<init>', '()V');
     expect(constructor.executedOffsets.size).toBe(0);
     expect(deadOffsetsOf(constructor).size).toBe(constructor.instructions.length);
@@ -104,7 +101,7 @@ describe('buildProgram', () => {
     const program = factorialProgram();
 
     expect(program.sourceFileName).toBe('Factorial.java');
-    expect(program.sourceLines[36]).toContain('int result = factorial(4);');
+    expect(program.sourceLines[27]).toContain('int result = factorial(4);');
   });
 
   it('explains the missing source of an uploaded class file', () => {
@@ -118,7 +115,6 @@ describe('buildProgram', () => {
   });
 
   it('keeps the history collected before a VM error', () => {
-    // iconst_1, iconst_0, idiv, return
     const program = buildProgram({
       classFile: syntheticMain([0x04, 0x03, 0x6c, 0xb1]),
       origin: { kind: 'upload', fileName: 'Divide.class' },
@@ -132,7 +128,6 @@ describe('buildProgram', () => {
   });
 
   it('keeps the history collected before the step limit', () => {
-    // goto 0 — an unconditional loop back onto itself.
     const program = buildProgram({
       classFile: syntheticMain([0xa7, 0x00, 0x00]),
       origin: { kind: 'upload', fileName: 'Loop.class' },
@@ -144,7 +139,6 @@ describe('buildProgram', () => {
   });
 
   it('reports where decoding stopped', () => {
-    // iconst_0, tableswitch — variable length, so the rest of the method is undecodable.
     const program = buildProgram({
       classFile: syntheticMain([0x03, 0xaa, 0x00, 0x00, 0x00]),
       origin: { kind: 'upload', fileName: 'Switch.class' },
@@ -219,7 +213,6 @@ describe('seeking by row', () => {
     const program = factorialProgram();
     const steps = firstStepByOffset(program.snapshots, listing(program, 'factorial', '(I)I'));
 
-    // The recursion visits offset 0 four times; the map keeps the earliest.
     expect(steps.get(0)).toBe(2);
     expect(program.snapshots[2]?.currentInstruction?.offset).toBe(0);
     expect(steps.get(11)).toBe(9);
@@ -241,8 +234,8 @@ describe('seeking by row', () => {
     const program = factorialProgram();
     const steps = firstStepByLine(program.snapshots);
 
-    expect(steps.get(37)).toBe(0);
-    expect(steps.get(26)).toBe(2);
+    expect(steps.get(28)).toBe(0);
+    expect(steps.get(17)).toBe(2);
   });
 });
 
@@ -266,21 +259,20 @@ describe('line mapping', () => {
       lineForOffset(factorial, instruction.offset),
     );
 
-    expect(lines[0]).toBe(26);
-    expect(lines.at(-1)).toBe(29);
-    expect(lineMappingNote(factorial, 7)).toBe('LineNumberTable · largest startPc ≤ 7 → line 29');
+    expect(lines[0]).toBe(17);
+    expect(lines.at(-1)).toBe(20);
+    expect(lineMappingNote(factorial, 7)).toBe('LineNumberTable · largest startPc ≤ 7 → line 20');
   });
 
   it('maps a source line back to the range of offsets that produced it', () => {
     const program = factorialProgram();
     const factorial = listing(program, 'factorial', '(I)I');
 
-    expect(offsetsForLine(factorial, 26)).toEqual({ from: 0, to: 2 });
+    expect(offsetsForLine(factorial, 17)).toEqual({ from: 0, to: 2 });
     expect(offsetsForLine(factorial, 1)).toBeUndefined();
   });
 });
 
-/** A class file the interpreter cannot enter: static helpers that all take arguments. */
 function libraryProgram(): LoadedProgram {
   return buildProgram({
     origin: { kind: 'upload', fileName: 'Library.class' },
@@ -312,7 +304,6 @@ describe('a class with no method a run can start from', () => {
     const program = libraryProgram();
 
     expect(program.entry).toBeUndefined();
-    // No entry point is not an empty screen: the listing is what the reader came for.
     expect(defaultListingOf(program)?.name).toBe('<init>');
     expect(listingFor(program, undefined)?.name).toBe('<init>');
     expect(listingToShow(program, undefined, 'clamp(III)I')?.descriptor).toBe('(III)I');
@@ -340,8 +331,6 @@ describe('a class with no method a run can start from', () => {
       'instance-method',
     ]);
     expect(program.methods[0]?.instructions).toEqual([]);
-    // Nothing runnable, so the panel opens on the first method with code rather than on the
-    // abstract one, which has no listing to show.
     expect(defaultListingOf(program)?.name).toBe('draw');
   });
 });
@@ -364,13 +353,11 @@ describe('entry points beyond main', () => {
       classFile: parseClassFile(readFixtureBytes('Counter.class')),
     });
 
-    // `ExecuteOptions` names an entry method but carries no arguments for it.
     expect(findListing(program, 'step', '(I)I')?.notRunnable).toBe('descriptor');
   });
 
   it('starts from the method the caller names', () => {
     const classFile = syntheticClass({
-      // iconst_2, ireturn  /  iconst_3, ireturn
       methods: [
         { name: 'main', descriptor: '([Ljava/lang/String;)V', code: [0xb1] },
         { name: 'answer', descriptor: '()I', code: [0x05, 0xac] },

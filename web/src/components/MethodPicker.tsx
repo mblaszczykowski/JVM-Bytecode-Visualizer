@@ -5,31 +5,16 @@ import { Pill } from './ui/Pill';
 
 export interface MethodPickerProps {
   readonly methods: readonly MethodListing[];
-  /** The method whose listing the Bytecode panel is currently showing. */
   readonly selected: MethodListing | undefined;
-  /** Show this method's listing. Called for every method, runnable or not. */
   readonly onSelect: (method: MethodListing) => void;
-  /** Start a new run from this method. Absent when re-running is not offered at all. */
   readonly onRun?: ((method: MethodListing) => void) | undefined;
-  /** The method the current run started from, if any. */
   readonly entry?: MethodListing | undefined;
 }
 
-/** Name and descriptor together identify a method; overloads share the name (JVMS §4.6). */
 function signatureOf(method: MethodListing): string {
   return `${method.name}${method.descriptor}`;
 }
 
-/**
- * Every method the class declares, in declaration order.
- *
- * The ones this machine cannot enter are listed too, and marked rather than hidden: a private
- * constructor and a helper taking three ints are most of what a utility class *is*, and their
- * disassembly is worth reading whether or not a run can start there.
- *
- * Looking and running are separate actions. Selecting a row swaps the listing on screen, which
- * costs nothing; starting a run replays a whole program, so it stays behind its own control.
- */
 export function MethodPicker({ methods, selected, onSelect, onRun, entry }: MethodPickerProps) {
   if (methods.length === 0) {
     return <p className="px-6 py-2 text-label text-fg-3">This class declares no methods.</p>;
@@ -43,9 +28,6 @@ export function MethodPicker({ methods, selected, onSelect, onRun, entry }: Meth
       {methods.map((method) => {
         const signature = signatureOf(method);
         const isSelected = signature === selectedSignature;
-        // Every scrap of metadata in the row moves together. A selected row sits on
-        // `raised-active`, which is the one surface `fg-3` may not sit on (see index.css),
-        // so the row's own emphasis has to reach its metadata too.
         const META = isSelected ? 'text-fg-2' : 'text-fg-3';
         const reason = method.notRunnable;
         const modifiers = methodModifiersOf(method.accessFlags).join(' ');
@@ -56,11 +38,9 @@ export function MethodPicker({ methods, selected, onSelect, onRun, entry }: Meth
             key={signature}
             data-testid="method-row"
             data-method={signature}
-            // Selected is where the reader is; entry is a fact about the run. Only the first
-            // of those is a current state, so only the first one is accented (design §2.4).
             aria-current={isSelected ? 'true' : undefined}
             title={
-              reason === undefined ? undefined : `Listing only — ${describeNotRunnable(reason)}`
+              reason === undefined ? undefined : `Listing only: ${describeNotRunnable(reason)}`
             }
             className={`flex items-center gap-2 rounded-row px-3 py-2 text-label ${
               isSelected ? 'bg-raised-active text-fg shadow-control-raised' : 'bg-raised'
@@ -73,8 +53,6 @@ export function MethodPicker({ methods, selected, onSelect, onRun, entry }: Meth
               }}
               className="focus-ring flex min-w-0 grow items-center gap-2 rounded-row text-left"
             >
-              {/* The name is what the reader is looking for, so it never gives way; the
-                  descriptor is the widest thing in the row and is what has to. */}
               <span className="shrink-0 font-medium text-fg">{method.name}</span>
               <span className={`min-w-0 grow truncate font-mono text-meta ${META}`}>
                 {method.descriptor}
@@ -87,9 +65,9 @@ export function MethodPicker({ methods, selected, onSelect, onRun, entry }: Meth
                   {count === 1 ? '1 instruction' : `${String(count)} instructions`}
                 </span>
               )}
-              {/* The pill says "listing only"; the reason has to reach a reader who cannot hover. */}
+              {}
               {reason === undefined ? null : (
-                <span className="sr-only">Listing only — {describeNotRunnable(reason)}</span>
+                <span className="sr-only">Listing only: {describeNotRunnable(reason)}</span>
               )}
             </button>
 
@@ -100,8 +78,6 @@ export function MethodPicker({ methods, selected, onSelect, onRun, entry }: Meth
             ) : null}
 
             {reason === undefined ? (
-              // A nested control inside a clickable row is an accessibility violation, so Run
-              // is a sibling of the row's own control rather than a button inside a button.
               onRun === undefined ? null : (
                 <button
                   type="button"

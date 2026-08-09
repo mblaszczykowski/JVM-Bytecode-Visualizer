@@ -22,12 +22,6 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 
-/**
- * Every error leaves this service in one shape: {@code {error, message}}. Extending
- * {@link ResponseEntityExceptionHandler} is what brings the paths nobody thinks about — 404, 405,
- * 415 — under that contract; without it Spring answered those with its own {@code ProblemDetail}
- * body, which the client's schema rejects, so a wrong Content-Type read as "the service is broken".
- */
 @RestControllerAdvice
 class ApiExceptionHandler extends ResponseEntityExceptionHandler {
 
@@ -48,7 +42,6 @@ class ApiExceptionHandler extends ResponseEntityExceptionHandler {
                 .body(new ErrorResponse("compiler-busy", e.getMessage()));
     }
 
-    /** Last resort: the client learns that the request failed here, and nothing about how. */
     @ExceptionHandler(Exception.class)
     ResponseEntity<ErrorResponse> handleUnexpected(Exception e) {
         log.error("unhandled exception", e);
@@ -83,10 +76,6 @@ class ApiExceptionHandler extends ResponseEntityExceptionHandler {
         return handleExceptionInternal(e, body, headers, status, request);
     }
 
-    /**
-     * The single funnel for everything {@link ResponseEntityExceptionHandler} handles: whatever
-     * body Spring intended is replaced by the documented shape.
-     */
     @Override
     protected ResponseEntity<Object> handleExceptionInternal(Exception e, Object body, HttpHeaders headers,
                                                              HttpStatusCode status, WebRequest request) {
@@ -108,7 +97,6 @@ class ApiExceptionHandler extends ResponseEntityExceptionHandler {
         return resolved == null ? "request-error" : resolved.name().toLowerCase(Locale.ROOT).replace('_', '-');
     }
 
-    /** Spring's {@code ProblemDetail} detail is already a safe, client-facing sentence. */
     private static String detailOf(Object body, HttpStatusCode status) {
         if (body instanceof ProblemDetail problem && problem.getDetail() != null) {
             return problem.getDetail();

@@ -1,8 +1,5 @@
 name: e2e
 
-# `server/**` is in the filter because the second job below exercises the frontend against a
-# real compile service: a change to the API contract belongs to this suite as much as a change
-# to the page that calls it.
 on:
   push:
     branches: [main]
@@ -47,8 +44,6 @@ jobs:
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
 
-      # playwright.config.ts builds the app and serves dist/ itself; the specs that need the
-      # compile service skip themselves when PLAYWRIGHT_COMPILE_API_URL is unset.
       - name: Run end-to-end tests
         run: npm run e2e -w web
 
@@ -60,15 +55,6 @@ jobs:
           path: web/playwright-report/
           retention-days: 7
 
-  # The only place the two halves of the project meet. Both are well tested on their own —
-  # the server has its own suite, the frontend stubs `fetch` — which means the one thing
-  # nothing covered was the contract between them: CORS, the health probe the editor waits
-  # for, the response shape, the diagnostics. `compile.spec.ts` skips itself without a
-  # backend, so before this job it was skipped on every CI run there has ever been.
-  #
-  # The service runs from its own Dockerfile rather than from a bare `mvn` invocation, which
-  # gets the deployed artefact tested too — the exploded layout the forked compiler needs is
-  # a property of that image and of nothing else.
   compile-service:
     name: playwright / against the compile service
     runs-on: ubuntu-latest
@@ -94,7 +80,6 @@ jobs:
             -e COMPILE_SERVICE_ALLOWED_ORIGIN="$PREVIEW_ORIGIN" \
             compile-service:ci
 
-      # The image has a HEALTHCHECK, but `docker run -d` returns before it has ever run.
       - name: Wait for it to answer
         run: |
           for _ in $(seq 1 60); do
@@ -114,8 +99,6 @@ jobs:
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
 
-      # VITE_COMPILE_API_URL is baked into the bundle by the build Playwright runs;
-      # PLAYWRIGHT_COMPILE_API_URL is what stops the spec skipping itself.
       - name: Run the compile end-to-end tests
         run: npm run e2e -w web -- tests/e2e/compile.spec.ts
         env:

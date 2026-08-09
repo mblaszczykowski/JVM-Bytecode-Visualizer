@@ -2,13 +2,6 @@ import { type RefObject, useLayoutEffect, useRef } from 'react';
 
 import { ROW_HEIGHT } from './rhythm';
 
-/**
- * Keeps the row at `index` inside the middle third of its scroll container.
- *
- * `scrollIntoView` is deliberately avoided: it scrolls every scrollable ancestor, which
- * drags the whole app shell around and breaks the layout of an embedding host page.
- * Setting `scrollTop` by hand touches exactly one element.
- */
 export function useScrollFollow(index: number | undefined): RefObject<HTMLDivElement> {
   const containerRef = useRef<HTMLDivElement>(null);
 

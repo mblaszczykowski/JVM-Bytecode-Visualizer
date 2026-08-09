@@ -1,20 +1,3 @@
-/**
- * The members of the standard library this interpreter recognises, as a table.
- *
- * There is no object model behind them and there is not meant to be one: a `getstatic` of a
- * listed field pushes an opaque token, and an `invokestatic`/`invokevirtual` of a listed
- * method consumes its arguments — and, for a virtual call, that token — and answers directly.
- * `System.out.println(x)` therefore runs without a heap that can hold a `PrintStream`, and
- * `Math.max(a, b)` runs without loading `java.lang.Math`.
- *
- * Everything the machinery needs comes from the row: the descriptor decides how many
- * arguments are popped and as what, and whether a value goes back on the stack. Adding
- * `Integer.parseInt` is one more row, not a new branch in the interpreter.
- *
- * Anything not listed here fails as `unsupported-call`, `unsupported-field` or
- * `unsupported-constant`, naming the member that was attempted.
- */
-
 import { parseMethodDescriptor, type JvmType } from '../classfile';
 import type { ConsoleOutput } from './console';
 import { VmFault } from './errors';
@@ -26,33 +9,20 @@ export type ExternalArgument =
   | { readonly kind: 'external'; readonly value: ExternalValue };
 
 export interface ExternalCall {
-  /** The token the method was invoked on; `undefined` for a static call. */
   readonly receiver: ExternalValue | undefined;
-  /** Arguments in declaration order, each popped as the kind its descriptor names. */
   readonly args: readonly ExternalArgument[];
   readonly console: ConsoleOutput;
 }
 
 export interface ExternalMethod {
-  /** As `memberKey` writes it, e.g. `java/lang/Math.max:(II)I`. */
   readonly key: string;
-  /** `invokestatic` reaches a `static` row; `invokevirtual` a `virtual` one, via its receiver. */
   readonly dispatch: 'static' | 'virtual';
-  /** Kinds to pop the arguments as, in declaration order — read off the descriptor. */
   readonly parameters: readonly ValueKind[];
-  /** The int the call leaves on the operand stack, or `undefined` for a `void` method. */
   readonly apply: (call: ExternalCall) => number | undefined;
 }
 
 const EMPTY_POOL: readonly ExternalValue[] = Object.freeze([]);
 
-/**
- * The external objects one run has produced, addressed by handle — the number a value of kind
- * `external` carries. Append-only, and interned: JVMS §5.1 gives one `String` object per
- * constant pool entry, so an `ldc` inside a loop must not pile up copies of the same string.
- *
- * `freeze()` shares its view with the previous snapshot exactly as `Heap.freeze` does.
- */
 export class ExternalPool {
   private readonly values: ExternalValue[] = [];
   private readonly handles = new Map<string, number>();
@@ -70,7 +40,6 @@ export class ExternalPool {
     return handle;
   }
 
-  /** `undefined` for a handle no `intern` ever returned. */
   at(handle: number): ExternalValue | undefined {
     return this.values[handle];
   }
@@ -84,7 +53,6 @@ export class ExternalPool {
   }
 }
 
-/** How a resolved Fieldref or Methodref is written, matching `javap -c`'s comments. */
 export function memberKey(className: string, name: string, descriptor: string): string {
   return `${className}.${name}:${descriptor}`;
 }
@@ -97,21 +65,14 @@ const SYSTEM_OUT: ExternalValue = Object.freeze({
   label: 'System.out',
 });
 
-/** The static fields a `getstatic` may read. */
 export const EXTERNAL_FIELDS: ReadonlyMap<string, ExternalValue> = new Map([
   [memberKey('java/lang/System', 'out', 'Ljava/io/PrintStream;'), SYSTEM_OUT],
 ]);
 
-/** A `String` constant pulled out of the pool by `ldc`, as the value it puts on the stack. */
 export function stringConstant(text: string): ExternalValue {
   return Object.freeze({ className: STRING_CLASS, label: `"${text}"`, text });
 }
 
-/**
- * Java's own rendering of a printed value, keyed by the parameter descriptor `print`/`println`
- * was resolved to (JVMS §4.3.2). It is the descriptor, not the value, that decides: `65` and
- * `(char) 65` are the same int on the operand stack and print as `65` and `A`.
- */
 const PRINTED_AS: ReadonlyMap<string, (arg: ExternalArgument | undefined) => string> = new Map([
   ['I', (arg) => String(intArgument(arg))],
   ['Z', (arg) => (intArgument(arg) === 0 ? 'false' : 'true')],
@@ -120,8 +81,6 @@ const PRINTED_AS: ReadonlyMap<string, (arg: ExternalArgument | undefined) => str
 ]);
 
 function intArgument(arg: ExternalArgument | undefined): number {
-  // The argument was popped as the kind the descriptor names, so this only ever takes the
-  // first branch; the fallback keeps the renderer total instead of asserting it.
   return arg?.kind === 'int' ? arg.value : 0;
 }
 
@@ -137,7 +96,6 @@ interface ExternalRow {
   readonly apply: (call: ExternalCall) => number | undefined;
 }
 
-/** Every `Math` method here has an int-only descriptor and is exact — no rounding, no doubles. */
 function mathRow(
   name: string,
   descriptor: string,
@@ -152,11 +110,6 @@ function mathRow(
   };
 }
 
-/**
- * `print` writes its argument, `println` writes it and ends the line. Both exist for every
- * descriptor in `PRINTED_AS`, plus the no-argument `println()` that ends a line on its own,
- * so the rows are generated rather than written out one by one.
- */
 function printStreamRows(): readonly ExternalRow[] {
   const rows: ExternalRow[] = [
     {
@@ -194,7 +147,6 @@ function printStreamRows(): readonly ExternalRow[] {
   return rows;
 }
 
-/** JVMS §6.5 idiv: the JVM throws ArithmeticException before the division happens. */
 function nonZero(divisor: number): number {
   if (divisor === 0) {
     throw new VmFault({ kind: 'division-by-zero' });
@@ -202,11 +154,6 @@ function nonZero(divisor: number): number {
   return divisor;
 }
 
-/**
- * The int-only part of `java.lang.Math`, implemented the way its javadoc defines it rather
- * than the way JavaScript would: `Math.max` here is Java's `a >= b ? a : b`, and `abs` and
- * `floorDiv` answer `Integer.MIN_VALUE` where the true result is not representable.
- */
 const ROWS: readonly ExternalRow[] = [
   mathRow('max', '(II)I', (left, right) => (left >= right ? left : right)),
   mathRow('min', '(II)I', (left, right) => (left <= right ? left : right)),
@@ -216,7 +163,6 @@ const ROWS: readonly ExternalRow[] = [
   ...printStreamRows(),
 ];
 
-/** Whether a parameter arrives as an int slot or as a token — no other shape is in the table. */
 function kindOf(type: JvmType): ValueKind {
   return type.kind === 'primitive' ? 'int' : 'external';
 }

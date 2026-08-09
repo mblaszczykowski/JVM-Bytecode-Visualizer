@@ -6,9 +6,7 @@ import { ROW_HEIGHT } from './rhythm';
 
 interface BranchGutterProps {
   readonly instructions: readonly Instruction[];
-  /** Row index of the instruction under `pc`; its arc is always drawn. */
   readonly currentIndex?: number | undefined;
-  /** Row index under the pointer; arcs entering or leaving it are always drawn. */
   readonly hoveredIndex?: number | undefined;
 }
 
@@ -17,7 +15,6 @@ interface Arc {
   readonly toIndex: number;
 }
 
-/** Above this many arcs stacked over one row the gutter stops being readable. */
 const MAX_OVERLAP = 3;
 
 function buildArcs(instructions: readonly Instruction[]): readonly Arc[] {
@@ -51,20 +48,12 @@ function maxOverlap(arcs: readonly Arc[], rowCount: number): number {
   return coverage.reduce((highest, value) => Math.max(highest, value), 0);
 }
 
-/**
- * Jump arcs drawn next to the instruction listing: control flow the disassembly text alone
- * does not convey. The shape is arithmetic on row indices, with `branchTarget` resolved
- * through the offset→index map.
- */
 export function BranchGutter({ instructions, currentIndex, hoveredIndex }: BranchGutterProps) {
-  // The arcs and their density are a property of the method alone. Folding the pc and the
-  // pointer into this memo re-ran an O(arcs × rows) count on every step of the playback.
   const gutter = useMemo(() => {
     const arcs = buildArcs(instructions);
     return { arcs, crowded: maxOverlap(arcs, instructions.length) > MAX_OVERLAP };
   }, [instructions]);
 
-  // Too dense to read: keep the current jump plus whatever touches the hovered row.
   const visible = gutter.crowded
     ? gutter.arcs.filter(
         (arc) =>
@@ -87,9 +76,6 @@ export function BranchGutter({ instructions, currentIndex, hoveredIndex }: Branc
               data-testid="branch-arc"
               data-from-index={arc.fromIndex}
               data-to-index={arc.toIndex}
-              // Structure, not position: an arc says where a jump goes, which is true of the
-              // method whatever step the run is on. The accent is reserved for "you are here",
-              // so the arcs are drawn in the hairline the rest of the layout is divided by.
               className="absolute left-[10px] w-[11px] rounded-l-[5px] border border-r-0 border-line-strong"
               style={{
                 top: (first + 0.5) * ROW_HEIGHT,

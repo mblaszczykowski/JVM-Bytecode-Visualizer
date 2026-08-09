@@ -17,7 +17,6 @@ import {
   type ExecutionResult,
 } from './types';
 
-/** Runs `code` as a static `main()V`; every program here is expected to fail somewhere. */
 function run(
   code: readonly number[],
   overrides: Partial<SyntheticMethod> = {},
@@ -29,24 +28,22 @@ function run(
   );
 }
 
-describe('execute — arithmetic faults', () => {
+describe('execute: arithmetic faults', () => {
   it.each([
     { mnemonic: 'idiv', opcode: 0x6c },
     { mnemonic: 'irem', opcode: 0x70 },
   ])('stops on $mnemonic by zero and keeps the history', ({ opcode }) => {
-    // iconst_5; iconst_0; <op>; istore_0; return
     const result = run([0x08, 0x03, opcode, 0x3b, 0xb1]);
     const error = expectVmError(result);
 
     expect(error).toEqual({ kind: 'division-by-zero', offset: 2, methodName: 'main' });
     expect(result.snapshots).toHaveLength(3);
     expect(result.snapshots.at(-1)?.callStack[0]?.operandStack).toEqual([5, 0]);
-    expect(formatVmError(error)).toBe('ArithmeticException: / by zero — offset 2 in main().');
+    expect(formatVmError(error)).toBe('ArithmeticException: / by zero (offset 2 in main()).');
   });
 });
 
-describe('execute — step limit', () => {
-  /** `goto` onto itself: the branch target is the offset of the instruction plus zero. */
+describe('execute: step limit', () => {
   const INFINITE_LOOP = [0xa7, 0x00, 0x00];
 
   it('stops an infinite loop at the default limit', () => {
@@ -86,7 +83,6 @@ describe('execute — step limit', () => {
   );
 
   it('falls back to the default for a limit that is not a number', () => {
-    // iconst_0; pop; return — two steps, so the default limit is never reached.
     const result = expectCompleted(
       run([0x03, 0x57, 0xb1], {}, { maxSteps: Number.NaN, maxCallDepth: Number.NaN }),
     );
@@ -95,19 +91,17 @@ describe('execute — step limit', () => {
   });
 });
 
-describe('execute — call depth', () => {
-  /** `static void main() { main(); }` — recursion with no base case at all. */
+describe('execute: call depth', () => {
   function selfRecursive(): ClassFile {
     const pool = new ConstantPoolBuilder();
     const self = pool.methodref(SYNTHETIC_CLASS_NAME, 'main', '()V');
     return syntheticClass({
       pool,
-      // invokestatic main; return
       methods: [{ name: 'main', descriptor: '()V', code: [0xb8, 0x00, self, 0xb1] }],
     });
   }
 
-  it('stops unbounded recursion with stack-overflow, not with the step limit', () => {
+  it('stops unbounded recursion with stack-overflow before the step limit', () => {
     const result = execute(selfRecursive(), { maxCallDepth: 20 });
     const error = expectVmError(result);
 
@@ -117,11 +111,10 @@ describe('execute — call depth', () => {
       offset: 0,
       methodName: 'main',
     });
-    // One frame per step here, so the run stops as soon as the twentieth frame calls again.
     expect(result.snapshots).toHaveLength(20);
     expect(result.snapshots.at(-1)?.callStack).toHaveLength(20);
     expect(formatVmError(error)).toBe(
-      'StackOverflowError: the call stack reached its limit of 20 frames — offset 0 in main().',
+      'StackOverflowError: the call stack reached its limit of 20 frames (offset 0 in main()).',
     );
   });
 
@@ -139,9 +132,7 @@ describe('execute — call depth', () => {
     const classFile = syntheticClass({
       pool,
       methods: [
-        // bipush 8; invokestatic down; ireturn
         { name: 'main', descriptor: '()I', code: [0x10, 0x08, 0xb8, 0x00, down, 0xac] },
-        // iload_0; ifgt 6; iconst_0; ireturn; iload_0; iconst_1; isub; invokestatic down; ireturn
         {
           name: 'down',
           descriptor: '(I)I',
@@ -155,29 +146,25 @@ describe('execute — call depth', () => {
   });
 });
 
-describe('execute — branch targets', () => {
+describe('execute: branch targets', () => {
   it.each([
     {
       case: 'past the end of the method',
-      // goto +32 at offset 0; return
       code: [0xa7, 0x00, 0x20, 0xb1],
       expected: { mnemonic: 'goto', target: 32, offset: 0 },
     },
     {
       case: 'inside the operands of another instruction',
-      // sipush 5; goto -2 at offset 3 — offset 1 is the first operand byte of sipush
       code: [0x11, 0x00, 0x05, 0xa7, 0xff, 0xfe, 0xb1],
       expected: { mnemonic: 'goto', target: 1, offset: 3 },
     },
     {
       case: 'before the start of the method',
-      // goto -8 at offset 0; return
       code: [0xa7, 0xff, 0xf8, 0xb1],
       expected: { mnemonic: 'goto', target: -8, offset: 0 },
     },
     {
       case: 'past the end of a conditional branch',
-      // iconst_0; ifeq +64 at offset 1; return
       code: [0x03, 0x99, 0x00, 0x40, 0xb1],
       expected: { mnemonic: 'ifeq', target: 65, offset: 1 },
     },
@@ -189,30 +176,26 @@ describe('execute — branch targets', () => {
       ...expected,
       methodName: 'main',
     });
-    // Nothing ran: the method is rejected while it is prepared, before the first fetch.
     expect(result.snapshots).toEqual([]);
   });
 
   it('rejects the method even when the branch is never executed', () => {
-    // iconst_0; pop; return; goto +64 — the goto is dead code, and still not verifiable.
     const error = expectVmError(run([0x03, 0x57, 0xb1, 0xa7, 0x00, 0x40]));
 
     expect(error).toMatchObject({ kind: 'bad-branch-target', target: 67, offset: 3 });
     expect(formatVmError(error)).toBe(
-      'Invalid branch target: goto jumps to offset 67, which is not the start of an instruction — offset 3 in main().',
+      'Invalid branch target: goto jumps to offset 67, which is not the start of an instruction (offset 3 in main()).',
     );
   });
 
-  it('names the called method, not the caller, when the callee is the broken one', () => {
+  it('names the callee as the method holding the bad branch target', () => {
     const pool = new ConstantPoolBuilder();
     const broken = pool.methodref(SYNTHETIC_CLASS_NAME, 'broken', '()V');
     const result = execute(
       syntheticClass({
         pool,
         methods: [
-          // nop; invokestatic broken; return
           { name: 'main', descriptor: '()V', code: [0x00, 0xb8, 0x00, broken, 0xb1] },
-          // goto +9 at offset 0, which is past the end of this method
           { name: 'broken', descriptor: '()V', code: [0xa7, 0x00, 0x09, 0xb1] },
         ],
       }),
@@ -225,14 +208,12 @@ describe('execute — branch targets', () => {
       offset: 0,
       methodName: 'broken',
     });
-    // The history up to the failing call is kept, exactly as for any other fault.
     expect(result.snapshots).toHaveLength(2);
   });
 });
 
-describe('execute — unsupported instructions', () => {
+describe('execute: unsupported instructions', () => {
   it('names the instruction that stopped the run', () => {
-    // monitorenter; return — locks are decoded and listed, and this machine has no threads.
     const result = run([0xc2, 0xb1]);
 
     expect(expectVmError(result)).toEqual({
@@ -241,7 +222,6 @@ describe('execute — unsupported instructions', () => {
       offset: 0,
       methodName: 'main',
     });
-    // The snapshot of the offending instruction stays in the history so the UI can point at it.
     expect(result.snapshots.at(-1)?.currentInstruction).toMatchObject({
       mnemonic: 'monitorenter',
       unsupported: true,
@@ -249,17 +229,7 @@ describe('execute — unsupported instructions', () => {
   });
 
   it('ignores an unsupported instruction in dead code', () => {
-    const result = run([
-      0x03, //             0: iconst_0
-      0xa7,
-      0x00,
-      0x06, // 1: goto 7
-      0xbb,
-      0x00,
-      0x01, // 4: new #1 — never reached
-      0x3b, //             7: istore_0
-      0xb1, //             8: return
-    ]);
+    const result = run([0x03, 0xa7, 0x00, 0x06, 0xbb, 0x00, 0x01, 0x3b, 0xb1]);
 
     expect(expectCompleted(result).snapshots.length).toBeGreaterThan(0);
   });
@@ -269,7 +239,6 @@ describe('execute — unsupported instructions', () => {
     { case: 'a reserved opcode', byte: 0xca, mnemonic: 'breakpoint' },
     { case: 'an unassigned byte', byte: 0xcb, mnemonic: '0xcb' },
   ])('reports $case the disassembler could not decode', ({ byte, mnemonic }) => {
-    // nop; <byte> — decoding stops at offset 1, so no instruction starts there.
     const result = run([0x00, byte, 0x00, 0x00, 0x00]);
 
     expect(expectVmError(result)).toEqual({
@@ -282,14 +251,14 @@ describe('execute — unsupported instructions', () => {
   });
 
   it('reports execution running off the end of a method', () => {
-    const error = expectVmError(run([0x00])); // nop, and nothing after it
+    const error = expectVmError(run([0x00]));
 
     expect(error).toMatchObject({ kind: 'invalid-state', offset: 1, methodName: 'main' });
-    expect(formatVmError(error)).toBe('execution ran past the end of main() — offset 1 in main().');
+    expect(formatVmError(error)).toBe('execution ran past the end of main() (offset 1 in main()).');
   });
 });
 
-describe('execute — invalid frame state', () => {
+describe('execute: invalid frame state', () => {
   it.each([
     { mnemonic: 'iadd', code: [0x60] },
     { mnemonic: 'pop', code: [0x57] },
@@ -321,38 +290,32 @@ describe('execute — invalid frame state', () => {
   });
 });
 
-describe('execute — array faults', () => {
-  /** JVMS §6.5 newarray: `atype` 10 is T_INT, the only element type this interpreter has. */
+describe('execute: array faults', () => {
   const T_INT = 0x0a;
 
   it.each([
     {
       case: 'reading past the end',
-      // iconst_3; newarray int; iconst_5; iaload; return
       code: [0x06, 0xbc, T_INT, 0x08, 0x2e, 0xb1],
       expected: { index: 5, length: 3, offset: 4 },
     },
     {
       case: 'reading before the start',
-      // iconst_3; newarray int; iconst_m1; iaload; return
       code: [0x06, 0xbc, T_INT, 0x02, 0x2e, 0xb1],
       expected: { index: -1, length: 3, offset: 4 },
     },
     {
       case: 'writing past the end',
-      // iconst_3; newarray int; bipush 7; iconst_0; iastore; return
       code: [0x06, 0xbc, T_INT, 0x10, 0x07, 0x03, 0x4f, 0xb1],
       expected: { index: 7, length: 3, offset: 6 },
     },
     {
       case: 'writing before the start',
-      // iconst_3; newarray int; iconst_m1; iconst_0; iastore; return
       code: [0x06, 0xbc, T_INT, 0x02, 0x03, 0x4f, 0xb1],
       expected: { index: -1, length: 3, offset: 5 },
     },
     {
       case: 'touching an empty array at all',
-      // iconst_0; newarray int; iconst_0; iaload; return
       code: [0x03, 0xbc, T_INT, 0x03, 0x2e, 0xb1],
       expected: { index: 0, length: 0, offset: 4 },
     },
@@ -368,7 +331,7 @@ describe('execute — array faults', () => {
     const error = expectVmError(run([0x06, 0xbc, T_INT, 0x08, 0x2e, 0xb1]));
 
     expect(formatVmError(error)).toBe(
-      'ArrayIndexOutOfBoundsException: index 5 out of bounds for length 3 — offset 4 in main().',
+      'ArrayIndexOutOfBoundsException: index 5 out of bounds for length 3 (offset 4 in main()).',
     );
   });
 
@@ -391,7 +354,7 @@ describe('execute — array faults', () => {
 
     expect(error).toEqual({ kind: 'null-reference', offset, methodName: 'main' });
     expect(formatVmError(error)).toBe(
-      `NullPointerException: the reference is null — offset ${String(offset)} in main().`,
+      `NullPointerException: the reference is null (offset ${String(offset)} in main()).`,
     );
   });
 
@@ -399,10 +362,8 @@ describe('execute — array faults', () => {
     { case: 'long', atype: 0x0b, typeName: 'long[]' },
     { case: 'double', atype: 0x07, typeName: 'double[]' },
     { case: 'boolean', atype: 0x04, typeName: 'boolean[]' },
-    // 0–3 are unassigned in the JVMS table, so there is no type name to print.
     { case: 'an unassigned atype', atype: 0x03, typeName: 'atype 3' },
   ])('refuses to allocate an array of $case', ({ atype, typeName }) => {
-    // iconst_1; newarray <atype>; astore_0; return
     const error = expectVmError(run([0x04, 0xbc, atype, 0x4b, 0xb1]));
 
     expect(error).toEqual({
@@ -412,7 +373,7 @@ describe('execute — array faults', () => {
       methodName: 'main',
     });
     expect(formatVmError(error)).toBe(
-      `Unsupported array type: ${typeName} — only int arrays can be allocated — offset 1 in main().`,
+      `Unsupported array type: ${typeName}; only int arrays can be allocated (offset 1 in main()).`,
     );
   });
 
@@ -424,53 +385,47 @@ describe('execute — array faults', () => {
   });
 });
 
-describe('execute — reading a value as the wrong kind', () => {
+describe('execute: reading a value as the wrong kind', () => {
   const T_INT = 0x0a;
 
   it.each([
     {
       case: 'aload on a slot holding an int',
-      // iconst_1; istore_0; aload_0; pop; return
       code: [0x04, 0x3b, 0x2a, 0x57, 0xb1],
       message: 'local slot 0 holds an int, not a reference',
       offset: 2,
     },
     {
       case: 'iload on a slot holding a reference',
-      // iconst_1; newarray int; astore_0; iload_0; pop; return
       code: [0x04, 0xbc, T_INT, 0x4b, 0x1a, 0x57, 0xb1],
       message: 'local slot 0 holds a reference, not an int',
       offset: 4,
     },
     {
       case: 'aload on a slot that was never written',
-      // aload_1; pop; return
       code: [0x2b, 0x57, 0xb1],
       message: 'read from uninitialised local slot 1',
       offset: 0,
     },
     {
       case: 'arithmetic on a reference',
-      // iconst_1; newarray int; iconst_1; iadd; return
       code: [0x04, 0xbc, T_INT, 0x04, 0x60, 0xb1],
       message: 'expected an int on the operand stack, found a reference',
       offset: 4,
     },
     {
       case: 'astore of an int',
-      // iconst_1; astore_0; return
       code: [0x04, 0x4b, 0xb1],
       message: 'expected a reference on the operand stack, found an int',
       offset: 1,
     },
     {
       case: 'arraylength of an int',
-      // iconst_1; arraylength; pop; return
       code: [0x04, 0xbe, 0x57, 0xb1],
       message: 'expected a reference on the operand stack, found an int',
       offset: 1,
     },
-  ])('rejects $case, which a verifier would never let run', ({ code, message, offset }) => {
+  ])('rejects $case', ({ code, message, offset }) => {
     expect(expectVmError(run(code))).toEqual({
       kind: 'invalid-state',
       message,
@@ -480,7 +435,7 @@ describe('execute — reading a value as the wrong kind', () => {
   });
 });
 
-describe('execute — invokestatic restrictions', () => {
+describe('execute: invokestatic restrictions', () => {
   function callTo(
     reference: { className?: string; name: string; descriptor: string },
     extraMethods: readonly SyntheticMethod[] = [],
@@ -495,7 +450,6 @@ describe('execute — invokestatic restrictions', () => {
       syntheticClass({
         pool,
         methods: [
-          // invokestatic #index; return
           { name: 'main', descriptor: '()V', code: [0xb8, 0x00, index, 0xb1] },
           ...extraMethods,
         ],
@@ -504,8 +458,6 @@ describe('execute — invokestatic restrictions', () => {
   }
 
   it('refuses to call a class it has no implementation for', () => {
-    // `java.lang.Math` has a handful of recognised methods; `sqrt` is not one of them, and
-    // no class outside the executed one is loaded.
     const error = expectVmError(
       callTo({ className: 'java/lang/Math', name: 'sqrt', descriptor: '(D)D' }),
     );
@@ -553,7 +505,7 @@ describe('execute — invokestatic restrictions', () => {
   });
 });
 
-describe('execute — malformed constant pool', () => {
+describe('execute: malformed constant pool', () => {
   function callIndex(index: number, pool: ConstantPoolBuilder): ExecutionResult {
     return execute(
       syntheticClass({

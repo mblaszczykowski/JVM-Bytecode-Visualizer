@@ -16,18 +16,6 @@ import javax.tools.ToolProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/**
- * Compiles a single Java source string with the JDK compiler, entirely in memory.
- *
- * <p>The service compiles and never executes: no class loader is created, no bytes reach the
- * filesystem, and annotation processing — the one path that runs foreign code inside javac — is
- * disabled. The user class path is emptied as well, so the only types reachable from the source
- * are the {@code --release 21} platform classes.
- *
- * <p>This class is synchronous and has no timeout of its own: a runaway javac cannot be stopped
- * from inside the JVM that hosts it. {@link ForkedCompiler} runs it in a child process and kills
- * that process instead; {@link CompilerProcessMain} is the child's entry point.
- */
 public class InMemoryCompiler implements SourceCompiler {
 
     static final String MULTIPLE_CLASSES_MESSAGE =
@@ -39,13 +27,12 @@ public class InMemoryCompiler implements SourceCompiler {
     private static final Logger log = LoggerFactory.getLogger(InMemoryCompiler.class);
 
     private static final List<String> OPTIONS = List.of(
-            "-proc:none",       // annotation processors would execute code inside javac
-            "--release", "21",  // pins the class file version the browser interpreter expects
-            "-g");              // LocalVariableTable, so the UI can name locals
+            "-proc:none",
+            "--release", "21",
+            "-g");
 
     private static final String FALLBACK_UNIT_NAME = "CompilationUnit";
 
-    /** javac's own crash dumps run to 1024 stack frames; the log only needs the head of one. */
     private static final int MAX_LOGGED_COMPILER_OUTPUT = 2_000;
 
     private final JavaCompiler compiler;
@@ -57,7 +44,6 @@ public class InMemoryCompiler implements SourceCompiler {
         }
     }
 
-    /** The exact option list handed to javac. Exposed so tests can pin the hardening flags. */
     public static List<String> options() {
         return OPTIONS;
     }
@@ -66,14 +52,12 @@ public class InMemoryCompiler implements SourceCompiler {
     public CompilationResult compile(String source) {
         String unitName = SourceNames.publicTypeName(source).orElse(FALLBACK_UNIT_NAME);
         DiagnosticCollector<JavaFileObject> collector = new DiagnosticCollector<>();
-        // Not null: javac writes its internal crash reports to this writer, and null means System.err.
         StringWriter compilerOutput = new StringWriter();
 
         try (StandardJavaFileManager standardFileManager =
                      compiler.getStandardFileManager(collector, null, StandardCharsets.UTF_8);
              InMemoryFileManager fileManager = new InMemoryFileManager(standardFileManager)) {
 
-            // Left unset, javac would fall back to the working directory as the user class path.
             standardFileManager.setLocation(StandardLocation.CLASS_PATH, List.of());
 
             JavaCompiler.CompilationTask task = compiler.getTask(
@@ -97,8 +81,6 @@ public class InMemoryCompiler implements SourceCompiler {
         try {
             return task.call();
         } catch (RuntimeException | StackOverflowError e) {
-            // javac blew up on the source rather than reporting a diagnostic; treat it as a failed
-            // compilation instead of a 500 — the client can only act on diagnostics anyway.
             log.warn("javac failed unexpectedly: {}", e.toString());
             return false;
         }
@@ -124,7 +106,6 @@ public class InMemoryCompiler implements SourceCompiler {
         return new CompilationResult.Success(only.getKey(), only.getValue(), diagnostics);
     }
 
-    /** A failure with no diagnostic breaks the client contract, so javac's silence gets a stand-in. */
     private static CompilationResult failed(List<CompilerDiagnostic> diagnostics) {
         return new CompilationResult.Failure(
                 diagnostics.isEmpty() ? List.of(CompilerDiagnostic.error(CRASH_MESSAGE)) : diagnostics);

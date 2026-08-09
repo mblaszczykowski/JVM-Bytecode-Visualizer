@@ -14,16 +14,12 @@ const RUNS: Readonly<Record<string, () => readonly Snapshot[]>> = {
 function runFor(tour: Tour): readonly Snapshot[] {
   const run = RUNS[tour.exampleId];
   if (run === undefined) {
-    throw new Error(`no bundled run for ${tour.exampleId} — add it to RUNS`);
+    throw new Error(`no bundled run for ${tour.exampleId}; add it to RUNS`);
   }
   return run();
 }
 
 describe('the bundled tours', () => {
-  /**
-   * The reason stops are anchored to a method and an offset rather than to a step index: this
-   * fails when a tour drifts, instead of the tour quietly pointing somewhere else.
-   */
   it.each(allTours().map((tour) => [`${tour.exampleId}/${tour.id}`, tour] as const))(
     '%s resolves every one of its stops against the real run',
     (_name, tour) => {

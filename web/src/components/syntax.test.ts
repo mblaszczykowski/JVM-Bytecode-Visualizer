@@ -9,7 +9,6 @@ function kindOf(tokens: readonly Token[], text: string): TokenKind | undefined {
 
 describe('tokenizeJava', () => {
   it('keeps the line intact when the tokens are concatenated', () => {
-    // Every line of the shipped Factorial.java, javadoc and code alike.
     for (const line of sourceLines()) {
       const rebuilt = tokenizeJava(line)
         .map((token) => token.text)
@@ -58,7 +57,6 @@ describe('tokenizeJava', () => {
 
     expect(comments).toHaveLength(1);
     expect(comments[0]?.text).toBe('// int y');
-    // The `int` inside the comment must not leak out as a separate keyword token.
     expect(tokens.filter((token) => token.text === 'int')).toHaveLength(1);
   });
 
@@ -71,14 +69,13 @@ describe('tokenizeJava', () => {
 });
 
 describe('tokenizeJavaLines', () => {
-  /** Every token of a line, so a whole javadoc can be asserted to be one colour. */
   function kindsOf(scanned: readonly (readonly Token[])[], line: number): readonly TokenKind[] {
     return [...new Set((scanned[line] ?? []).map((token) => token.kind))];
   }
 
   const JAVADOC = [
     '/**',
-    ' * Bubble sort — {@code {5, 3, 4, 1, 2}} sorted in place.',
+    ' * Bubble sort: {@code {5, 3, 4, 1, 2}} sorted in place.',
     ' *',
     ' * <p>The int values above must not read as number literals.',
     ' */',
@@ -100,9 +97,7 @@ describe('tokenizeJavaLines', () => {
     expect(kindOf(scanned[5] ?? [], 'BubbleSort')).toBe('type');
   });
 
-  it('is what a line-at-a-time scan cannot do', () => {
-    // The bug this exists for: alone, the continuation line has no `/*` on it, so `Bubble`
-    // reads as a type name and the digits as literals.
+  it('colours a continuation line that a line-at-a-time scan misreads', () => {
     const alone = tokenizeJava(JAVADOC[1] ?? '');
 
     expect(alone.some((token) => token.kind === 'type')).toBe(true);

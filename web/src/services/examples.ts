@@ -1,11 +1,3 @@
-/**
- * Loading of the bundled examples from `public/examples/`.
- *
- * Everything crossing this boundary is untrusted: the manifest is validated with the zod
- * schema before it becomes a domain value, and every network failure comes back as a typed
- * `ExampleLoadError` the UI can turn into one specific sentence.
- */
-
 import { exampleManifestSchema, type ExampleEntry, type ExampleManifest } from './manifest';
 
 export type ExampleLoadDetail =
@@ -47,7 +39,6 @@ export interface ExampleResources {
   readonly source: string;
 }
 
-/** Deployment can live under a sub-path, so every URL goes through the Vite base. */
 export function exampleUrl(fileName: string): string {
   const base = import.meta.env.BASE_URL;
   return `${base.endsWith('/') ? base : `${base}/`}examples/${fileName}`;
@@ -77,12 +68,10 @@ export async function fetchExampleManifest(): Promise<ExampleManifest> {
   return parsed.data;
 }
 
-/** Just the bytes — the welcome screen previews a run without needing the source next to it. */
 export function fetchExampleClass(entry: ExampleEntry): Promise<ArrayBuffer> {
   return fetchBinary(exampleUrl(entry.classFile));
 }
 
-/** The `.class` and its `.java` source; both are needed before anything can be shown. */
 export async function fetchExampleResources(entry: ExampleEntry): Promise<ExampleResources> {
   const [classBytes, source] = await Promise.all([
     fetchBinary(exampleUrl(entry.classFile)),
@@ -91,9 +80,8 @@ export async function fetchExampleResources(entry: ExampleEntry): Promise<Exampl
   return { entry, classBytes, source };
 }
 
-/** Toolbar label: the part of the title before the em dash (`Factorial — recursion`). */
 export function shortTitleOf(entry: ExampleEntry): string {
-  const [head] = entry.title.split('—');
+  const [head] = entry.title.split(':');
   return head === undefined ? entry.title : head.trim();
 }
 
@@ -137,7 +125,6 @@ interface SchemaIssue {
   readonly message: string;
 }
 
-/** First two issues are enough for a banner; the rest only repeat the same story. */
 function describeIssues(issues: readonly SchemaIssue[]): string {
   return issues
     .slice(0, 2)

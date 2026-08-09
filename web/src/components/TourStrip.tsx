@@ -1,28 +1,14 @@
 import type { ResolvedStop, Tour } from '../services/tours';
 
 interface TourStripProps {
-  /** Tours the loaded example has to offer; empty for an example with none. */
   readonly available: readonly Tour[];
-  /** The tour being walked, with its stops already resolved against this run. */
   readonly active?: { readonly tour: Tour; readonly stops: readonly ResolvedStop[] } | undefined;
-  /** Index into `active.stops`. */
   readonly stopIndex: number;
   readonly onStart: (tourId: string) => void;
   readonly onGoToStop: (stopIndex: number) => void;
   readonly onLeave: () => void;
 }
 
-/**
- * The narration band, between the panels and the transport.
- *
- * A tour is the difference between sending someone a step and being able to argue with them
- * about it, so this is the one place in the application that is allowed to be prose. It stays
- * out of the accent entirely: blue means "the machine is here now", and a paragraph about why
- * is not that.
- *
- * Offering and walking are the same strip rather than two components, because they are the same
- * band of the screen in two states and splitting them would put the layout in the caller.
- */
 export function TourStrip({
   available,
   active,
@@ -78,10 +64,7 @@ export function TourStrip({
         </span>
       </div>
 
-      {/*
-        Announced rather than merely swapped: the reader who moved to the next stop is not
-        necessarily the reader looking at the panel it moved to.
-      */}
+      {}
       <p aria-live="polite" className="mt-1.5 text-body text-fg-2">
         {stop.body}
       </p>

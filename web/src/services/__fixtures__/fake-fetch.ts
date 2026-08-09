@@ -1,8 +1,3 @@
-/**
- * A `fetch` stub built from a URL → response table. Anything the code under test asks for
- * and the table does not list fails loudly, so a typo in a URL cannot pass as a green test.
- */
-
 import { vi } from 'vitest';
 
 import { exampleUrl, MANIFEST_FILE } from '../examples';
@@ -16,7 +11,6 @@ export interface FakeBody {
   readonly bytes?: ArrayBuffer;
 }
 
-/** Only the members the loader touches; a full `Response` would be noise here. */
 export function okResponse(body: FakeBody): Response {
   return {
     ok: true,
@@ -27,7 +21,6 @@ export function okResponse(body: FakeBody): Response {
   } as unknown as Response;
 }
 
-/** A status with a JSON body — 4xx answers of the compile API carry one just like 200s do. */
 export function jsonResponse(status: number, json: unknown): Response {
   return {
     ok: status >= 200 && status < 300,
@@ -48,7 +41,6 @@ export function statusResponse(status: number): Response {
   } as unknown as Response;
 }
 
-/** Returning a promise lets a test hold an answer back and land it at a chosen moment. */
 export type FakeRoute = () => Response | Promise<Response>;
 
 export function stubFetch(routes: Readonly<Record<string, FakeRoute>>) {
@@ -69,7 +61,6 @@ export function stubFetch(routes: Readonly<Record<string, FakeRoute>>) {
   return fetchMock;
 }
 
-/** Every committed example, served from disk exactly as the static host would. */
 export function exampleRoutes(
   manifest: unknown = readExampleManifest(),
 ): Record<string, FakeRoute> {

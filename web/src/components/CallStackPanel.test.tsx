@@ -6,10 +6,6 @@ import type { StackFrame } from '../core/interpreter/types';
 import { firstStepOf, snapshotAt } from './__fixtures__/factorial-run';
 import { CallStackPanel } from './CallStackPanel';
 
-/**
- * The deepest point of the real run: main → factorial(4) → … → factorial(1), five frames,
- * taken at the moment the base case is entered.
- */
 const deepestFrames = snapshotAt(firstStepOf('iload_0', 5)).callStack;
 
 function deepStack(depth: number): readonly StackFrame[] {
@@ -35,8 +31,6 @@ describe('CallStackPanel', () => {
   it('puts the top frame at the bottom, next to the locals that describe it', () => {
     render(<CallStackPanel frames={deepestFrames} />);
 
-    // `flex-col-reverse` flips the DOM order, so the newest frame is first in the DOM
-    // and last on screen.
     expect(screen.getByTestId('call-frame-list')).toHaveClass('flex-col-reverse');
     expect(screen.getAllByTestId('call-frame').map((frame) => frame.dataset.frameIndex)).toEqual([
       '4',
@@ -57,7 +51,6 @@ describe('CallStackPanel', () => {
     expect(top.getByText('n=1')).toBeInTheDocument();
     expect(top.getByText('pc 0')).toBeInTheDocument();
 
-    // Only the top frame carries a pc pill; the descriptor moves out of the row into `title`.
     const oldest = frameAt(4);
     expect(within(oldest).getByText('main')).toBeInTheDocument();
     expect(oldest).toHaveAttribute('title', 'main([Ljava/lang/String;)V');
@@ -70,7 +63,6 @@ describe('CallStackPanel', () => {
     expect(frameAt(0)).toHaveStyle({ opacity: '1' });
     expect(frameAt(1)).toHaveStyle({ opacity: '0.76' });
     expect(frameAt(2)).toHaveStyle({ opacity: '0.58' });
-    // Past the fourth frame the fade bottoms out, so `main` stays as readable as its caller.
     expect(frameAt(3)).toHaveStyle({ opacity: '0.42' });
     expect(frameAt(4)).toHaveStyle({ opacity: '0.42' });
   });

@@ -14,12 +14,10 @@ const BASE = 'http://compile.test';
 const COMPILE_URL = `${BASE}/api/compile`;
 const HEALTH_URL = `${BASE}/actuator/health`;
 
-/** Base64 of the four bytes every class file starts with. */
 const CAFEBABE = 'yv66vg==';
 
 const SOURCE = 'public class Loop { }';
 
-/** A connection that hangs until something aborts it — the case the deadline exists for. */
 function stubHangingFetch() {
   const fetchMock = vi.fn(
     (_input: unknown, init?: RequestInit) =>
@@ -33,7 +31,6 @@ function stubHangingFetch() {
   return fetchMock;
 }
 
-/** Narrows a result down to the failure detail a test is about. */
 function invalidResponseReason(result: CompileResult): string {
   if (result.kind !== 'unavailable' || result.reason.kind !== 'invalid-response') {
     throw new Error(`expected an unreadable answer, got ${result.kind}`);
@@ -47,7 +44,6 @@ afterEach(() => {
 });
 
 describe('configuration', () => {
-  /** The base URL is read once at import, so each case needs a fresh module. */
   async function reload(value?: string) {
     if (value !== undefined) {
       vi.stubEnv('VITE_COMPILE_API_URL', value);

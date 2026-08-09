@@ -1,6 +1,3 @@
-/**
- * Public API of the interpreter layer. The UI imports only from here.
- */
 export {
   DEFAULT_ENTRY_METHOD,
   execute,

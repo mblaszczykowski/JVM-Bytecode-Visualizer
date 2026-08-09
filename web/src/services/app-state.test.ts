@@ -77,7 +77,6 @@ describe('upload', () => {
 
     expect(state.status).toBe('ready');
     expect(programOf(state)?.origin).toEqual({ kind: 'upload', fileName: 'Gcd.class' });
-    // No .java travels with an upload, so the source panel explains itself instead.
     expect(programOf(state)?.sourceLines[0]).toContain('No .java source');
   });
 
@@ -155,7 +154,6 @@ describe('runs that stop early', () => {
     const state = stateFor(
       buildProgram({
         origin: { kind: 'upload', fileName: 'Divide.class' },
-        // iconst_1, iconst_0, idiv, return
         classFile: syntheticClass({
           methods: [
             { name: 'main', descriptor: '([Ljava/lang/String;)V', code: [0x04, 0x03, 0x6c, 0xb1] },
@@ -192,7 +190,6 @@ describe('a class file with nothing to run', () => {
 
     const state = await loadUploadState(uploadFile('Library.class', bytes));
 
-    // The outcome is a property of the program, not a gate on whether there is one.
     expect(state).toMatchObject({
       status: 'error',
       error: { kind: 'no-entry-point', className: 'Library' },
@@ -252,11 +249,6 @@ describe('raising the step limit', () => {
     expect(raisedStepLimit(MAX_STEP_LIMIT)).toBeUndefined();
   });
 
-  /**
-   * The ceiling was picked against a laptop. A phone that says it has a gigabyte cannot hold
-   * the history that limit produces, and a run that dies for want of memory leaves nothing on
-   * screen — so the button has to stop lower there rather than fail later.
-   */
   describe('on a device that reports how much memory it has', () => {
     function withDeviceMemory(gigabytes: number | undefined, assert: () => void): void {
       const original = Object.getOwnPropertyDescriptor(navigator, 'deviceMemory');
@@ -288,8 +280,6 @@ describe('raising the step limit', () => {
 
         expect(ceiling).toBeLessThan(MAX_STEP_LIMIT);
         expect(ceiling).toBeGreaterThan(DEFAULT_MAX_STEPS);
-        // The first raise is the usual five-fold one; it is the second that the lower
-        // ceiling catches, and where the action then stops.
         expect(raisedStepLimit(20_000)).toBe(100_000);
         expect(raisedStepLimit(100_000)).toBe(ceiling);
         expect(raisedStepLimit(ceiling)).toBeUndefined();
@@ -297,7 +287,6 @@ describe('raising the step limit', () => {
     });
 
     it('leaves every rung of the reported ladder able to replay an ordinary run', () => {
-      // The Device Memory API reports one of these and nothing else.
       for (const gigabytes of [0.25, 0.5, 1, 2, 4, 8]) {
         withDeviceMemory(gigabytes, () => {
           expect(affordableStepLimit()).toBeGreaterThanOrEqual(DEFAULT_MAX_STEPS);
@@ -306,7 +295,6 @@ describe('raising the step limit', () => {
     });
 
     it('never falls below one ordinary run, whatever it is told', () => {
-      // Below anything the API reports; the floor is a guard, not a working range.
       withDeviceMemory(0.05, () => {
         expect(affordableStepLimit()).toBe(DEFAULT_MAX_STEPS);
       });
@@ -342,7 +330,6 @@ describe('raising the step limit', () => {
       }),
       maxSteps: 25,
     });
-    // Whatever goes wrong below the load path, the caller only ever sees a state.
     const unreadable: ClassFile = {
       ...program.classFile,
       get methods(): readonly MethodInfo[] {
@@ -376,7 +363,6 @@ describe('raising the step limit', () => {
 });
 
 describe('a run the reader abandoned', () => {
-  /** Every load path goes through the same funnel, so the upload one stands for all of them. */
   it('is not turned into a banner, because there is no screen left for one', async () => {
     const runner: ProgramRunner = {
       cancellable: true,

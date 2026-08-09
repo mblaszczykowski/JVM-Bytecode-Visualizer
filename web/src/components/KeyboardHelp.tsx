@@ -4,7 +4,6 @@ import { createPortal } from 'react-dom';
 import { handlesKeyItself } from '../hooks/useTransportShortcuts';
 
 export interface Shortcut {
-  /** Rendered as separate keycaps, so `['Shift', '→']` reads as a chord. */
   readonly keys: readonly string[];
   readonly label: string;
 }
@@ -15,7 +14,6 @@ export interface ShortcutGroup {
 }
 
 interface KeyboardHelpProps {
-  /** Supplied by the caller so this sheet cannot drift from the handlers that are installed. */
   readonly groups: readonly ShortcutGroup[];
 }
 
@@ -42,8 +40,6 @@ function HelpSheet({ groups, onClose }: KeyboardHelpProps & { readonly onClose: 
   }, []);
 
   useEffect(() => {
-    // Capture phase: the transport listens on the window and would scrub the run behind the
-    // sheet. Everything this dialog does not use is swallowed rather than forwarded.
     function handleKeyDown(event: KeyboardEvent): void {
       if (event.key === 'Escape') {
         event.stopPropagation();
@@ -115,13 +111,6 @@ function HelpSheet({ groups, onClose }: KeyboardHelpProps & { readonly onClose: 
   );
 }
 
-/**
- * The shortcuts, behind `?`.
- *
- * The app has had a keyboard since the transport existed and no way to discover it. `?` is the
- * conventional door and costs no chrome; the toolbar carries a visible one as well, because a
- * shortcut for finding the shortcuts helps only the people who already knew.
- */
 export function KeyboardHelp({ groups }: KeyboardHelpProps) {
   const [isOpen, setIsOpen] = useState(false);
 
@@ -133,7 +122,6 @@ export function KeyboardHelp({ groups }: KeyboardHelpProps) {
       if (handlesKeyItself(event.target, event.key)) {
         return;
       }
-      // Another dialog owns the keyboard while it is up — the glossary, most often.
       if (document.querySelector('[role="dialog"]') !== null) {
         return;
       }

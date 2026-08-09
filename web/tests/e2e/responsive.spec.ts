@@ -2,7 +2,6 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 
 const FACTORIAL_STEPS = 40;
 
-/** Smallest tap target the transport is allowed to offer where there is no pointer. */
 const MIN_TAP_TARGET = 44;
 
 async function openFactorial(page: Page): Promise<void> {
@@ -27,7 +26,6 @@ test.describe('tablet', () => {
   }) => {
     await openFactorial(page);
 
-    // All three panels are on screen; nothing is behind a tab.
     await expect(page.getByTestId('panel-switch')).toBeHidden();
     const source = page.getByRole('region', { name: 'Source' });
     const bytecode = page.getByRole('region', { name: 'Bytecode' });
@@ -36,7 +34,6 @@ test.describe('tablet', () => {
     await expect(bytecode).toBeVisible();
     await expect(state).toBeVisible();
 
-    // Source and Bytecode share a row; the State band spans the pair underneath them.
     const sourceBox = (await source.boundingBox()) ?? { x: 0, y: 0, width: 0, height: 0 };
     const bytecodeBox = (await bytecode.boundingBox()) ?? { x: 0, y: 0, width: 0, height: 0 };
     const stateBox = (await state.boundingBox()) ?? { x: 0, y: 0, width: 0, height: 0 };
@@ -45,7 +42,6 @@ test.describe('tablet', () => {
     expect(stateBox.y).toBeGreaterThan(sourceBox.y + sourceBox.height - 1);
     expect(stateBox.width).toBeGreaterThan(sourceBox.width + bytecodeBox.width - 1);
 
-    // The three state sections sit side by side inside the band.
     const frames = state.getByRole('region', { name: 'Call stack' });
     const operands = state.getByRole('region', { name: 'Operand stack' });
     const locals = state.getByRole('region', { name: 'Locals' });
@@ -57,7 +53,6 @@ test.describe('tablet', () => {
     expect(framesBox?.x).toBeLessThan(operandsBox?.x ?? 0);
     expect(operandsBox?.x).toBeLessThan(localsBox?.x ?? 0);
 
-    // The happy path itself: play through to the end of the recording.
     const speed = page.getByRole('button', { name: 'Playback speed' });
     for (let click = 0; click < 3; click++) {
       await speed.click();
@@ -78,8 +73,6 @@ test.describe('laptop', () => {
   test('narrows the State column to 296px and keeps the three columns', async ({ page }) => {
     await openFactorial(page);
 
-    // 296 rather than the old 280: the frame gave up its 28px outer margin, and the width
-    // that bought went to the column that actually runs out of room first.
     expect(await widthOf(page.getByTestId('state-column'))).toBeCloseTo(296, 0);
     const source = await page.getByRole('region', { name: 'Source' }).boundingBox();
     const state = await page.getByTestId('state-column').boundingBox();
@@ -93,7 +86,6 @@ test.describe('phone', () => {
   test('shows one panel at a time and keeps the transport within reach', async ({ page }) => {
     await openFactorial(page);
 
-    // Full bleed at every width now, not only on a phone.
     const shell = page.getByTestId('app-shell');
     await expect(shell).toHaveCSS('border-top-left-radius', '0px');
     expect(await widthOf(shell)).toBe(390);
@@ -111,7 +103,6 @@ test.describe('phone', () => {
     await expect(bytecode).toBeHidden();
     await expect(page.getByTestId('current-source-line')).toBeVisible();
 
-    // The class file is the other face of the left column, and a segment of its own here.
     await page.getByRole('button', { name: 'Class', exact: true }).click();
     await expect(page.getByTestId('class-panel')).toBeVisible();
     await expect(source).toBeHidden();
@@ -122,7 +113,6 @@ test.describe('phone', () => {
     await expect(source).toBeHidden();
     await expect(page.getByTestId('class-panel')).toBeHidden();
 
-    // Transport pinned to the bottom edge, with targets a thumb can hit.
     for (const name of ['Step back', 'Play', 'Step forward']) {
       const box = await page.getByRole('button', { name, exact: true }).boundingBox();
       expect(box?.height, name).toBeGreaterThanOrEqual(MIN_TAP_TARGET);

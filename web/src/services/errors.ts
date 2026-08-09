@@ -1,13 +1,3 @@
-/**
- * Every way this application can fail, as one union, plus the mapping from a failure to the
- * sentence shown in the banner.
- *
- * The domain layers already carry their own typed details (`ClassFileErrorDetail`,
- * `VmError`); this module adds the failures that only exist at the application boundary —
- * downloads, uploads, the step limit — and decides the wording and the severity for all of
- * them in one place.
- */
-
 import {
   formatClassFileError,
   isClassFileError,
@@ -22,10 +12,6 @@ export type AppError =
   | { readonly kind: 'class-file'; readonly detail: ClassFileErrorDetail }
   | { readonly kind: 'vm'; readonly error: VmError }
   | { readonly kind: 'step-limit'; readonly limit: number }
-  /**
-   * The class parsed, and nothing in it can be entered. Deliberately not a `vm` error: no
-   * instruction ran, no call was refused, and there is nothing here to blame the reader for.
-   */
   | { readonly kind: 'no-entry-point'; readonly className: string }
   | {
       readonly kind: 'file-too-large';
@@ -37,10 +23,6 @@ export type AppError =
   | { readonly kind: 'example-load'; readonly detail: ExampleLoadDetail }
   | { readonly kind: 'unexpected'; readonly reason: string };
 
-/**
- * A stopped run is an error; one that merely ran out of steps is a warning; a class file that
- * is fine but has nothing to run is `info` — nothing failed, so nothing should look like it.
- */
 export type ErrorSeverity = 'error' | 'warning' | 'info';
 
 export interface ErrorPresentation {
@@ -58,23 +40,23 @@ export function describeAppError(error: AppError): ErrorPresentation {
       return {
         severity: 'warning',
         message:
-          `Stopped after ${error.limit.toLocaleString('en-US')} steps — the program probably ` +
+          `Stopped after ${error.limit.toLocaleString('en-US')} steps: the program probably ` +
           'does not terminate. Showing the history up to this point.',
       };
     case 'no-entry-point':
       return {
         severity: 'info',
         message:
-          `${error.className} has no method this machine can start from — a run needs a ` +
+          `${error.className} has no method this machine can start from: a run needs a ` +
           'static method it can enter with no argument values. Nothing is missing from the ' +
-          'file itself: the constant pool, the fields and every method listing are on screen ' +
+          'file itself; the constant pool, the fields and every method listing are on screen ' +
           'to read.',
       };
     case 'file-too-large':
       return {
         severity: 'error',
         message:
-          `"${error.fileName}" is ${formatBytes(error.bytes)} — the upload limit is ` +
+          `"${error.fileName}" is ${formatBytes(error.bytes)}; the upload limit is ` +
           `${formatBytes(error.limit)}. Class files this large are not hand-written Java.`,
       };
     case 'file-unreadable':
@@ -89,10 +71,6 @@ export function describeAppError(error: AppError): ErrorPresentation {
   }
 }
 
-/**
- * The compile outcomes that belong in the banner rather than in the editor. Diagnostics are
- * deliberately not among them: they point at lines of the source and are shown next to it.
- */
 export type CompileFailure = Extract<CompileResult, { kind: 'rate-limited' | 'unavailable' }>;
 
 export function describeCompileFailure(failure: CompileFailure): ErrorPresentation {
@@ -122,15 +100,6 @@ function describeUnavailable(reason: UnavailableReason): string {
   }
 }
 
-/**
- * The location is phrased as `(pc 23, method main)` rather than with the core wording: on
- * screen the same parenthesis already carries the byte offset of a parse error, so both
- * families of message read the same way.
- *
- * The limits of this interpreter are stated as facts about the interpreter, never as a verdict
- * on the class file, and the ones that stop a run mid-flight say that the recording survives —
- * the transport below the banner is still live over it (ADR-0001).
- */
 function describeVmError(error: VmError): string {
   const at = `(pc ${String(error.offset)}, method ${error.methodName})`;
   const historyStands = 'The history up to this point is still playable.';
@@ -139,14 +108,14 @@ function describeVmError(error: VmError): string {
     case 'unsupported-opcode':
       return `Unsupported instruction: ${error.mnemonic} ${at}. This interpreter implements the int-only subset of the JVM instruction set, and ${error.mnemonic} is outside it. ${historyStands}`;
     case 'unsupported-call':
-      return `Unsupported call: ${error.target} ${at}. This interpreter resolves calls inside the class it is executing only, and only to its static int methods — there is no Java library behind it. ${historyStands}`;
+      return `Unsupported call: ${error.target} ${at}. This interpreter resolves calls inside the class it is executing only, and only to its static int methods. There is no Java library behind it. ${historyStands}`;
     case 'division-by-zero':
       return `ArithmeticException: / by zero ${at}.`;
     case 'invalid-state':
       return `The run could not go on: ${error.message} ${at}. ${historyStands}`;
     case 'stack-overflow':
       return (
-        'StackOverflowError: too many nested calls — the call stack reached its limit of ' +
+        'StackOverflowError: the call stack reached its limit of ' +
         `${error.limit.toLocaleString('en-US')} frames ${at}. ` +
         'Recursion without a reachable base case ends up here.'
       );
@@ -171,23 +140,22 @@ function describeVmError(error: VmError): string {
         `OutOfMemoryError ${at}. ` +
         (error.resource === 'heap'
           ? `The program asked for ${error.requested.toLocaleString('en-US')} array elements at once, and this machine holds at most ${error.limit.toLocaleString('en-US')}.`
-          : `Recording the arrays this run writes to would have cost ${error.requested.toLocaleString('en-US')} copied elements, and the budget is ${error.limit.toLocaleString('en-US')} — every step that writes to an array keeps its own copy, so a large array written in a loop costs far more than the array itself.`) +
+          : `Recording the arrays this run writes to would have cost ${error.requested.toLocaleString('en-US')} copied elements, and the budget is ${error.limit.toLocaleString('en-US')}. Every step that writes to an array keeps its own copy, so a large array written in a loop costs far more than the array itself.`) +
         ` ${historyStands}`
       );
     case 'unsupported-field':
-      return `Unsupported field: ${error.target} ${at}. This interpreter models a short list of external members — System.out among them — and no instance state at all, so there is no object here to read the field from. ${historyStands}`;
+      return `Unsupported field: ${error.target} ${at}. This interpreter models a short list of external members (System.out among them) and no instance state at all, so there is no object here to read the field from. ${historyStands}`;
     case 'unsupported-constant':
       return `Unsupported constant: ${error.target} ${at}. ldc pushes the int and String entries of the constant pool here; the other constant kinds have no value this machine can hold. ${historyStands}`;
     case 'uncaught-exception':
       return (
-        `${error.label} ${at}. It was thrown and nothing on the call stack caught it, so the ` +
-        `run ended the way a real JVM ends one: every frame unwound. Scrub back to watch the ` +
-        `stack come apart. ${historyStands}`
+        `${error.label} ${at}. Nothing on the call stack caught it, so every frame was ` +
+        `unwound and the run ended, exactly as a real JVM would end it. Scrub back to watch ` +
+        `the stack unwind. ${historyStands}`
       );
   }
 }
 
-/** Anything thrown on the load path, mapped onto the union. */
 export function toAppError(error: unknown): AppError {
   if (isClassFileError(error)) {
     return { kind: 'class-file', detail: error.detail };

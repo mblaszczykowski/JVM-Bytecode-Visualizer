@@ -2,12 +2,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { observeUnhandledFailures, report, type ProgramContext } from './telemetry';
 
-/**
- * The two things this module has to get right are that it stays silent unless configured, and
- * that what it sends cannot carry the reader's code. The second is a type-level guarantee, so
- * the test that matters is the one that reads the bytes actually put on the wire.
- */
-
 const URL = 'https://telemetry.example/report';
 
 interface Beacon {
@@ -22,15 +16,12 @@ function stubBeacon(): void {
     configurable: true,
     writable: true,
     value: (url: string, blob: Blob) => {
-      // `Blob.text()` is async and `report` cannot await; the payload is captured through the
-      // constructor argument instead, which is what jsdom keeps.
       sent.push({ url, body: (blob as Blob & { __text?: string }).__text ?? '' });
       return true;
     },
   });
 }
 
-/** jsdom's Blob does not expose its content synchronously, so record it as it is built. */
 const RealBlob = globalThis.Blob;
 class RecordingBlob extends RealBlob {
   readonly __text: string;
@@ -78,11 +69,6 @@ describe('report', () => {
     });
   });
 
-  /**
-   * The property the README's privacy claim rests on. An uploaded class file never leaves the
-   * tab, so a report about one may carry its shape and nothing else — no name, no class name,
-   * and above all no bytes.
-   */
   it('carries the shape of an uploaded program and none of its content', () => {
     vi.stubEnv('VITE_TELEMETRY_URL', URL);
     const program: ProgramContext = { origin: 'upload', methods: 12 };

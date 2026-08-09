@@ -7,7 +7,6 @@ import { factorialListing } from './__fixtures__/factorial-run';
 import { BranchGutter } from './BranchGutter';
 import { ROW_HEIGHT } from './rhythm';
 
-/** A backward jump, as emitted for a `while` loop: `goto` at index 2 back to index 0. */
 const backwardJump: readonly Instruction[] = [
   { offset: 0, opcode: 0x1a, mnemonic: 'iload_0', operands: [] },
   { offset: 1, opcode: 0x1a, mnemonic: 'iload_1', operands: [] },
@@ -15,7 +14,6 @@ const backwardJump: readonly Instruction[] = [
   { offset: 5, opcode: 0xb1, mnemonic: 'return', operands: [] },
 ];
 
-/** Four jumps to the same row, so every arc overlaps the others. */
 const denseJumps: readonly Instruction[] = [0, 1, 2, 3].map((offset) => ({
   offset,
   opcode: 0xa7,
@@ -36,7 +34,6 @@ describe('BranchGutter', () => {
 
     const arc = screen.getByTestId('branch-arc');
 
-    // `if_icmpgt` sits at index 2 and targets offset 7, which is index 5.
     expect(arc).toHaveAttribute('data-from-index', '2');
     expect(arc).toHaveAttribute('data-to-index', '5');
     expect(arc).toHaveStyle({ height: `${String(3 * ROW_HEIGHT)}px` });

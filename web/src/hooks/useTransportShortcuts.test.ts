@@ -67,7 +67,6 @@ describe('transport shortcuts', () => {
     const handlers = setup();
     const row = appendFocusable('button');
 
-    // What the roving tabindex of the code rows does before the event reaches the window.
     row.addEventListener('keydown', (event) => {
       event.preventDefault();
     });
@@ -85,7 +84,6 @@ describe('transport shortcuts', () => {
         useTransportShortcuts({
           enabled: true,
           onTogglePlay,
-          // Fresh identities every render, exactly as the player hands them over.
           onStepForward: () => undefined,
           onStepBack: () => undefined,
           onStepOver: () => undefined,
@@ -123,7 +121,6 @@ describe('transport shortcuts', () => {
   it('stops the page from scrolling on a key it handled', () => {
     setup();
 
-    // fireEvent returns false once a listener called preventDefault.
     expect(fireEvent.keyDown(document.body, { key: ' ' })).toBe(false);
     expect(fireEvent.keyDown(document.body, { key: 'PageDown' })).toBe(true);
   });

@@ -3,20 +3,6 @@ package dev.jvmvisualizer.compileservice.compiler;
 import java.util.Optional;
 import java.util.Set;
 
-/**
- * Locates the public top-level type declared in a source string.
- *
- * <p>javac rejects a public type whose compilation unit is not named after it, so the in-memory
- * source file object has to carry that name before compilation starts. This is a single linear
- * scan, not a Java parser — javac stays the authority on whether the source is valid, and the
- * binary name the service returns comes from the class files javac actually emitted.
- *
- * <p>It used to be a regular expression. A repeated group over a modifier list recurses once per
- * repetition inside {@code java.util.regex}, so {@code "public " + "final ".repeat(3000)} blew the
- * stack with a {@link StackOverflowError} — which no {@code @RestControllerAdvice} can catch. A
- * hand-written scan has no such cliff, and it can skip comments and literals, which the pattern
- * could not.
- */
 public final class SourceNames {
 
     private static final Set<String> MODIFIERS =
@@ -70,7 +56,7 @@ public final class SourceNames {
                 index = end;
 
                 if (depth > 0) {
-                    continue; // members and bodies cannot declare a top-level type
+                    continue;
                 }
                 if (expectName) {
                     return Optional.of(word);
@@ -93,7 +79,6 @@ public final class SourceNames {
                     expectName = false;
                 }
                 default -> {
-                    // punctuation between modifiers (annotations, generics) carries no meaning here
                 }
             }
             index++;
@@ -123,7 +108,6 @@ public final class SourceNames {
         return end < 0 ? source.length() : end + 2;
     }
 
-    /** Handles both {@code "..."} and text blocks; an unterminated literal consumes the rest. */
     private static int skipTextOrString(String source, int start) {
         if (source.startsWith("\"\"\"", start)) {
             int end = source.indexOf("\"\"\"", start + 3);

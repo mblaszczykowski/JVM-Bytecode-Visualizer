@@ -1,10 +1,3 @@
-/**
- * End-to-end suite: `npm run e2e -w web`.
- *
- * Nothing has to be running first — `webServer` builds the app and serves `dist/` on 4173,
- * so the specs exercise the production bundle rather than the dev server. The browser is a
- * one-off install: `npx playwright install chromium`.
- */
 import { defineConfig, devices } from '@playwright/test';
 
 const PORT = 4173;

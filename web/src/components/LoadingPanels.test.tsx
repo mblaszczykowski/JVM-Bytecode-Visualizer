@@ -31,8 +31,6 @@ describe('LoadingPanels', () => {
     render(<LoadingPanels label="Re-running with 500,000 steps" steps={125_000} />);
 
     expect(screen.getByTestId('loading-steps')).toHaveTextContent('125,000 steps');
-    // The count is not part of the announcement: two dozen updates would be noise, and the
-    // label has already said what is happening.
     expect(screen.getByRole('status')).toHaveTextContent('Re-running with 500,000 steps');
     expect(screen.getByRole('status')).not.toHaveTextContent('125,000');
   });

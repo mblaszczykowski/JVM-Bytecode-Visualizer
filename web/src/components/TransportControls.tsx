@@ -5,16 +5,12 @@ import { DepthTrack } from './DepthTrack';
 import { Segment, SegmentedControl } from './ui/SegmentedControl';
 
 interface TransportControlsProps {
-  /** Index of the current snapshot in the history (0-based). */
   readonly stepIndex: number;
   readonly stepCount: number;
   readonly isPlaying: boolean;
   readonly speed: PlaybackSpeed;
-  /** Call stack depth per step — the background chart of the scrubber. */
   readonly depths: readonly number[];
-  /** What happened at each step, marked along the scrubber. */
   readonly events: readonly TimelineEvent[];
-  /** False where the history holds no step to run to; the button stays a tab stop. */
   readonly canStepOver: boolean;
   readonly canStepOut: boolean;
   readonly onSeek: (index: number) => void;
@@ -26,7 +22,6 @@ interface TransportControlsProps {
   readonly onSpeedChange: (speed: number) => void;
 }
 
-/** The pill cycles through the speeds the player supports and wraps back to the slowest. */
 function nextSpeed(current: PlaybackSpeed): PlaybackSpeed {
   const index = PLAYBACK_SPEEDS.indexOf(current);
   return PLAYBACK_SPEEDS[index + 1] ?? PLAYBACK_SPEEDS[0];
@@ -48,7 +43,6 @@ function StepForwardIcon() {
   );
 }
 
-/** The debugger glyph: an arc that leaps over the step under it and lands after it. */
 function StepOverIcon() {
   return (
     <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" aria-hidden="true" focusable="false">
@@ -65,7 +59,6 @@ function StepOverIcon() {
   );
 }
 
-/** An arrow leaving the frame it points away from. */
 function StepOutIcon() {
   return (
     <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" aria-hidden="true" focusable="false">
@@ -91,10 +84,6 @@ function PauseIcon() {
   );
 }
 
-/**
- * Fully controlled: index, play state and speed all live above this component. A hairline
- * along the top edge separates it from the grid, the way the toolbar's separates the header.
- */
 export function TransportControls({
   stepIndex,
   stepCount,
@@ -115,11 +104,6 @@ export function TransportControls({
   const lastIndex = Math.max(stepCount - 1, 0);
 
   return (
-    /*
-      On a phone the buttons take the first line and the scrubber the second, so the row gap
-      is its own value rather than the 14px that separates the clusters. The bottom padding
-      clears the home indicator: the footer is the last thing above the edge of the screen.
-    */
     <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2.5 border-t border-line bg-app px-3.5 pt-2 pb-[calc(12px+env(safe-area-inset-bottom))] md:pb-2.5">
       <SegmentedControl label="Playback" className="p-1">
         <Segment
@@ -131,7 +115,7 @@ export function TransportControls({
         >
           <StepBackIcon />
         </Segment>
-        {/* Raised at rest as well as when playing: it is the primary action of the screen. */}
+        {}
         <Segment
           label={isPlaying ? 'Pause' : 'Play'}
           title="Play / pause (space)"
@@ -154,11 +138,6 @@ export function TransportControls({
         </Segment>
       </SegmentedControl>
 
-      {/*
-        A cluster of its own rather than two more segments in the playback pill: these run the
-        machine by the shape of the call stack, not by the clock, and on a phone five buttons
-        in one pill no longer fit beside the speed.
-      */}
       <SegmentedControl label="Stepping" className="p-1">
         <Segment
           label="Step over"
@@ -180,14 +159,11 @@ export function TransportControls({
         </Segment>
       </SegmentedControl>
 
-      {/*
-        The label carries the value: an aria-label overrides the visible `1×`, so without it
-        a screen reader is told there is a speed control but never told what it is set to.
-      */}
+      {}
       <button
         type="button"
         aria-label={`Playback speed ${String(speed)}×`}
-        title="Playback speed — click to cycle 0.5× to 8×"
+        title="Playback speed: click to cycle 0.5× to 8×"
         onClick={() => {
           onSpeedChange(nextSpeed(speed));
         }}
@@ -196,10 +172,6 @@ export function TransportControls({
         {speed}×
       </button>
 
-      {/*
-        Track and counter travel together: on a phone they are the second line, which keeps
-        the transport two lines tall instead of three now that stepping has its own cluster.
-      */}
       <div className="order-last flex basis-full items-center gap-3.5 md:order-none md:basis-auto md:grow">
         <DepthTrack
           depths={depths}
@@ -209,10 +181,7 @@ export function TransportControls({
           label="Execution history position"
         />
 
-        {/*
-          `<output>` is a live region by default, which at 8× is thirteen announcements a
-          second. It goes quiet while playing and reports the position again on pause.
-        */}
+        {}
         <output
           data-testid="step-counter"
           aria-live={isPlaying ? 'off' : 'polite'}

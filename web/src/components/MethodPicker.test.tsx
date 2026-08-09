@@ -14,9 +14,7 @@ function programOf(fileName: string): LoadedProgram {
   });
 }
 
-/** A utility class: a private constructor and two static helpers that all take arguments. */
 const library = programOf('Library.class');
-/** `count()I` is an entry point that is not called `main`; `step(I)I` takes an argument. */
 const counter = programOf('Counter.class');
 
 function methodOf(program: LoadedProgram, signature: string): MethodListing {
@@ -37,7 +35,6 @@ function rowOf(signature: string): HTMLElement {
   return row;
 }
 
-/** The control that shows a method's listing — the first one in the row, before Run. */
 function selectControlOf(signature: string): HTMLElement {
   const control = within(rowOf(signature)).getAllByRole('button')[0];
   if (control === undefined) {
@@ -55,7 +52,6 @@ describe('MethodPicker', () => {
       'twice(I)I',
       'clamp(III)I',
     ]);
-    // The two helpers differ only in their descriptor, so it has to be on screen.
     expect(within(rowOf('twice(I)I')).getByText('(I)I')).toBeInTheDocument();
     expect(within(rowOf('clamp(III)I')).getByText('(III)I')).toBeInTheDocument();
   });
@@ -79,7 +75,7 @@ describe('MethodPicker', () => {
 
     expect(rowOf('<init>()V')).toHaveAttribute(
       'title',
-      'Listing only — an instance method, and this machine has no objects to call one on',
+      'Listing only: an instance method; a run needs a static entry point',
     );
     expect(
       within(rowOf('twice(I)I')).getByText(
@@ -104,7 +100,6 @@ describe('MethodPicker', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Run count()I' }));
 
     expect(onRun).toHaveBeenCalledWith(methodOf(counter, 'count()I'));
-    // Running is a heavier action than looking, and it is not also a selection.
     expect(onSelect).not.toHaveBeenCalled();
   });
 
@@ -138,12 +133,8 @@ describe('MethodPicker', () => {
 
     const selected = rowOf('step(I)I');
     expect(selected).toHaveAttribute('aria-current', 'true');
-    // A raised surface, not the accent: picking which method to look at is navigation, and the
-    // accent means "the machine is here now". It also failed contrast — metadata on an accent
-    // wash is unreadable in both palettes, which is what enforcing axe at `moderate` surfaced.
     expect(selected.className).toContain('bg-raised-active');
 
-    // The entry is a fact about the run, not a current state, so it stays neutral.
     const entry = rowOf('count()I');
     expect(within(entry).getByText('entry')).toBeInTheDocument();
     expect(entry).not.toHaveAttribute('aria-current');

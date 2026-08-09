@@ -1,13 +1,3 @@
-/**
- * The Factorial example exactly as the application loads it: the committed `.class` is
- * parsed, disassembled and executed by the domain layer, and the panels are handed the
- * result of that run.
- *
- * Nothing here is written out by hand. A panel test that passes against these values passes
- * against text the application really renders — `factorial(4)`, five frames deep, 40 steps
- * ending in 24.
- */
-
 import { parseClassFile } from '../../core/classfile';
 import type { Snapshot, StackFrame } from '../../core/interpreter';
 import {
@@ -37,7 +27,6 @@ import type { ExampleOption } from '../ExamplePicker';
 const CLASS_FILE = 'Factorial.class';
 const SOURCE_FILE = 'Factorial.java';
 
-/** Parsing and running the example takes a few milliseconds; every test file needs it once. */
 let cached: LoadedProgram | undefined;
 
 export function factorialProgram(): LoadedProgram {
@@ -53,7 +42,6 @@ export function snapshots(): readonly Snapshot[] {
   return factorialProgram().snapshots;
 }
 
-/** The snapshot at `step`, or the terminal one for anything past the end of the run. */
 export function snapshotAt(step: number): Snapshot {
   const history = snapshots();
   const clamped = Math.min(Math.max(step, 0), history.length - 1);
@@ -68,7 +56,6 @@ export function frameAt(step: number): StackFrame | undefined {
   return snapshotAt(step).callStack.at(-1);
 }
 
-/** The first step whose next instruction is `mnemonic` — how the panel tests name a moment. */
 export function firstStepOf(mnemonic: string, depth?: number): number {
   const step = snapshots().findIndex(
     (snapshot) =>
@@ -97,7 +84,6 @@ export function factorialListing(): MethodListing {
   return listingOf('factorial', FACTORIAL_DESCRIPTOR);
 }
 
-/** The constructor: `aload_0`, `invokespecial`, `return` — two of them outside the subset. */
 export function constructorListing(): MethodListing {
   return listingOf('<init>', CONSTRUCTOR_DESCRIPTOR);
 }
@@ -106,21 +92,18 @@ export function commentsOf(listing: MethodListing): ReadonlyMap<number, string> 
   return constantPoolComments(listing, factorialProgram().classFile);
 }
 
-/** What the "Next" card is handed at `step`; `undefined` on the terminal snapshot. */
 export function nextInstructionAt(step: number): NextInstructionSummary | undefined {
   const program = factorialProgram();
   const snapshot = snapshotAt(step);
   return describeNextInstruction(snapshot, listingFor(program, snapshot), program.classFile);
 }
 
-/** The role annotations the operand stack panel shows at `step`. */
 export function operandRolesAt(step: number): readonly (string | undefined)[] {
   const program = factorialProgram();
   const snapshot = snapshotAt(step);
   return describeOperandRoles(snapshot, listingFor(program, snapshot), program.classFile);
 }
 
-/** Call stack depth per step — the background chart of the scrubber. */
 export function depths(): readonly number[] {
   return depthsOf(snapshots());
 }
@@ -133,12 +116,10 @@ export function sourceLines(): readonly string[] {
   return factorialProgram().sourceLines;
 }
 
-/** First step the run spent on each source line — what makes a line seekable. */
 export function stepForLine(): ReadonlyMap<number, number> {
   return firstStepByLine(snapshots());
 }
 
-/** The toolbar options App builds from the shipped manifest, entry for entry. */
 export function exampleOptions(): readonly ExampleOption[] {
   return parseExampleManifest(readExampleManifest()).examples.map((entry) => ({
     id: entry.id,

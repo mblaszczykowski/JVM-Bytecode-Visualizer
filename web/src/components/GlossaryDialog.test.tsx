@@ -5,14 +5,12 @@ import { GlossaryDialog } from './GlossaryDialog';
 import { closeGlossary, openGlossary } from './glossary-store';
 import { GlossaryButton } from './GlossaryTrigger';
 
-/** The store outlives a render, so a test that opened the glossary has to shut it again. */
 afterEach(() => {
   act(() => {
     closeGlossary();
   });
 });
 
-/** A trigger and the dialog it opens, wired the way the panels wire them. */
 function renderWithTrigger() {
   render(
     <>
@@ -22,7 +20,6 @@ function renderWithTrigger() {
   );
 
   const trigger = screen.getByRole('button', { name: 'What is the operand stack?' });
-  // Browsers focus a button when it is clicked; fireEvent does not.
   trigger.focus();
   fireEvent.click(trigger);
 
@@ -47,7 +44,6 @@ describe('GlossaryDialog', () => {
     expect(dialog).toHaveAttribute('aria-modal', 'true');
     expect(screen.getByTestId('glossary-entry')).toHaveAttribute('data-term', 'operand-stack');
     expect(dialog).toHaveTextContent('JVMS §2.6.2');
-    // The primer stays the long form, and every entry says where it is.
     expect(dialog).toHaveTextContent('docs/jvm-primer.md');
   });
 
@@ -77,7 +73,6 @@ describe('GlossaryDialog', () => {
     fireEvent.keyDown(first, { key: 'Tab', shiftKey: true });
     expect(last).toHaveFocus();
 
-    // From the dialog itself — where the focus starts — backwards is the same trip.
     dialog.focus();
     fireEvent.keyDown(dialog, { key: 'Tab', shiftKey: true });
     expect(last).toHaveFocus();

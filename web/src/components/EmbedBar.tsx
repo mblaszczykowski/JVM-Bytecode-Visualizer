@@ -1,21 +1,9 @@
 interface EmbedBarProps {
   readonly appName: string;
-  /** What is loaded, so the frame says what it is showing without the picker. */
   readonly programName: string | undefined;
-  /** The same moment in the full application; opens in the top-level page. */
   readonly fullUrl: string;
 }
 
-/**
- * The toolbar of an embedded run: what this is, and the way out of it.
- *
- * Everything the full toolbar offers is navigation — pick an example, open a file, write Java —
- * and an embed is not a place to navigate. It is one run, chosen by whoever wrote the page, and
- * the only thing worth offering is the same run somewhere with more room.
- *
- * `target="_top"` rather than `_blank`: inside an iframe the default would open the full
- * application in the frame it is already too small for.
- */
 export function EmbedBar({ appName, programName, fullUrl }: EmbedBarProps) {
   return (
     <header

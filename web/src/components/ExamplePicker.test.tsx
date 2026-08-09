@@ -4,10 +4,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { exampleOptions } from './__fixtures__/factorial-run';
 import { ExamplePicker } from './ExamplePicker';
 
-/** The options App builds from the shipped manifest, names included — however many there are. */
 const examples = exampleOptions();
 
-/** The option a wrapping arrow key has to come back round to. */
 const last = examples[examples.length - 1] ?? { id: '', name: '' };
 
 describe('ExamplePicker', () => {
@@ -30,7 +28,6 @@ describe('ExamplePicker', () => {
 
   it('keeps one tab stop and moves the focus with the arrow keys', () => {
     const onExampleSelected = vi.fn();
-    // The last option is selected, so one press to the right has to wrap round.
     render(
       <ExamplePicker
         examples={examples}
@@ -40,15 +37,12 @@ describe('ExamplePicker', () => {
     );
 
     const options = screen.getAllByRole('radio');
-    // One tab stop, on the selected option; every other option is reached with an arrow.
     expect(options.map((option) => option.getAttribute('tabindex'))).toEqual(
       examples.map((_, index) => (index === examples.length - 1 ? '0' : '-1')),
     );
 
     fireEvent.keyDown(screen.getByRole('radio', { name: last.name }), { key: 'ArrowRight' });
 
-    // Wraps round to the first option, and selection does not follow focus: opening an
-    // example parses and runs a whole class file.
     expect(screen.getAllByRole('radio')[0]).toHaveFocus();
     expect(onExampleSelected).not.toHaveBeenCalled();
   });
@@ -56,8 +50,6 @@ describe('ExamplePicker', () => {
   it('keeps the options on one scrolling rail at every width', () => {
     render(<ExamplePicker examples={examples} selectedId="gcd" onExampleSelected={vi.fn()} />);
 
-    // The rail never lets the row lay itself out — that is what used to wrap the toolbar —
-    // and the fade plus the snap points are what say the pills continue past the edge.
     const rail = screen.getByRole('radiogroup', { name: 'Example programs' }).parentElement;
     expect(rail?.className).toContain('overflow-x-auto');
     expect(rail?.className).not.toContain('md:overflow-visible');

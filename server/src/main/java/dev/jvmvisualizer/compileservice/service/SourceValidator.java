@@ -4,11 +4,6 @@ import dev.jvmvisualizer.compileservice.compiler.SourceNames;
 import dev.jvmvisualizer.compileservice.config.CompileProperties;
 import org.springframework.stereotype.Component;
 
-/**
- * Everything that must be rejected with 400 rather than answered with diagnostics: an empty
- * source, one that is too large to be worth compiling, and one that declares no public type
- * (the visualizer has nothing to load, and javac needs the name for the compilation unit).
- */
 @Component
 public class SourceValidator {
 
@@ -33,7 +28,6 @@ public class SourceValidator {
         }
     }
 
-    /** Counts the encoded bytes; {@code getBytes} would allocate a second copy of the source. */
     private static long utf8Length(String source) {
         long length = 0;
         for (int i = 0; i < source.length(); i++) {

@@ -32,7 +32,7 @@ describe('parseMethodDescriptor', () => {
     });
   });
 
-  it('knows the full base type grammar (JVMS §4.3.2), not just int', () => {
+  it('parses the full base type grammar (JVMS §4.3.2)', () => {
     const { params, returnType } = parseMethodDescriptor('(BCDFIJSZ)J');
 
     expect(params.map((param) => formatJvmType(param))).toEqual([
@@ -66,7 +66,7 @@ describe('parseMethodDescriptor', () => {
   });
 });
 
-describe('parseMethodDescriptor — errors', () => {
+describe('parseMethodDescriptor: errors', () => {
   const cases = [
     { descriptor: '', position: 0, why: 'empty descriptor' },
     { descriptor: 'II)I', position: 0, why: 'missing opening parenthesis' },
@@ -82,7 +82,7 @@ describe('parseMethodDescriptor — errors', () => {
   ];
 
   for (const { descriptor, position, why } of cases) {
-    it(`rejects "${descriptor}" — ${why} (position ${String(position)})`, () => {
+    it(`rejects "${descriptor}": ${why} (position ${String(position)})`, () => {
       expect(expectClassFileError(() => parseMethodDescriptor(descriptor))).toMatchObject({
         kind: 'malformed-descriptor',
         descriptor,
@@ -99,7 +99,7 @@ describe('parseMethodDescriptor — errors', () => {
     });
   });
 
-  it('survives a pathologically deep array (dimensions are not counted recursively)', () => {
+  it('rejects a 100k-dimension array without recursing', () => {
     expect(expectClassFileError(() => parseFieldDescriptor('['.repeat(100_000))).kind).toBe(
       'malformed-descriptor',
     );
@@ -135,8 +135,8 @@ describe('formatJvmType', () => {
   });
 });
 
-describe('parseMethodDescriptor — property test', () => {
-  it('on any string ends with a result or a ClassFileError, never another exception', () => {
+describe('parseMethodDescriptor: property test', () => {
+  it('returns a result or throws a ClassFileError on any string, never another exception', () => {
     fc.assert(
       fc.property(fc.string({ maxLength: 40 }), (descriptor) => {
         try {

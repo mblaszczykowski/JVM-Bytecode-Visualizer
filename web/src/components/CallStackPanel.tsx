@@ -7,18 +7,12 @@ import { EmptyState, Panel } from './Panel';
 import { Pill } from './ui/Pill';
 
 interface CallStackPanelProps {
-  /** Frames in contract order: `[0]` is the oldest. */
   readonly frames: readonly StackFrame[];
 }
 
-/**
- * Depth is not part of the data model — it is the position in the array, and it is signalled
- * by opacity rather than indentation so every frame keeps the same left edge.
- */
 const OPACITY_BY_DISTANCE = [1, 0.76, 0.58, 0.42] as const;
 const DEEPEST_OPACITY = 0.42;
 
-/** Deeper than this a recursive run stops fitting, so the middle collapses into one row. */
 const COLLAPSE_ABOVE = 8;
 const OLDEST_KEPT = 2;
 const NEWEST_KEPT = 5;
@@ -31,7 +25,6 @@ function frameOpacity(distanceFromTop: number): number {
   return OPACITY_BY_DISTANCE[distanceFromTop] ?? DEEPEST_OPACITY;
 }
 
-/** `n=2` — the first argument identifies a recursive frame far faster than the descriptor. */
 function firstArgument(frame: StackFrame): string | undefined {
   const value = frame.locals[0];
   if (value === undefined) {
@@ -41,7 +34,6 @@ function firstArgument(frame: StackFrame): string | undefined {
   return `${name}=${String(value)}`;
 }
 
-/** Rows in visual order, oldest first, with the middle folded away when the stack is deep. */
 function buildRows(frames: readonly StackFrame[], expanded: boolean): readonly Row[] {
   const all: Row[] = frames.map((frame, index) => ({ kind: 'frame', frame, index }));
   if (expanded || frames.length <= COLLAPSE_ABOVE) {
@@ -59,8 +51,6 @@ export function CallStackPanel({ frames }: CallStackPanelProps) {
   const reduced = useReducedMotion() ?? false;
   const duration = reduced ? 0 : 0.18;
   const topIndex = frames.length - 1;
-  // `flex-col-reverse` puts the first DOM child at the bottom, so the top frame ends up next
-  // to the Locals panel that describes it — and a deep stack scrolls anchored to it.
   const rows = [...buildRows(frames, expanded)].reverse();
 
   return (
@@ -70,10 +60,6 @@ export function CallStackPanel({ frames }: CallStackPanelProps) {
       variant="state"
       className="grow"
     >
-      {/*
-        The list disappears with the last frame rather than fading it out: an empty call stack
-        only happens once, at the terminal snapshot, and there the panel changes what it says.
-      */}
       {frames.length === 0 ? (
         <EmptyState
           status="no active frame"
@@ -81,7 +67,7 @@ export function CallStackPanel({ frames }: CallStackPanelProps) {
         />
       ) : (
         <ol data-testid="call-frame-list" className="flex flex-col-reverse gap-0.5 px-2">
-          {/* `popLayout` takes the returning frame out of flow, so the stack below stays put. */}
+          {}
           <AnimatePresence initial={false} mode="popLayout">
             {rows.map((row) => {
               if (row.kind === 'collapsed') {
@@ -110,7 +96,6 @@ export function CallStackPanel({ frames }: CallStackPanelProps) {
                   key={`${String(index)}:${frame.methodName}${frame.methodDescriptor}`}
                   layout
                   initial={{ opacity: 0, y: -8 }}
-                  // Depth is carried by opacity, so the resting value is the animation target.
                   animate={{ opacity: frameOpacity(topIndex - index), y: 0 }}
                   exit={{ opacity: 0, y: -8 }}
                   transition={{ duration, ease: 'easeOut' }}

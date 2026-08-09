@@ -16,10 +16,6 @@ interface PillProps {
   readonly children: ReactNode;
 }
 
-/**
- * Inline label used inside code rows and list rows. `leading-none` plus a sub-pixel vertical
- * padding is deliberate: anything taller grows the line box and breaks the 26px row rhythm.
- */
 export function Pill({ tone = 'neutral', title, className = '', children }: PillProps) {
   return (
     <span

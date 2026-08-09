@@ -43,7 +43,6 @@ describe('CompletionCard', () => {
     render(<CompletionCard summary={runSummary()} heap={heapAt(terminalStep())} />);
 
     const card = within(screen.getByTestId('completion-card'));
-    // `result = 1` is only the minimum the sort found; the sorted array is the actual answer.
     expect(card.getByTestId('result-value')).toHaveTextContent('1');
     expect(card.getByText('int[5]@0')).toBeInTheDocument();
     expect(card.getAllByTestId('heap-cell').map((cell) => cell.textContent)).toEqual([

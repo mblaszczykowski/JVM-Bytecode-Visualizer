@@ -16,7 +16,6 @@ import { StateColumn } from './StateColumn';
 
 const sortingStep = firstStepOf('iaload');
 
-/** Panel headings in the order the column stacks them. */
 function sections(): string[] {
   return screen
     .getAllByRole('region')
@@ -56,7 +55,6 @@ describe('StateColumn', () => {
       />,
     );
 
-    // The completion card carries the heap here, so it is not repeated as a fourth section.
     expect(sections()).toEqual(['Result', 'Locals']);
     const card = screen.getByTestId('completion-card');
     expect(card).toContainElement(screen.getByTestId('heap-array'));
@@ -72,9 +70,6 @@ describe('StateColumn', () => {
   it('fills its cell without stretching the sections over it', () => {
     render(<StateColumn frames={factorialSnapshotAt(20).callStack} />);
 
-    // The pane shares a baseline with the code panels beside it, but three frames and a single
-    // local slot are not spread over 800px: the sections measure to their content and the
-    // surplus collects at the foot of the pane.
     const column = screen.getByTestId('state-column');
     expect(column.className).not.toContain('self-start');
     expect(column.className).toContain('max-h-full');
@@ -141,7 +136,6 @@ describe('StateColumn', () => {
     const locals = screen.getByRole('region', { name: 'Locals' });
     expect(within(stack).getAllByTestId('operand-origin').length).toBeGreaterThan(0);
 
-    // Slot 0 of the sort holds the array; it was written by the step that stored it.
     fireEvent.click(within(locals).getByRole('button', { name: /where a was set to int\[5\]@0/ }));
 
     expect(onSeekToStep).toHaveBeenCalledWith(23);
@@ -160,7 +154,6 @@ describe('StateColumn', () => {
       />,
     );
 
-    // The run's answer is the one thing left on screen, and it still says where it came from.
     fireEvent.click(screen.getByTestId('local-origin'));
 
     expect(onSeekToStep).toHaveBeenCalledTimes(1);

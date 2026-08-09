@@ -2,20 +2,12 @@ import { useEffect, useRef } from 'react';
 
 import type { CompileDiagnostic, DiagnosticKind } from '../services/compile-client';
 
-/**
- * Seed program: the first thing a visitor compiles, so it spans the executable subset rather
- * than sitting in a corner of it — a loop, a switch, string constants and printing. The last
- * of those earns its place twice over: the console section joins the state column only for a
- * run that printed, so a seed that stays silent is a seed that hides a panel.
- *
- * `result` is not incidental either: a run's summary reports the local of that name.
- */
 export const SEED_SOURCE = `public class FizzBuzz {
 
     public static void main(String[] args) {
         int result = 0;
         for (int n = 1; n <= 15; n++) {
-            // Dense labels, so javac reaches for tableswitch rather than lookupswitch.
+            // Dense labels, so javac compiles this to a tableswitch.
             switch (n % 15) {
                 case 0 -> System.out.println("FizzBuzz");
                 case 3, 6, 9, 12 -> System.out.println("Fizz");
@@ -35,7 +27,6 @@ interface CompileEditorProps {
   readonly source: string;
   readonly onSourceChange: (source: string) => void;
   readonly diagnostics: readonly CompileDiagnostic[];
-  /** Compile is in flight: the button is busy and the text stays editable. */
   readonly isCompiling: boolean;
   readonly onCompile: () => void;
   readonly onClose: () => void;
@@ -47,13 +38,6 @@ const KIND_STYLE: Record<DiagnosticKind, string> = {
   note: 'text-fg-2',
 };
 
-/**
- * Plain textarea rather than an embedded IDE: the class this compiles is twenty lines long,
- * and a code editor would cost more bytes than the rest of the application.
- *
- * The transport keeps its keyboard shortcuts while this is open — they step aside for text
- * entry on their own, which is exactly the case the guard exists for.
- */
 export function CompileEditor({
   source,
   onSourceChange,
@@ -148,7 +132,7 @@ export function CompileEditor({
             {isCompiling ? 'Compiling…' : 'Compile'}
           </button>
           <span className="text-label text-fg-3">
-            Static methods called from <span className="font-mono">main</span> — ints, int arrays,{' '}
+            Static methods called from <span className="font-mono">main</span>: ints, int arrays,{' '}
             <span className="font-mono">Math</span> and{' '}
             <span className="font-mono">System.out</span>, nothing else.
           </span>
@@ -158,7 +142,6 @@ export function CompileEditor({
   );
 }
 
-/** `12:5` when javac placed the diagnostic, `—` when it had no position at all. */
 function positionOf(diagnostic: CompileDiagnostic): string {
   if (diagnostic.line === undefined) {
     return '—';

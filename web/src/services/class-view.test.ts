@@ -41,7 +41,6 @@ describe('class facts', () => {
   });
 
   it('decodes the access flags into the names JVMS gives them', () => {
-    // `javac` marks every class ACC_SUPER (JVMS §4.1), and `Library` is `public final`.
     expect(factOf('access_flags', 'Factorial.class')).toContain('public');
     const facts = classFactsOf(parseClassFile(readFixtureBytes('Library.class')));
     expect(facts.find((fact) => fact.label === 'access_flags')?.value).toBe('public final super');
@@ -65,7 +64,6 @@ describe('javaReleaseOf', () => {
     expect(javaReleaseOf(48)).toBe('Java 1.4');
     expect(javaReleaseOf(52)).toBe('Java 8');
     expect(javaReleaseOf(65)).toBe('Java 21');
-    // A release nobody had to add a row for.
     expect(javaReleaseOf(69)).toBe('Java 25');
   });
 
@@ -127,7 +125,6 @@ describe('constant pool rows', () => {
     );
 
     expect(methodref?.text).toBe('Factorial.factorial:(I)I');
-    // The two indices it names, in the order JVMS §4.4 lists them.
     expect(methodref?.references).toHaveLength(2);
   });
 
@@ -135,7 +132,6 @@ describe('constant pool rows', () => {
     const pool: ConstantPool = [
       null,
       { tag: ConstantTag.Long },
-      // JVMS §4.4.5: a Long occupies two slots and the second one is unusable.
       null,
       { tag: ConstantTag.Utf8, value: 'after' },
     ];
@@ -145,7 +141,6 @@ describe('constant pool rows', () => {
 
   it('keeps a row for an entry whose references do not resolve', () => {
     const pool = new ConstantPoolBuilder();
-    // A Methodref whose class index points at a Utf8 rather than at a Class entry.
     const utf8 = pool.utf8('not a class');
     pool.raw({ tag: ConstantTag.Methodref, classIndex: utf8, nameAndTypeIndex: utf8 });
 

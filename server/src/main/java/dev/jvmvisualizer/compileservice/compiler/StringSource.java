@@ -3,7 +3,6 @@ package dev.jvmvisualizer.compileservice.compiler;
 import java.net.URI;
 import javax.tools.SimpleJavaFileObject;
 
-/** Compilation unit backed by a string; the URI is never opened. */
 final class StringSource extends SimpleJavaFileObject {
 
     private final String code;

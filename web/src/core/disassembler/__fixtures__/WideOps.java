@@ -4,12 +4,12 @@
  *
  * The 256 declared-but-unused locals are the cheapest way to push a slot number past 255:
  * javac allocates a slot at the declaration and emits no code for one that is never assigned,
- * so `high` lands in slot 257 and every access to it needs the prefix — with a method body
+ * so `high` lands in slot 257 and every access to it needs the prefix, with a method body
  * short enough to read. `i += 200` then forces the second wide form, `iinc_w`, whose constant
  * does not fit in the signed byte the narrow `iinc` carries.
  *
  * Everything here is int-only and inside the executable subset, so the same fixture is also
- * the interpreter's differential case for `wide` — WideOps.stdout.txt is what a real JVM
+ * the interpreter's differential case for `wide`; WideOps.stdout.txt is what a real JVM
  * printed for it.
  *
  * Compilation (this exact command produces the committed WideOps.class):

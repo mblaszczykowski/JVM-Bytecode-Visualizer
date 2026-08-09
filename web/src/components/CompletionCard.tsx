@@ -6,7 +6,6 @@ import { Panel } from './Panel';
 
 interface CompletionCardProps {
   readonly summary: RunSummary;
-  /** The heap as the run left it; empty for a program that never allocated anything. */
   readonly heap?: readonly HeapObject[] | undefined;
 }
 
@@ -26,18 +25,6 @@ function Figure({ label, value }: FigureProps) {
 
 const NO_HEAP: readonly HeapObject[] = [];
 
-/**
- * What the last snapshot is actually about. The call stack is empty there, so the three state
- * panels have nothing to say — but the run does: it produced a number, and it took a
- * measurable amount of machine to get there.
- *
- * A single returned int is not the whole answer for a program that sorts: what the run left on
- * the heap is, so the arrays come along and `int[5]@0` finishes as `1 2 3 4 5`.
- *
- * The reference value only appears when it agrees with the run. It is the result a real JVM
- * printed while the fixtures were built, so a match is the interpreter passing a differential
- * check in front of the reader rather than in CI.
- */
 export function CompletionCard({ summary, heap = NO_HEAP }: CompletionCardProps) {
   const { resultName, resultValue, totalSteps, maxDepth, referenceValue } = summary;
 
@@ -65,7 +52,7 @@ export function CompletionCard({ summary, heap = NO_HEAP }: CompletionCardProps)
         {heap.length === 0 ? null : (
           <div className="mt-2.5 rounded-row bg-raised px-3 py-2.5">
             <p className="pb-2 text-meta text-fg-3">Heap as the run left it</p>
-            {/* The card itself does not scroll, so a heap with a lot on it scrolls here. */}
+            {}
             <ol className="scroll-slim flex max-h-[150px] flex-col gap-3 overflow-y-auto">
               {heap.map((object, handle) =>
                 object.kind === 'int-array' ? (

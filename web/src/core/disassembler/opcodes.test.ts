@@ -11,11 +11,6 @@ import {
   type OperandType,
 } from './opcodes';
 
-/**
- * The instructions the interpreter executes — nothing outside this list may be marked
- * `supported`, or the interpreter would be asked to run something it cannot. Decoding is a
- * separate question: every assigned opcode below 0xca is decoded, whether it is here or not.
- */
 const EXECUTABLE_OPCODES: readonly (readonly [opcode: number, mnemonic: string])[] = [
   [0x00, 'nop'],
   [0x01, 'aconst_null'],
@@ -109,7 +104,7 @@ const EXECUTABLE_OPCODES: readonly (readonly [opcode: number, mnemonic: string])
   [0xc7, 'ifnonnull'],
 ];
 
-const HIGHEST_ASSIGNED_OPCODE = 0xca; // breakpoint (reserved) closes the contiguous range
+const HIGHEST_ASSIGNED_OPCODE = 0xca;
 const RESERVED_OPCODES = [0xca, 0xfe, 0xff];
 
 function infoFor(opcode: number): OpcodeInfo {
@@ -165,7 +160,6 @@ describe('opcode table coverage', () => {
   it('gives every fixed-length opcode a non-negative operand byte count', () => {
     for (const info of OPCODES.values()) {
       if (info.kind === 'supported' || info.kind === 'unsupported') {
-        // Only the two switches have no fixed width — their arms are counted by the bytes.
         const variableLength = info.opcode === 0xaa || info.opcode === 0xab;
         expect(info.operandBytes === undefined).toBe(variableLength);
         expect(info.operandBytes ?? 0).toBeGreaterThanOrEqual(0);
@@ -186,13 +180,11 @@ describe('opcode classification', () => {
     expect(supported).toHaveLength(90);
   });
 
-  it('leaves `wide` alone as a prefix rather than an instruction of its own', () => {
+  it('classifies `wide` as a prefix', () => {
     const variableLength = [...OPCODES.values()]
       .filter((info) => info.kind === 'variable-length')
       .map((info) => info.mnemonic);
 
-    // The switches are variable-length too, but they are instructions the interpreter runs;
-    // `wide` is folded into whatever follows it and never reaches a listing on its own.
     expect(variableLength).toEqual(['wide']);
   });
 
@@ -210,8 +202,6 @@ describe('opcode classification', () => {
   });
 
   it('decodes the instructions it cannot execute just as completely', () => {
-    // `invokeinterface` needs a second class file to resolve against, so it stays outside the
-    // subset — and is still decoded down to its mandated zero byte.
     expect(infoFor(0xb9)).toEqual({
       kind: 'unsupported',
       opcode: 0xb9,
@@ -237,7 +227,6 @@ describe('opcode classification', () => {
       if (info.kind === 'reserved' || info.opcode === 0xaa || info.opcode === 0xab) {
         expect(info.operands, `${info.mnemonic} takes no fixed operands`).toEqual([]);
       } else if (info.kind === 'variable-length') {
-        // `wide` carries the operands of the instruction it prefixes, not its own.
         expect(info.operands).toEqual([]);
       } else {
         expect(encoded, `operand encoding of ${info.mnemonic}`).toBe(info.operandBytes);
@@ -271,15 +260,14 @@ describe('operand encoding of supported opcodes', () => {
   it('reads local variable indices as unsigned bytes', () => {
     expect(encodingOf(0x15)).toEqual([['u1', 'local-index']]);
     expect(encodingOf(0x36)).toEqual([['u1', 'local-index']]);
-    expect(encodingOf(0x19)).toEqual([['u1', 'local-index']]); // aload
-    expect(encodingOf(0x3a)).toEqual([['u1', 'local-index']]); // astore
+    expect(encodingOf(0x19)).toEqual([['u1', 'local-index']]);
+    expect(encodingOf(0x3a)).toEqual([['u1', 'local-index']]);
   });
 
   it('reads the newarray atype as an unsigned byte naming a primitive type', () => {
     expect(encodingOf(0xbc)).toEqual([['u1', 'array-type']]);
     expect(arrayTypeName(T_INT)).toBe('int');
     expect(arrayTypeName(11)).toBe('long');
-    // 0–3 and anything above 11 are unassigned in the JVMS §6.5 newarray table.
     expect(arrayTypeName(3)).toBeUndefined();
     expect(arrayTypeName(12)).toBeUndefined();
   });
@@ -331,13 +319,10 @@ describe('stack effects of supported opcodes', () => {
   });
 
   it('describes the array instructions by the operands JVMS §6.5 lists for them', () => {
-    // newarray: …, count → …, arrayref; arraylength: …, arrayref → …, length
     expect(infoFor(0xbc)).toMatchObject({ stackEffect: { kind: 'fixed', pops: 1, pushes: 1 } });
     expect(infoFor(0xbe)).toMatchObject({ stackEffect: { kind: 'fixed', pops: 1, pushes: 1 } });
-    // iaload: …, arrayref, index → …, value; iastore: …, arrayref, index, value →
     expect(infoFor(0x2e)).toMatchObject({ stackEffect: { kind: 'fixed', pops: 2, pushes: 1 } });
     expect(infoFor(0x4f)).toMatchObject({ stackEffect: { kind: 'fixed', pops: 3, pushes: 0 } });
-    // The reference loads and stores move one value, exactly like their int counterparts.
     expect(infoFor(0x01)).toMatchObject({ stackEffect: { kind: 'fixed', pops: 0, pushes: 1 } });
     expect(infoFor(0x19)).toMatchObject({ stackEffect: { kind: 'fixed', pops: 0, pushes: 1 } });
     expect(infoFor(0x2a)).toMatchObject({ stackEffect: { kind: 'fixed', pops: 0, pushes: 1 } });
@@ -345,7 +330,7 @@ describe('stack effects of supported opcodes', () => {
     expect(infoFor(0x4b)).toMatchObject({ stackEffect: { kind: 'fixed', pops: 1, pushes: 0 } });
   });
 
-  it('leaves calls and returns as varying — the descriptor and the caller frame decide', () => {
+  it('marks calls and returns as varying', () => {
     for (const opcode of [0xb8, 0xac, 0xb1]) {
       expect(infoFor(opcode)).toMatchObject({ stackEffect: { kind: 'varies' } });
     }

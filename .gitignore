@@ -25,3 +25,6 @@ web/corpus/.cache/
 .env
 .env.local
 .DS_Store
+
+# Scratch space, never published
+.local/

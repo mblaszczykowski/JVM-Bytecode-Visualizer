@@ -27,12 +27,6 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
-/**
- * The frontend parses every response with a schema, so an error Spring answered on its own — a
- * wrong method, a wrong Content-Type, a path that does not exist — read as "the service is
- * broken" instead of "the request was wrong". Every error path has to carry {@code {error,
- * message}} and nothing else.
- */
 @SpringBootTest
 @AutoConfigureMockMvc
 @TestPropertySource(properties = "compile.rate-limit.requests-per-minute=1000")

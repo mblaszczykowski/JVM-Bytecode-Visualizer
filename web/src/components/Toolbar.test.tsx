@@ -11,7 +11,6 @@ afterEach(() => {
   });
 });
 
-/** The four options App builds from the shipped manifest. */
 const examples = exampleOptions();
 
 function renderToolbar(
@@ -38,7 +37,6 @@ function renderToolbar(
   return { onExampleSelected, onFileSelected };
 }
 
-/** The zone row: name, examples, actions — the only child of the header above the switch. */
 function zones(): HTMLElement {
   const row = screen.getByRole('banner').firstElementChild;
   if (!(row instanceof HTMLElement)) {
@@ -100,8 +98,6 @@ describe('Toolbar', () => {
   it('gives the name, the examples and the actions a zone each', () => {
     renderToolbar('online', vi.fn());
 
-    // Three tracks from `md` up, and only the middle one may shrink: the actions cannot be
-    // pushed onto a line of their own, so the header keeps its height (design.md §6.1).
     expect(zones().className).toContain('md:grid-cols-[auto_minmax(0,1fr)_auto]');
 
     const examplesZone = screen.getByRole('radiogroup', { name: 'Example programs' }).parentElement
@@ -113,8 +109,6 @@ describe('Toolbar', () => {
   it('offers the file picker without explaining the drop target', () => {
     renderToolbar();
 
-    // The picker is the action; the hint that used to sit beside it was a permanent fixture
-    // repeating what the welcome screen says once, so the header no longer carries it.
     expect(screen.getByText('Open .class…')).toBeVisible();
     expect(screen.queryByText(/or drop/)).toBeNull();
   });
@@ -123,9 +117,6 @@ describe('Toolbar', () => {
     const onSelect = vi.fn();
     renderToolbar('hidden', undefined, { selected: 'bytecode', onSelect });
 
-    // Which program and which panel are the two navigations a phone needs beside the transport.
-    // They used to take a row each at the top, which cost the disassembly more height than
-    // either was worth; they share the second row of the header grid now, and vanish at `md`.
     const panelSwitch = screen.getByTestId('panel-switch');
     expect(panelSwitch.className).toContain('md:hidden');
     expect(panelSwitch.className).toContain('row-start-2');
@@ -139,8 +130,6 @@ describe('Toolbar', () => {
   });
 
   it('keeps exactly one example radiogroup, folded or not', () => {
-    // Two copies — one of them merely `hidden` — would put two "which example" controls in the
-    // accessibility tree, and a screen reader would reach whichever came first.
     renderToolbar('hidden', undefined, { selected: 'bytecode', onSelect: vi.fn() });
 
     expect(screen.getAllByRole('radiogroup', { name: 'Example programs' })).toHaveLength(1);

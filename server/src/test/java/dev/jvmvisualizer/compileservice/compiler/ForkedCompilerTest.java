@@ -11,14 +11,6 @@ import java.util.function.LongSupplier;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
-/**
- * The properties an in-process compiler could not have: a deadline that actually stops javac, and
- * a bound on how many compilations can run at once.
- *
- * <p>{@link #RUNAWAY} is 300 bytes of legal Java whose type inference doubles in size with every
- * nesting level. javac needs well over a minute on it and polls no interrupt flag while it works,
- * which is exactly how a handful of requests used to pin every core on the instance.
- */
 class ForkedCompilerTest {
 
     private static final String ADDER = """
@@ -75,12 +67,10 @@ class ForkedCompilerTest {
             assertThat(result).isInstanceOf(CompilationResult.Failure.class);
             assertThat(result.diagnostics()).extracting(CompilerDiagnostic::message)
                     .containsExactly(ForkedCompiler.TIMEOUT_MESSAGE);
-            // The old in-process timeout returned here too — and left javac running for minutes.
             assertThat(elapsed).isLessThan(Duration.ofSeconds(20));
         }
 
         assertThat(waitForChildProcesses(before)).isEqualTo(before);
-        // Nothing of this compilation outlives the request: not the process, not the thread.
         assertThat(waitFor(ForkedCompilerTest::compileThreads, threadsBefore)).isEqualTo(threadsBefore);
     }
 
@@ -160,7 +150,6 @@ class ForkedCompilerTest {
         return count;
     }
 
-    /** {@code pair(pair(...))}: the inferred type doubles at every level, javac does not finish. */
     private static String runaway(int depth) {
         StringBuilder expression = new StringBuilder("\"x\"");
         for (int i = 0; i < depth; i++) {
