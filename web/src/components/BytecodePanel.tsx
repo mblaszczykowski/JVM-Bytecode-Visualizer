@@ -1,6 +1,7 @@
 import { Fragment, useState } from 'react';
 
 import type { ConstantPool } from '../core/classfile';
+import type { Construct } from '../services/constructs';
 import type { Instruction } from '../core/disassembler/types';
 
 import { BranchGutter } from './BranchGutter';
@@ -38,6 +39,11 @@ interface BytecodePanelProps {
    * an `invokestatic`; without it the stack column has nothing to say and is left off.
    */
   readonly constantPool?: ConstantPool | undefined;
+  /**
+   * What javac was compiling here, keyed by the offset the construct starts at. A loop, a
+   * boxing call, the `super()` nobody wrote — the things a listing cannot say on its own.
+   */
+  readonly constructs?: ReadonlyMap<number, Construct> | undefined;
   /** javap-style trailing comments, keyed by instruction offset. */
   readonly comments?: ReadonlyMap<number, string> | undefined;
   /** Offsets never reached in this run — dimmed, because they did not shape the result. */
@@ -180,6 +186,7 @@ export function BytecodePanel({
   instructions,
   currentOffset,
   constantPool,
+  constructs,
   comments,
   deadOffsets,
   truncatedAtOffset,
@@ -290,6 +297,7 @@ export function BytecodePanel({
             const comment = comments?.get(instruction.offset);
             const explanation = help?.get(instruction.mnemonic);
             const step = stepForOffset?.get(instruction.offset);
+            const construct = constructs?.get(instruction.offset);
             // Hover and focus mark the whole group an instruction belongs to, not the one row
             // under the pointer: "line 29 compiled to these five" is the relationship on show.
             const isLinked =
@@ -365,6 +373,21 @@ export function BytecodePanel({
                   <span className={isCurrent ? 'text-accent-dim' : 'text-fg-3'}>{comment}</span>
                 )}
                 <span className="grow" />
+                {/*
+                  What the Java was, on the row where it starts. Grey and lower case: this is a
+                  note about the source, not a fact about the machine, and the accent means the
+                  machine. The `title` carries the sentence the tag has no room for.
+                */}
+                {construct === undefined ? null : (
+                  <span
+                    data-testid="construct-tag"
+                    data-construct={construct.label}
+                    title={construct.detail}
+                    className="shrink-0 text-micro text-fg-3 select-none"
+                  >
+                    {construct.label}
+                  </span>
+                )}
                 {isUnsupported ? <Pill tone="error">unsupported</Pill> : null}
                 {/* Always rendered once there is a pool, empty cells included — a column that
                     moves from row to row is not a column. */}

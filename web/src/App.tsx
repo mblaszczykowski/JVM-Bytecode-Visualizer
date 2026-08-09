@@ -50,6 +50,7 @@ import {
   explainMnemonic,
 } from './services/derivations';
 import { parseDeepLink, writeDeepLink, writeTourLink } from './services/deep-link';
+import { constructsFor } from './services/constructs';
 import { fullAppUrl, isEmbedded } from './services/embed';
 import { describeAppError, describeCompileFailure, toAppError } from './services/errors';
 import { fetchExampleManifest, shortTitleOf } from './services/examples';
@@ -614,6 +615,11 @@ export function App({
     listing === undefined || program === undefined
       ? undefined
       : constantPoolComments(listing, program.classFile);
+  /** What javac was compiling, per offset — javac's habits, so it lives beside the listing. */
+  const constructs =
+    listing === undefined || program === undefined
+      ? undefined
+      : constructsFor(listing.instructions, program.classFile.constantPool, listing.name);
   const depths = depthsOf(snapshots);
   const timelineEvents = timelineEventsOf(snapshots);
   /**
@@ -927,6 +933,7 @@ export function App({
             stepForOffset={stepForOffset}
             onSeek={seekTo}
             constantPool={program.classFile.constantPool}
+            constructs={constructs}
             sourceLineForOffset={sourceLineForOffset}
             linkedLine={linkedLine}
             onLinkedLineChange={setLinkedLine}

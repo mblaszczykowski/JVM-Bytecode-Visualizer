@@ -324,3 +324,41 @@ describe('BytecodePanel', () => {
     });
   });
 });
+
+describe('what javac was compiling', () => {
+  it('tags the row a construct starts on, and only that row', () => {
+    const constructs = new Map([
+      [2, { label: 'loop', detail: 'The top of a loop.' }],
+      [11, { label: 'boxing', detail: 'Wraps a primitive in an object.' }],
+    ]);
+
+    renderListing(factorial, undefined, { constructs });
+
+    expect(screen.getAllByTestId('construct-tag').map((tag) => tag.textContent)).toEqual([
+      'loop',
+      'boxing',
+    ]);
+    expect(within(rowOf('if_icmpgt')).getByTestId('construct-tag')).toHaveTextContent('loop');
+    // `imul` appears once in this method and carries no construct.
+    expect(within(rowOf('imul')).queryByTestId('construct-tag')).not.toBeInTheDocument();
+  });
+
+  it('carries the sentence the tag has no room for', () => {
+    const constructs = new Map([
+      [2, { label: 'loop', detail: 'A backward jump is all a loop is.' }],
+    ]);
+
+    renderListing(factorial, undefined, { constructs });
+
+    expect(screen.getByTestId('construct-tag')).toHaveAttribute(
+      'title',
+      'A backward jump is all a loop is.',
+    );
+  });
+
+  it('says nothing about a listing it was told nothing about', () => {
+    renderListing(factorial, undefined);
+
+    expect(screen.queryByTestId('construct-tag')).not.toBeInTheDocument();
+  });
+});
