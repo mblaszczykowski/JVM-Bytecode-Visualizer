@@ -6,11 +6,11 @@ assumed beyond reading a `for` loop, and no bytecode experience at all.
 
 Every rule asserted here cites the section of the _Java Virtual Machine Specification_ (Java SE 21)
 that states it, so nothing has to be taken on trust. Everything is illustrated with the panels of
-this application — **Source**, **Bytecode**, **Call stack**, **Operand stack**, **Locals** and the
-**Next** card — and with `javap` output you can reproduce on your own machine.
+this application (**Source**, **Bytecode**, **Call stack**, **Operand stack**, **Locals** and the
+**Next** card) and with `javap` output you can reproduce on your own machine.
 
 The instruction subset this project actually executes is narrower than the specification; see
-[Scope and limitations](../README.md#scope-and-limitations). The concepts below are not narrower —
+[Scope and limitations](../README.md#scope-and-limitations). The concepts below are not narrower:
 they are how every JVM works.
 
 ## 1. A stack machine has no registers
@@ -36,14 +36,14 @@ being executed (JVMS §2.5.1). Everything else is the operand stack and the loca
 
 Two consequences show up immediately in the **Bytecode** panel:
 
-1. **Instructions are tiny.** `iadd` is one byte, with no operands at all — it does not need to say
-   where its inputs are, because "the top of the stack" is the only answer available. 150 of the
-   205 opcodes in the JVM's table take no operand bytes at all.
-2. **The type is in the mnemonic.** `iadd` adds two `int`s, `dadd` adds two `double`s, `ladd` adds
-   two `long`s (JVMS §2.11.1). The stack does not carry types at run time; the compiler picks the
-   typed opcode and a separate verification pass proves before execution that the types line up
-   (JVMS §4.10). That is why the `i` prefix is everywhere in this project: the executable subset is
-   the `int` instructions.
+1. Instructions are tiny. `iadd` is one byte with no operands at all: it does not need to say where
+   its inputs are, because "the top of the stack" is the only answer available. 150 of the 205
+   opcodes in the JVM's table take no operand bytes at all.
+2. The type is in the mnemonic. `iadd` adds two `int`s, `dadd` adds two `double`s, `ladd` adds two
+   `long`s (JVMS §2.11.1). The stack does not carry types at run time; the compiler picks the typed
+   opcode and a separate verification pass proves before execution that the types line up (JVMS
+   §4.10). That is why the `i` prefix is everywhere in this project: the executable subset is the
+   `int` instructions.
 
 ## 2. Two stacks, not one
 
@@ -55,15 +55,15 @@ This is the single most common confusion, so it gets the most room. The JVM has 
 | Holds          | values an instruction is about to consume         | frames, one per method invocation                |
 | Grows by       | one push, several times per instruction           | one frame, per method call                       |
 | Typical depth  | 2 to 4                                            | 1 to a few dozen; thousands under deep recursion |
-| Lifetime       | per frame — empty when its frame is created       | per thread                                       |
+| Lifetime       | per frame; empty when its frame is created        | per thread                                       |
 | Specified in   | JVMS §2.6.2                                       | JVMS §2.5.2                                      |
 | Overflows into | a verification error (`max_stack` is precomputed) | `StackOverflowError`                             |
 | In the app     | the **Operand stack** panel, `height N`           | the **Call stack** panel, `depth N`              |
 
-The relationship is containment, not similarity: **every frame on the call stack has an operand
-stack of its own.** The **Operand stack** and **Locals** panels always show the frame that is
-currently executing — the innermost one. In the **Call stack** panel that frame is drawn at the
-_bottom_ of the list, directly beside the panels that describe it, with `main` at the top.
+The relationship is containment: **every frame on the call stack has an operand stack of its own.**
+The **Operand stack** and **Locals** panels always show the frame that is currently executing, the
+innermost one. In the **Call stack** panel that frame is drawn at the _bottom_ of the list, directly
+beside the panels that describe it, with `main` at the top.
 
 ### The worked example
 
@@ -94,7 +94,7 @@ public class Sum {
 ```
 
 The numbers in the left column are **byte offsets**, not line numbers or step counts: `bipush 6`
-occupies offsets 0 and 1 — one opcode byte plus one operand byte — so the next instruction begins at
+occupies offsets 0 and 1 (one opcode byte plus one operand byte), so the next instruction begins at
 offset 2. `istore_1` is a single byte, so the one after it begins at offset 3. The **Bytecode**
 panel prints the same column, and the program counter points at one of these offsets.
 
@@ -117,23 +117,22 @@ Step by step, with the locals alongside:
 
 | Step | Instruction | Stack before | Stack after | Locals after                |
 | ---- | ----------- | ------------ | ----------- | --------------------------- |
-| 1    | `iload_1`   | (empty)      | `6`         | `a=6 b=7 sum=—`             |
-| 2    | `iload_2`   | `6`          | `6 7`       | `a=6 b=7 sum=—`             |
-| 3    | `iadd`      | `6 7`        | `13`        | `a=6 b=7 sum=—` (unchanged) |
+| 1    | `iload_1`   | (empty)      | `6`         | `a=6 b=7 sum=?`             |
+| 2    | `iload_2`   | `6`          | `6 7`       | `a=6 b=7 sum=?`             |
+| 3    | `iadd`      | `6 7`        | `13`        | `a=6 b=7 sum=?` (unchanged) |
 | 4    | `istore_3`  | `13`         | (empty)     | `a=6 b=7 sum=13`            |
 
 Four things to take from this:
 
-1. **`iload` copies, it does not move.** After step 1 the value 6 exists twice: in slot 1 and on the
+1. `iload` copies, it does not move. After step 1 the value 6 exists twice: in slot 1 and on the
    stack. Loads and stores are the only traffic between the two areas.
-2. **`iadd` never mentions its operands.** It pops two values, pushes one, and is one byte long
-   (JVMS §6.5 `iadd`). The **Next** card states this as the stack effect before the instruction
-   runs.
-3. **The result exists only on the stack until step 4.** Between `iadd` and `istore_3` the sum has
-   no name. This is the state a debugger over source code cannot show you, and it is most of what
-   this application exists to make visible.
-4. **The operand stack is empty again at the end.** It is empty at every statement boundary in
-   well-formed code — javac computes the `max_stack` a method ever needs and records it in the
+2. `iadd` never mentions its operands. It pops two values, pushes one, and is one byte long (JVMS
+   §6.5 `iadd`). The **Next** card states this as the stack effect before the instruction runs.
+3. The result exists only on the stack until step 4. Between `iadd` and `istore_3` the sum has no
+   name. This is the state a debugger over source code cannot show you, and it is most of what this
+   application exists to make visible.
+4. The operand stack is empty again at the end. It is empty at every statement boundary in
+   well-formed code, and javac computes the `max_stack` a method ever needs and records it in the
    `Code` attribute (JVMS §4.7.3).
 
 For operators where order matters, the specification pins the direction down. `isub` computes
@@ -151,17 +150,17 @@ stack (JVMS §2.6.4, §6.5 `ireturn`):
 flowchart TB
   subgraph after["Call stack at its deepest"]
     direction TB
-    f0["main — pc at the invokestatic<br/>operand stack: (empty)"]
+    f0["main (pc at the invokestatic)<br/>operand stack: (empty)"]
     f1["factorial(4)<br/>operand stack: 4"]
     f2["factorial(3)<br/>operand stack: 3"]
     f3["factorial(2)<br/>operand stack: 2"]
-    f4["factorial(1) — base case<br/>operand stack: (empty)"]
+    f4["factorial(1), the base case<br/>operand stack: (empty)"]
     f0 --> f1 --> f2 --> f3 --> f4
   end
 ```
 
-The depth chart under the scrubber is exactly this number over time — the length of the call stack
-in every snapshot. Recursion is the shape that goes up and comes back down.
+The depth chart under the scrubber is exactly this number over time: the length of the call stack in
+every snapshot. Recursion is the shape that goes up and comes back down.
 
 ## 3. The frame
 
@@ -170,7 +169,7 @@ it returns normally or throws (JVMS §2.6). It holds three things that matter he
 
 ```text
 +-------------------------------------------------+
-| Frame — one per method invocation               |
+| Frame: one per method invocation                |
 |                                                 |
 |   local variables   [ 0 | 1 | 2 | 3 | … ]       |  fixed size: max_locals
 |   operand stack     [ … ]                       |  bounded by: max_stack
@@ -179,10 +178,10 @@ it returns normally or throws (JVMS §2.6). It holds three things that matter he
 +-------------------------------------------------+
 ```
 
-Both the local variables and the operand stack are **per frame**, and that is the entire reason
-recursion works. `factorial(3)` and `factorial(2)` are the same code with the same slot numbers, but
-each invocation has its own array of slots, so `n` is 3 in one frame and 2 in the other at the same
-instant. Nothing is saved and restored; the frames simply do not share storage.
+Both the local variables and the operand stack are **per frame**, which is why recursion works.
+`factorial(3)` and `factorial(2)` are the same code with the same slot numbers, but each invocation
+has its own array of slots, so `n` is 3 in one frame and 2 in the other at the same instant. Nothing
+is saved and restored; the frames simply do not share storage.
 
 The sizes are fixed when the frame is created, from `max_locals` and `max_stack` in the method's
 `Code` attribute (JVMS §4.7.3). A frame cannot grow. In the **Locals** panel, `4 slots` means javac
@@ -206,8 +205,8 @@ The numbering rule, from JVMS §2.6.1:
 
 - In a **static** method, slot 0 is the first parameter. In `static int factorial(int n)`, `n` is
   slot 0, which is why the body starts with `iload_0`.
-- In an **instance** method, slot 0 is always `this`, and the parameters start at slot 1. This is
-  the entire content of the "invisible first argument" you may have read about.
+- In an **instance** method, slot 0 is always `this`, and the parameters start at slot 1. That is
+  what the "invisible first argument" you may have read about means.
 - Parameters occupy consecutive slots in declaration order, then the method's own locals follow.
 - `long` and `double` take **two** consecutive slots each (JVMS §2.6.1). A `long` in slot 2 means
   the next variable is in slot 4, and slot 3 is unusable on its own. This is why a method's slot
@@ -222,7 +221,7 @@ fixtures with `javac -g --release 21`, and the compile service passes `-g` too, 
 the **Locals** panel print `sum` instead of `slot 3`. Load a class compiled without `-g` and the
 panel falls back to `slot N`: the information is genuinely not in the file.
 
-The range is not decoration. Compile this:
+The range matters. Compile this:
 
 ```java
 public static void main(String[] args) {
@@ -261,15 +260,15 @@ both print those indices in the form `#7`.
 
 Three reasons this is the design:
 
-1. **Size.** The same `java/lang/Object` is named once per class file, not once per reference to it.
-2. **Fixed-width instructions.** `invokestatic` is always three bytes — one opcode and a two-byte
-   pool index — regardless of how long the target method's name is.
-3. **Late binding.** Pool entries are _symbolic_ references. They are resolved to actual methods and
+1. Size. The same `java/lang/Object` is named once per class file, not once per reference to it.
+2. Fixed-width instructions. `invokestatic` is always three bytes, one opcode and a two-byte pool
+   index, regardless of how long the target method's name is.
+3. Late binding. Pool entries are _symbolic_ references. They are resolved to actual methods and
    fields the first time they are used, which is what allows a class to be compiled against a
    version of another class that no longer exists at run time (JVMS §5.1, §5.4.3).
 
-The entries form a chain, because names bottom out in `Utf8` entries. From the committed
-`Factorial` dump:
+The entries form a chain, because names bottom out in `Utf8` entries. From the committed `Factorial`
+dump:
 
 ```text
  #7 = Methodref     #8.#9      // Factorial.factorial:(I)I
@@ -295,19 +294,17 @@ flowchart LR
 ```
 
 For whichever instruction is about to execute, the **Next** card renders the collapsed version of
-that walk: `#7 → Methodref → Factorial.factorial:(I)I`. When you see that chain, you are watching a
-name being resolved.
+that walk: `#7 → Methodref → Factorial.factorial:(I)I`. That is a symbolic name being resolved.
 
 Two details that catch people out when reading a raw dump: the pool is **1-indexed**, index 0 is
-never valid, and a `Long` or `Double` entry occupies **two** slots with the second one unused
-(JVMS §4.4.5). A pool with a `long` in it has gaps in its numbering.
+never valid, and a `Long` or `Double` entry occupies **two** slots with the second one unused (JVMS
+§4.4.5). A pool with a `long` in it has gaps in its numbering.
 
 ## 6. Descriptors
 
 A descriptor is the JVM's type notation: a compact string, defined by a grammar in JVMS §4.3, that
-appears in method references, field references and the `LocalVariableTable`. It is not Java syntax
-and it is not meant to be pretty; it is meant to be unambiguous and parseable one character at a
-time.
+appears in method references, field references and the `LocalVariableTable`. It is not Java syntax;
+it is meant to be unambiguous and parseable one character at a time.
 
 | Code       | Type              | Note                                              |
 | ---------- | ----------------- | ------------------------------------------------- |
@@ -326,21 +323,21 @@ time.
 A method descriptor is the parameter types, in order and without separators, in parentheses,
 followed by the return type (JVMS §4.3.3):
 
-| Descriptor               | Java signature            | How to read it                                 |
-| ------------------------ | ------------------------- | ---------------------------------------------- |
-| `()V`                    | `void f()`                | nothing in, nothing out                        |
-| `(I)I`                   | `int f(int)`              | one `int` in, one `int` out                    |
-| `(II)Z`                  | `boolean f(int, int)`     | two `int`s in — no separator — a `boolean` out |
-| `([Ljava/lang/String;)V` | `void main(String[])`     | `[` array of `L…;` String, returning nothing   |
-| `(IJ)Ljava/lang/String;` | `String f(int, long)`     | `J` is `long`; the return type is a class      |
-| `([[DI)V`                | `void f(double[][], int)` | `[[D` then `I`; two parameters, not three      |
+| Descriptor               | Java signature            | How to read it                               |
+| ------------------------ | ------------------------- | -------------------------------------------- |
+| `()V`                    | `void f()`                | nothing in, nothing out                      |
+| `(I)I`                   | `int f(int)`              | one `int` in, one `int` out                  |
+| `(II)Z`                  | `boolean f(int, int)`     | two `int`s in, no separator, a `boolean` out |
+| `([Ljava/lang/String;)V` | `void main(String[])`     | `[` array of `L…;` String, returning nothing |
+| `(IJ)Ljava/lang/String;` | `String f(int, long)`     | `J` is `long`; the return type is a class    |
+| `([[DI)V`                | `void f(double[][], int)` | `[[D` then `I`; two parameters, not three    |
 
 The parentheses are what make it parseable: parameters are read until the `)`, so no separator is
 needed and no ambiguity arises. `(II)Z` is two parameters; `(I)IZ` is not a valid descriptor at all.
 
-This is also where an unsupported program is rejected precisely rather than vaguely. Because the
-parser implements the whole grammar and not just the `int` subset, an attempt to call a method whose
-descriptor is `(J)J` can report "unsupported parameter type: long" rather than "unknown descriptor".
+This is also why an unsupported program can be rejected precisely. Because the parser implements the
+whole grammar and not just the `int` subset, an attempt to call a method whose descriptor is `(J)J`
+can report "unsupported parameter type: long" instead of "unknown descriptor".
 
 ## 7. From a byte offset back to a line of source
 
@@ -348,15 +345,15 @@ The **Source** panel highlights a line while the **Bytecode** panel points at an
 between them is another optional attribute: `LineNumberTable`, emitted by `javac -g` (or
 `-g:lines`), which lists `(start_pc, line_number)` pairs (JVMS §4.7.12).
 
-The mapping is many-to-one — many offsets share one line — and the line numbers do not increase
+The mapping is many-to-one (many offsets share one line) and the line numbers do not increase
 monotonically. From the two-loop example above, with the source annotated in by hand:
 
 ```text
 LineNumberTable:
   line 3: 0        // int total = 0
-  line 4: 2        // for (int i = 0; …    — initialiser
+  line 4: 2        // for (int i = 0; …    (initialiser)
   line 5: 9        //   total += i
-  line 4: 13       // for (…; i++)         — increment, same line again
+  line 4: 13       // for (…; i++)         (increment, same line again)
   line 7: 19
   line 8: 26
   line 7: 30
@@ -365,21 +362,21 @@ LineNumberTable:
 
 Line 4 appears twice, at offsets 2 and 13, because a `for` loop compiles its initialiser and its
 increment into different parts of the method. To find the line for a given `pc`, take the entry with
-the **largest `start_pc` that is not greater than `pc`** — the entries are ordered by offset, and an
-entry stays in force until the next one begins. That single rule is why the highlighted source line
-appears to jump backwards while a loop runs: it is not an artefact, it is the loop's increment.
+the **largest `start_pc` that is not greater than `pc`**. The entries are ordered by offset, and an
+entry stays in force until the next one begins. That rule is why the highlighted source line appears
+to jump backwards while a loop runs: it is following the loop's increment.
 
 Compile without `-g` and this attribute is absent. The bytecode still runs; the source panel simply
 has nothing to highlight.
 
 ## 8. Cross-checking with `javap`
 
-Everything above is inspectable with the JDK you already have, and doing so is the fastest way to
-confirm that this application is not making anything up.
+Everything above is inspectable with the JDK you already have, and it is the fastest way to check
+that this application is not making anything up.
 
 | Command           | What it prints                                                       | Which panel it corresponds to    |
 | ----------------- | -------------------------------------------------------------------- | -------------------------------- |
-| `javap Foo.class` | the public API, no code                                              | —                                |
+| `javap Foo.class` | the public API, no code                                              | (none)                           |
 | `javap -c Foo`    | the disassembled `Code` of each method: offsets, mnemonics, operands | **Bytecode**                     |
 | `javap -c -p Foo` | the same, including private methods                                  | **Bytecode**                     |
 | `javap -l Foo`    | `LineNumberTable` and `LocalVariableTable`                           | **Source**, **Locals**           |
@@ -388,17 +385,17 @@ confirm that this application is not making anything up.
 A worked cross-check, using this repository:
 
 1. `javap -c -p web/public/examples/Factorial.class` and open the same file in the visualizer.
-2. The offsets and mnemonics in the **Bytecode** panel match the left two columns of the dump,
-   line for line.
-3. `javap -c` prints branch targets as absolute offsets — `if_icmpgt 7` — and so does this
+2. The offsets and mnemonics in the **Bytecode** panel match the left two columns of the dump, line
+   for line.
+3. `javap -c` prints branch targets as absolute offsets (`if_icmpgt 7`), and so does this
    disassembler. The class file itself stores a _signed 16-bit delta relative to the opcode's own
    offset_; both tools do the addition for you (JVMS §6.5 `if_icmp<cond>`).
 4. `javap -v` prints the constant pool. Entry `#7` is the `Methodref` the **Next** card resolves
    when `invokestatic` is about to run.
 
 What `javap` cannot show is the middle of a method: it prints the program's static text, not its
-state at step 412. That gap — the operand stack between `iadd` and `istore_3`, the locals of the
-third recursive frame — is what the panels are for.
+state at step 412. The operand stack between `iadd` and `istore_3`, or the locals of the third
+recursive frame, is what the panels are for.
 
 The committed dump at `web/src/core/classfile/__fixtures__/Factorial.javap.txt` is the reference the
 parser and disassembler tests are transcribed from, so it can be read without a JDK installed.
@@ -407,8 +404,8 @@ parser and disassembler tests are transcribed from, so it can be read without a 
 
 This interpreter executes the integer instructions and control flow, not the JVM. It has no heap
 object model beyond what the executable subset can create, no `long`/`float`/`double`, no exception
-dispatch, no dynamic dispatch and — deliberately — no verifier (JVMS §4.10): it checks the few
-invariants it needs and reports a typed error instead of running off its own rails.
+dispatch, no dynamic dispatch and no verifier (JVMS §4.10): it checks the few invariants it needs
+and reports a typed error instead of running off its own rails.
 
 None of that changes the model this document describes. Frames, slots, the operand stack, the
 constant pool and descriptors work the same way in a production JVM; what a production JVM adds is
@@ -421,10 +418,10 @@ see [ADR-0002](adr/0002-int-only-mvp-without-heap.md), and
 
 ## Further reading
 
-- _The Java Virtual Machine Specification, Java SE 21_ — chapter 2 (the abstract machine) and
-  chapter 4 (the class file format) are the two that matter here, and chapter 2 is shorter than it
-  looks: <https://docs.oracle.com/javase/specs/jvms/se21/html/>
+- _The Java Virtual Machine Specification, Java SE 21_. Chapter 2 (the abstract machine) and chapter
+  4 (the class file format) are the two that matter here, and chapter 2 is shorter than it looks:
+  <https://docs.oracle.com/javase/specs/jvms/se21/html/>
 - JVMS §6.5 is the instruction reference: one entry per opcode, each with its stack effect written
   in the `…, value1, value2 → …, result` notation this document borrows for `isub`.
-- [`architecture.md`](architecture.md) — how these concepts are represented in this codebase: the
-  parser, the disassembler, the frame lifecycle and the snapshot model.
+- [`architecture.md`](architecture.md): how these concepts are represented in this codebase,
+  covering the parser, the disassembler, the frame lifecycle and the snapshot model.

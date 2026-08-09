@@ -1,28 +1,27 @@
-# ADR-0007 — Exceptions the machine raises, caught without an object model
+# ADR-0007: Exceptions the machine raises, caught without an object model
 
 - **Status:** Accepted
 - **Date:** 2026-08-02
-- **Amends:** [ADR-0002](0002-int-only-mvp-without-heap.md) — the "no exceptions" half of that
+- **Amends:** [ADR-0002](0002-int-only-mvp-without-heap.md), the "no exceptions" half of that
   decision.
 
 ## Context
 
 `try`/`catch` was the largest remaining hole in the scope table, and the one hardest to teach any
 other way. A stack machine's most interesting behaviour is what it does when an instruction cannot
-complete: the operand stack is discarded, frames are popped one at a time, and control resumes at
-an offset that no branch instruction points to. Reading about that is nothing like watching the
-call stack panel shed a frame per step.
+complete: the operand stack is discarded, frames are popped one at a time, and control resumes at an
+offset that no branch instruction points to. Reading about that is nothing like watching the call
+stack panel shed a frame per step.
 
 The obvious objection is that exceptions look like they need objects. `java.lang.Throwable` is a
 class; `throw` takes a reference; a handler stores one in a local slot. This machine has no object
-model at all — [ADR-0005](0005-heap-of-int-arrays.md) opened the heap only as far as `int[]` — so
-the feature appeared to be blocked behind `new`, `invokespecial`, `getfield` and `putfield`, which
-is a much larger piece of work with a much larger blast radius.
+model at all, since [ADR-0005](0005-heap-of-int-arrays.md) opened the heap only as far as `int[]`,
+so the feature appeared to be blocked behind `new`, `invokespecial`, `getfield` and `putfield`,
+which is a much larger piece of work with a much larger blast radius.
 
-That framing turns out to be wrong, and the reason is worth writing down: **the exceptions a
-learner actually meets are not constructed by their code**. Dividing by zero, indexing past the end
-of an array, dereferencing null — every one of those is raised by the JVM itself. The program never
-builds the object. It only catches it.
+That framing turns out to be wrong: the exceptions a learner actually meets are not constructed by
+their code. Dividing by zero, indexing past the end of an array, dereferencing null: every one of
+those is raised by the JVM itself. The program never builds the object. It only catches it.
 
 ## Decision
 
@@ -33,38 +32,37 @@ Implement the half that needs no constructor:
   compiles both `finally` and `catch (Throwable)`.
 - The four faults that correspond to real Java exceptions become catchable, carrying the class the
   JVM would have used. The mapping is a table in `core/interpreter/errors.ts`.
-- A thrown exception is an `ExternalValue` — a class name and a label — exactly as `System.out` is.
-  It has no fields, and reading one is an unsupported call like any other. This reuses the machinery
-  built for the externals table rather than introducing a second kind of object.
+- A thrown exception is an `ExternalValue`, a class name and a label, exactly as `System.out` is. It
+  has no fields, and reading one is an unsupported call like any other. This reuses the machinery
+  built for the externals table, without introducing a second kind of object.
 - `athrow` runs, so a caught exception can be thrown again. That is the only source of a throwable
   on the operand stack, which is a closed and checkable invariant: `athrow` of anything else is
   reported as the verifier error it is.
 - Handler matching walks a written-down fragment of the JDK's class hierarchy, so
   `catch (Exception e)` catches an `ArithmeticException`. The fragment is small because the set of
-  throwable classes is small, and a handler naming a class outside it catches nothing — which is
+  throwable classes is small, and a handler naming a class outside it catches nothing, which is
   correct, since nothing outside it can be thrown either.
 
-Two faults are deliberately **not** catchable: `stack-overflow` and `out-of-memory`. A real JVM does
-let a program catch both. Here they are the visualizer's own resource limits rather than the
-program's semantics, and a handler that swallowed one would hand the run straight back to the loop
-that reached it.
+Two faults are not catchable: `stack-overflow` and `out-of-memory`. A real JVM does let a program
+catch both. Here they are the visualizer's own resource limits and not the program's semantics,
+and a handler that swallowed one would hand the run straight back to the loop that reached it.
 
 ## Consequences
 
 `try`/`catch`/`finally` over machine-raised exceptions works, and the stack unwinding is visible in
-the panel that already exists — no new UI. `Exceptions.java` under
+the panel that already exists, with no new UI. `Exceptions.java` under
 `core/interpreter/__fixtures__/programs/` pins the whole of it against a real JVM: sixteen printed
 lines covering exact-class matching, matching by supertype, handler order, unwinding across a frame
 with no handler, `finally` on both paths, and a rethrow.
 
-What is still missing is stated as such rather than left implied. `throw new IllegalStateException(...)`
-stops at the `new`, and the welcome screen says so — the feature-gap list now reads "Throwing an
-exception you constructed yourself", which is narrower and truer than the "Exceptions, throw and
-try/catch" it replaces. Because that list is derived from the executable opcode set, it changed
-itself; the only edit was to the wording of what remains.
+What is still missing is stated as such. `throw new IllegalStateException(...)` stops at the `new`,
+and the welcome screen says so: the feature-gap list now reads "Throwing an exception you
+constructed yourself", which is narrower and truer than the "Exceptions, throw and try/catch" it
+replaces. Because that list is derived from the executable opcode set, it changed itself; the only
+edit was to the wording of what remains.
 
 The boundary this ADR draws is the same one ADR-0002 and ADR-0005 drew, in the same place: take the
 half of a feature that is complete and testable on its own, and say plainly where it stops. When
 `new` and `invokespecial` land, throwing an exception of your own is the last row of this table to
-fill in, and nothing here has to be rebuilt for it — `athrow` already takes a reference off the
-stack and does not care where it came from.
+fill in, and nothing here has to be rebuilt for it. `athrow` already takes a reference off the stack
+and does not care where it came from.
