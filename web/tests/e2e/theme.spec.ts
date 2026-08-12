@@ -1,6 +1,17 @@
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 import { expect, test, type Page } from '@playwright/test';
 
 const READABLE_STEPS = ['--color-fg', '--color-fg-2', '--color-fg-3'] as const;
+
+const STYLESHEET = join(dirname(fileURLToPath(import.meta.url)), '../../src/index.css');
+
+function declaredColourTokens(): readonly string[] {
+  const declared = readFileSync(STYLESHEET, 'utf8').matchAll(/^\s*(--color-[a-z0-9-]+):/gm);
+  return [...new Set([...declared].map((match) => match[1] ?? ''))].sort();
+}
 
 const AA = 4.5;
 
@@ -104,37 +115,14 @@ for (const theme of ['light', 'dark'] as const) {
       expect(ratios['--color-fg-3']).toBeLessThan(AA);
     });
 
-    test('no token resolves to an empty value', async ({ page }) => {
-      const empty = await page.evaluate(() => {
+    test('every colour token the stylesheet declares resolves to a value', async ({ page }) => {
+      const declared = declaredColourTokens();
+      expect(declared.length).toBeGreaterThan(20);
+
+      const empty = await page.evaluate((names) => {
         const root = getComputedStyle(document.documentElement);
-        return [
-          '--color-app',
-          '--color-panel',
-          '--color-ink',
-          '--color-raised',
-          '--color-raised-hover',
-          '--color-raised-active',
-          '--color-sunken',
-          '--color-overlay',
-          '--color-scrim',
-          '--color-line',
-          '--color-line-strong',
-          '--color-fg',
-          '--color-fg-2',
-          '--color-fg-3',
-          '--color-fg-dim',
-          '--color-accent',
-          '--color-accent-text',
-          '--color-now',
-          '--color-ok',
-          '--color-warn',
-          '--color-error',
-          '--color-syntax-keyword',
-          '--color-syntax-method',
-          '--color-syntax-type',
-          '--color-syntax-number',
-        ].filter((name) => root.getPropertyValue(name).trim() === '');
-      });
+        return names.filter((name) => root.getPropertyValue(name).trim() === '');
+      }, declared);
 
       expect(empty).toEqual([]);
     });

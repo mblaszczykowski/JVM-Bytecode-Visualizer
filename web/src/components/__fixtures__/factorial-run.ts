@@ -76,9 +76,8 @@ export function listingOf(name: string, descriptor: string): MethodListing {
   return listing;
 }
 
-export const FACTORIAL_DESCRIPTOR = '(I)I';
-export const MAIN_DESCRIPTOR = '([Ljava/lang/String;)V';
-export const CONSTRUCTOR_DESCRIPTOR = '()V';
+const FACTORIAL_DESCRIPTOR = '(I)I';
+const CONSTRUCTOR_DESCRIPTOR = '()V';
 
 export function factorialListing(): MethodListing {
   return listingOf('factorial', FACTORIAL_DESCRIPTOR);

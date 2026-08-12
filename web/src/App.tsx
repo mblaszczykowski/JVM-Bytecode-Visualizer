@@ -17,10 +17,11 @@ import { TourStrip } from './components/TourStrip';
 import { TransportControls } from './components/TransportControls';
 import { Segment, SegmentedControl } from './components/ui/SegmentedControl';
 import { WelcomeScreen, type WelcomeExample } from './components/WelcomeScreen';
-import type { Snapshot, StackFrame } from './core/interpreter';
+import { NO_SNAPSHOTS, type StackFrame } from './core/interpreter';
 import { useExamplePreviews } from './hooks/useExamplePreviews';
 import { useExecutionPlayer } from './hooks/useExecutionPlayer';
 import { useFileDropGuard } from './hooks/useFileDropGuard';
+import { useProgramView } from './hooks/useProgramView';
 import { useTransportShortcuts } from './hooks/useTransportShortcuts';
 import {
   appReducer,
@@ -43,33 +44,13 @@ import {
   compileApiBaseUrl,
   type CompileDiagnostic,
 } from './services/compile-client';
-import {
-  constantPoolComments,
-  describeNextInstruction,
-  describeOperandRoles,
-  explainMnemonic,
-} from './services/derivations';
 import { parseDeepLink, writeDeepLink, writeTourLink } from './services/deep-link';
-import { constructsFor } from './services/constructs';
 import { fullAppUrl, isEmbedded } from './services/embed';
 import { describeAppError, describeCompileFailure, toAppError } from './services/errors';
 import { fetchExampleManifest, shortTitleOf } from './services/examples';
 import {
-  consoleLinesOf,
-  deadOffsetsOf,
-  depthsOf,
-  firstStepByLine,
-  firstStepByOffset,
-  isCurrentListing,
-  lastLiveSnapshot,
-  lineForOffset,
-  lineMappingNote,
   listingToShow,
   methodKeyOf,
-  offsetsForLine,
-  runPrintedOutput,
-  runSummaryOf,
-  topFrameOf,
   type LoadedProgram,
   type MethodListing,
 } from './services/program';
@@ -81,11 +62,8 @@ import {
   type LoadContext,
   type ProgramRunner,
 } from './services/program-runner';
-import { timelineEventsOf } from './services/timeline';
 
 const APP_NAME = 'JVM Bytecode Visualizer';
-
-const NO_SNAPSHOTS: readonly Snapshot[] = [];
 
 const NO_DIAGNOSTICS: readonly CompileDiagnostic[] = [];
 
@@ -145,17 +123,6 @@ function structureVisibilityOf(
   shown: StructureView,
 ): string {
   return `${panel === selected ? '' : 'hidden'} ${panel === shown ? 'md:flex' : 'md:hidden'}`;
-}
-
-function mnemonicHelpFor(listing: MethodListing | undefined): ReadonlyMap<string, string> {
-  const help = new Map<string, string>();
-  for (const instruction of listing?.instructions ?? []) {
-    const explanation = explainMnemonic(instruction.mnemonic);
-    if (explanation !== undefined) {
-      help.set(instruction.mnemonic, explanation);
-    }
-  }
-  return help;
 }
 
 type StructureView = 'source' | 'class';
@@ -299,14 +266,18 @@ export function App({
     );
   };
 
+  const latestSelectExample = useRef(selectExample);
+  useEffect(() => {
+    latestSelectExample.current = selectExample;
+  });
+
   useEffect(() => {
     const id = pendingExample.current ?? (embedded ? examples[0]?.id : undefined);
     if (id === undefined || examples.length === 0) {
       return;
     }
     pendingExample.current = undefined;
-    selectExample(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    latestSelectExample.current(id);
   }, [examples, embedded]);
 
   const selectFile = (file: File) => {
@@ -438,7 +409,7 @@ export function App({
   }, [loadedExampleId, activeTour, tourStop, player.stepIndex, stepCount]);
 
   useTransportShortcuts({
-    enabled: snapshots.length > 0,
+    enabled: snapshots.length > 0 && editor.kind === 'closed',
     onTogglePlay: player.togglePlay,
     onStepForward: player.stepForward,
     onStepBack: player.stepBack,
@@ -463,64 +434,30 @@ export function App({
     preview: previews.get(entry.id),
   }));
 
-  const topFrame = topFrameOf(snapshot);
   const listing = useMemo(
     () => (program === undefined ? undefined : listingToShow(program, snapshot, viewedMethodKey)),
     [program, snapshot, viewedMethodKey],
   );
-  const isLive = isCurrentListing(listing, topFrame);
 
-  const deadOffsets =
-    listing === undefined || listing.executedOffsets.size === 0
-      ? undefined
-      : deadOffsetsOf(listing);
-  const comments =
-    listing === undefined || program === undefined
-      ? undefined
-      : constantPoolComments(listing, program.classFile);
-  const constructs =
-    listing === undefined || program === undefined
-      ? undefined
-      : constructsFor(listing.instructions, program.classFile.constantPool, listing.name);
-  const depths = depthsOf(snapshots);
-  const timelineEvents = timelineEventsOf(snapshots);
-  const sourceLineForOffset =
-    listing === undefined
-      ? undefined
-      : new Map(
-          listing.instructions.flatMap((instruction) => {
-            const line = lineForOffset(listing, instruction.offset);
-            return line === undefined ? [] : [[instruction.offset, line] as const];
-          }),
-        );
-
-  const sourceLine = snapshot?.sourceLine;
-  const pcRange =
-    listing === undefined || sourceLine === undefined || !isLive
-      ? undefined
-      : offsetsForLine(listing, sourceLine);
-  const mappingNote =
-    listing === undefined || topFrame === undefined || !isLive
-      ? undefined
-      : lineMappingNote(listing, topFrame.pc);
-  const next =
-    snapshot === undefined || program === undefined || !isLive
-      ? undefined
-      : describeNextInstruction(snapshot, listing, program.classFile);
-  const operandRoles =
-    snapshot === undefined || program === undefined
-      ? undefined
-      : describeOperandRoles(snapshot, isLive ? listing : undefined, program.classFile);
-
-  const stepForOffset = firstStepByOffset(snapshots, listing);
-  const stepForLine = firstStepByLine(snapshots);
-  const mnemonicHelp = mnemonicHelpFor(listing);
-
-  const summary = program === undefined ? undefined : runSummaryOf(program);
-  const lastLive = lastLiveSnapshot(snapshots);
-
-  const printed = runPrintedOutput(snapshots);
-  const consoleLines = printed ? consoleLinesOf(snapshot) : undefined;
+  const {
+    comments,
+    consoleLines,
+    constructs,
+    deadOffsets,
+    isLive,
+    lastLive,
+    mappingNote,
+    mnemonicHelp,
+    next,
+    operandRoles,
+    pcRange,
+    sourceLineForOffset,
+    stepForLine,
+    stepForOffset,
+    summary,
+    timelineEvents,
+    topFrame,
+  } = useProgramView(program, snapshot, listing);
 
   const selectPanel = (panel: PanelName) => {
     setVisiblePanel(panel);
@@ -668,7 +605,7 @@ export function App({
               stepCount={player.stepCount}
               isPlaying={player.isPlaying}
               speed={player.speed}
-              depths={depths}
+              depths={player.depths}
               events={timelineEvents}
               onSeek={seekTo}
               onTogglePlay={player.togglePlay}
@@ -751,7 +688,7 @@ export function App({
             currentOffset={isLive ? topFrame?.pc : undefined}
             comments={comments}
             deadOffsets={deadOffsets}
-            truncatedAtOffset={listing.truncatedAtOffset}
+            undecodedFromOffset={listing.undecodedFromOffset}
             next={next}
             help={mnemonicHelp}
             stepForOffset={stepForOffset}
@@ -771,10 +708,12 @@ export function App({
             frames={snapshot?.callStack ?? NO_FRAMES}
             operandAnnotations={operandRoles}
             heap={snapshot?.heap}
+            externals={snapshot?.externals}
             mnemonic={snapshot?.currentInstruction?.mnemonic}
             lastLiveFrames={lastLive?.callStack}
             summary={summary}
             consoleLines={consoleLines}
+            isPlaying={player.isPlaying}
             onSeekToStep={seekTo}
             noRunNote={snapshots.length === 0 ? NO_RUN_NOTE : undefined}
             className={`md:col-span-2 lg:col-span-1 ${visibilityOf('state', visiblePanel)}`}

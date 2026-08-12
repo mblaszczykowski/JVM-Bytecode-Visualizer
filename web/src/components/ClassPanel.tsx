@@ -1,10 +1,11 @@
-import { useMemo, type ReactNode } from 'react';
+import { useCallback, useMemo, type ReactNode } from 'react';
 
 import type { ClassFile } from '../core/classfile';
+import { useScrollFollow } from '../hooks/useScrollFollow';
 import { classFactsOf, constantPoolRowsOf, fieldRowsOf } from '../services/class-view';
 import type { MethodListing } from '../services/program';
 
-import { ConstantPoolTable } from './ConstantPoolTable';
+import { ConstantPoolList } from './ConstantPoolList';
 import { MethodPicker } from './MethodPicker';
 import { Panel } from './Panel';
 
@@ -44,12 +45,19 @@ export function ClassPanel({
   const facts = useMemo(() => classFactsOf(classFile), [classFile]);
   const fields = useMemo(() => fieldRowsOf(classFile), [classFile]);
   const constants = useMemo(() => constantPoolRowsOf(classFile.constantPool), [classFile]);
+  const contentRef = useScrollFollow(
+    useCallback(
+      (container: HTMLElement) => selectedRowTop(container, selectedConstant),
+      [selectedConstant],
+    ),
+  );
 
   return (
     <Panel
       title="Class file"
       titleControl={titleControl}
       meta={`${simpleNameOf(classFile.thisClassName)} · ${String(constants.length)} constants`}
+      contentRef={contentRef}
       className={className}
     >
       <div data-testid="class-panel" className="flex flex-col gap-3.5 pb-3.5">
@@ -115,7 +123,7 @@ export function ClassPanel({
         <Hairline />
         <div>
           <SectionHeading>Constant pool</SectionHeading>
-          <ConstantPoolTable
+          <ConstantPoolList
             rows={constants}
             selectedIndex={selectedConstant}
             onSelectIndex={onSelectConstant}
@@ -128,4 +136,19 @@ export function ClassPanel({
 
 function simpleNameOf(internalName: string): string {
   return internalName.slice(internalName.lastIndexOf('/') + 1);
+}
+
+function selectedRowTop(container: HTMLElement, index: number | undefined): number | undefined {
+  if (index === undefined) {
+    return undefined;
+  }
+  const row = container.querySelector<HTMLElement>(
+    `[data-testid="constant-row"][data-index="${String(index)}"]`,
+  );
+  if (row === null) {
+    return undefined;
+  }
+  return (
+    container.scrollTop + row.getBoundingClientRect().top - container.getBoundingClientRect().top
+  );
 }

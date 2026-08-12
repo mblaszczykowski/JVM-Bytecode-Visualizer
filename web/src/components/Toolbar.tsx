@@ -1,9 +1,10 @@
+import { openGlossary } from '../services/glossary-store';
+
 import { type ExampleOption, ExamplePicker } from './ExamplePicker';
 import { FileUpload } from './FileUpload';
-import { GlossaryDialog } from './GlossaryDialog';
-import { openGlossary } from './glossary-store';
 import { KeyboardHelp, type ShortcutGroup } from './KeyboardHelp';
 import { ThemeToggle } from './ThemeToggle';
+import { Button } from './ui/Button';
 import { Segment, SegmentedControl } from './ui/SegmentedControl';
 
 export type CompilerStatus = 'hidden' | 'online' | 'offline';
@@ -91,8 +92,6 @@ export function Toolbar({
               {PANEL_NAMES.map(({ id, label }) => (
                 <Segment
                   key={id}
-                  label={label}
-                  labelIsVisible
                   selected={panelSwitch.selected === id}
                   onClick={() => {
                     panelSwitch.onSelect(id);
@@ -107,33 +106,26 @@ export function Toolbar({
         )}
 
         <div className="col-start-2 col-end-3 row-start-1 flex items-center gap-1.5 md:col-start-3 md:col-end-4">
-          <button
-            type="button"
+          <Button
             data-testid="toolbar-glossary"
             onClick={() => {
               openGlossary();
             }}
-            className="focus-ring text-meta shrink-0 rounded-control px-2 py-1 text-fg-2 transition-colors duration-150 hover:bg-raised hover:text-fg"
+            className="shrink-0"
           >
             Glossary
-          </button>
+          </Button>
           {shortcuts === undefined ? null : <KeyboardHelp groups={shortcuts} />}
           <ThemeToggle />
           {onWriteJava === undefined ? null : (
-            <button
-              type="button"
-              onClick={onWriteJava}
-              className="focus-ring text-label shrink-0 rounded-control bg-raised px-2.5 py-1 text-fg shadow-control-raised transition-colors duration-150 hover:bg-raised-hover"
-            >
+            <Button tone="prominent" onClick={onWriteJava} className="shrink-0">
               Write Java…
-            </button>
+            </Button>
           )}
           <FileUpload onFileSelected={onFileSelected} />
           {compilerStatus === 'hidden' ? null : <HealthBadge status={compilerStatus} />}
         </div>
       </div>
-
-      <GlossaryDialog />
     </header>
   );
 }

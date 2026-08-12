@@ -1,27 +1,26 @@
 import { Fragment, useState } from 'react';
 
 import type { ConstantPool } from '../core/classfile';
-import type { Construct } from '../services/constructs';
-import type { Instruction } from '../core/disassembler/types';
-
-import { BranchGutter } from './BranchGutter';
+import type { Instruction } from '../core/disassembler';
+import { useRowNavigation, type RowNavigation } from '../hooks/useRowNavigation';
+import { rowTopOf, useScrollFollow } from '../hooks/useScrollFollow';
 import {
-  constantIndexOf,
   describeStackEffect,
   formatOperands,
   operandTokens,
   stackEffectOf,
   type OperandToken,
-  type StackEffect,
-} from './bytecode-format';
+} from '../services/bytecode-format';
+import type { Construct } from '../services/constructs';
+import { constantPoolIndexOf, type StackDelta } from '../services/derivations';
+
+import { BranchGutter } from './BranchGutter';
 import { CurrentRowHighlight } from './CurrentRowHighlight';
-import { GlossaryLink } from './GlossaryTrigger';
+import { GlossaryLink } from './GlossaryButton';
 import { NextInstructionCard, type NextInstructionCardProps } from './NextInstructionCard';
 import { Panel } from './Panel';
-import { CODE_ROW } from './rhythm';
+import { CODE_ROW, NAME_COLUMN, NUMBER_COLUMN } from './rhythm';
 import { Pill } from './ui/Pill';
-import { useRowNavigation, type RowNavigation } from './useRowNavigation';
-import { useScrollFollow } from './useScrollFollow';
 
 interface BytecodePanelProps {
   readonly methodName: string;
@@ -34,7 +33,7 @@ interface BytecodePanelProps {
   readonly constructs?: ReadonlyMap<number, Construct> | undefined;
   readonly comments?: ReadonlyMap<number, string> | undefined;
   readonly deadOffsets?: ReadonlySet<number> | undefined;
-  readonly truncatedAtOffset?: number | undefined;
+  readonly undecodedFromOffset?: number | undefined;
   readonly next?: NextInstructionCardProps | undefined;
   readonly help?: ReadonlyMap<string, string> | undefined;
   readonly stepForOffset?: ReadonlyMap<number, number> | undefined;
@@ -69,7 +68,7 @@ function ConstantLink({
   onSelect,
 }: ConstantLinkProps) {
   const tone = isFollowed
-    ? 'bg-accent/25 text-accent-text'
+    ? 'bg-raised-active text-fg shadow-control-raised'
     : isCurrentRow
       ? 'hover:bg-raised-active'
       : 'text-accent-dim hover:bg-raised-active';
@@ -87,7 +86,7 @@ function ConstantLink({
       onKeyDown={(event) => {
         navigation.onKeyDown(event, position);
       }}
-      className={`focus-ring relative z-10 -mx-1 rounded-[4px] px-1 transition-colors duration-150 ${tone}`}
+      className={`focus-ring relative z-10 -mx-1 rounded-chip px-1 transition-colors duration-150 ${tone}`}
     >
       {token.text}
     </button>
@@ -95,7 +94,7 @@ function ConstantLink({
 }
 
 interface StackEffectCellProps {
-  readonly effect: StackEffect | 'varies' | undefined;
+  readonly effect: StackDelta | 'varies' | undefined;
   readonly isCurrent: boolean;
 }
 
@@ -135,7 +134,7 @@ export function BytecodePanel({
   constructs,
   comments,
   deadOffsets,
-  truncatedAtOffset,
+  undecodedFromOffset,
   next,
   help,
   stepForOffset,
@@ -166,7 +165,7 @@ export function BytecodePanel({
   const current = currentIndex < 0 ? undefined : instructions[currentIndex];
 
   const constantRows = instructions
-    .map((instruction, index) => ({ index, constant: constantIndexOf(instruction) }))
+    .map((instruction, index) => ({ index, constant: constantPoolIndexOf(instruction) }))
     .filter((row): row is { index: number; constant: number } => row.constant !== undefined);
   const followedRow = constantRows.findIndex((row) => row.constant === selectedConstant);
   const constantNav = useRowNavigation(
@@ -177,7 +176,7 @@ export function BytecodePanel({
 
   const followedIndex = constantRows[followedRow]?.index;
   const constantPositionOf = new Map(constantRows.map((row, position) => [row.index, position]));
-  const contentRef = useScrollFollow(currentIndex < 0 ? followedIndex : currentIndex);
+  const contentRef = useScrollFollow(rowTopOf(currentIndex < 0 ? followedIndex : currentIndex));
   const rows = useRowNavigation(instructions.length, currentIndex < 0 ? undefined : currentIndex);
 
   const meta = (
@@ -251,14 +250,10 @@ export function BytecodePanel({
                 {isCurrent ? (
                   <CurrentRowHighlight layoutId="pc-highlight" animate={animateHighlight} />
                 ) : null}
-                <span
-                  className={`w-7 shrink-0 text-right select-none ${
-                    isCurrent ? 'text-accent-dim' : isLinked ? 'text-fg-3' : 'text-fg-3'
-                  }`}
-                >
+                <span className={`${NUMBER_COLUMN} ${isCurrent ? 'text-accent-dim' : 'text-fg-3'}`}>
                   {instruction.offset}
                 </span>
-                <span className={`w-[106px] shrink-0 ${isUnsupported ? 'text-error' : ''}`}>
+                <span className={`${NAME_COLUMN} ${isUnsupported ? 'text-error' : ''}`}>
                   {instruction.mnemonic}
                 </span>
                 {instruction.operands.length === 0 ? null : (
@@ -337,7 +332,7 @@ export function BytecodePanel({
             );
           })}
 
-          {truncatedAtOffset === undefined ? null : (
+          {undecodedFromOffset === undefined ? null : (
             <li className={`${CODE_ROW} text-fg-3`}>… not decoded</li>
           )}
         </ol>

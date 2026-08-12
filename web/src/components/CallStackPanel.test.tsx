@@ -57,14 +57,17 @@ describe('CallStackPanel', () => {
     expect(within(oldest).queryByText(/^pc /)).not.toBeInTheDocument();
   });
 
-  it('fades older frames by depth instead of indenting them', () => {
+  it('sends the frames below the newest two back a text step, not down an opacity ladder', () => {
     render(<CallStackPanel frames={deepestFrames} />);
 
-    expect(frameAt(0)).toHaveStyle({ opacity: '1' });
-    expect(frameAt(1)).toHaveStyle({ opacity: '0.76' });
-    expect(frameAt(2)).toHaveStyle({ opacity: '0.58' });
-    expect(frameAt(3)).toHaveStyle({ opacity: '0.42' });
-    expect(frameAt(4)).toHaveStyle({ opacity: '0.42' });
+    expect(frameAt(0)).toHaveClass('text-accent-text');
+    expect(frameAt(1)).toHaveClass('text-fg-2');
+    expect(frameAt(2)).toHaveClass('text-fg-2');
+    expect(frameAt(3)).toHaveClass('row-unreached', 'text-fg-3');
+    expect(frameAt(4)).toHaveClass('row-unreached', 'text-fg-3');
+
+    const opacities = screen.getAllByTestId('call-frame').map((frame) => frame.style.opacity);
+    expect(new Set(opacities).size).toBe(1);
   });
 
   it('folds the middle of a deep stack into one expandable row', () => {

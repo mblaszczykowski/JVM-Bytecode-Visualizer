@@ -115,16 +115,31 @@ test('the speed control announces the value it is set to', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Playback speed 2×' })).toBeVisible();
 });
 
-test('the state panels can be reached and scrolled by keyboard', async ({ page }) => {
+test('the panel bodies can be reached and scrolled by keyboard', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('radio', { name: 'Fibonacci', exact: true }).click();
   await expect(page.getByTestId('step-counter')).toBeVisible();
 
   for (const name of ['Call stack', 'Operand stack', 'Locals']) {
-    const body = page.getByRole('region', { name }).locator('[tabindex="0"]').first();
+    const body = page.getByRole('region', { name }).locator('[data-scroll-region]').first();
     await body.focus();
     await expect(body).toBeFocused();
   }
+
+  const source = page
+    .getByRole('region', { name: 'Source' })
+    .locator('[data-scroll-region]')
+    .first();
+  await source.focus();
+
+  await expect
+    .poll(async () => source.evaluate((element) => element.scrollHeight - element.clientHeight))
+    .toBeGreaterThan(0);
+
+  await page.keyboard.press('ArrowDown');
+  await expect.poll(async () => source.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+
+  await expect(page.getByTestId('step-counter')).toContainText('step 1 /');
 });
 
 test('every panel still follows the step with reduced motion', async ({ page }) => {

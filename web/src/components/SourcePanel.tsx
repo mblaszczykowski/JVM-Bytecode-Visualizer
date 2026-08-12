@@ -1,12 +1,22 @@
 import type { ReactNode } from 'react';
 
+import { useRowNavigation } from '../hooks/useRowNavigation';
+import { rowTopOf, useScrollFollow } from '../hooks/useScrollFollow';
+import { tokenizeJavaLines, type TokenKind } from '../services/syntax';
+
 import { CurrentRowHighlight } from './CurrentRowHighlight';
 import { Panel } from './Panel';
-import { CODE_ROW } from './rhythm';
-import { TOKEN_CLASS, tokenizeJavaLines } from './syntax';
+import { CODE_ROW, NUMBER_COLUMN } from './rhythm';
 import { Pill } from './ui/Pill';
-import { useRowNavigation } from './useRowNavigation';
-import { useScrollFollow } from './useScrollFollow';
+
+const TOKEN_CLASS: Record<TokenKind, string> = {
+  keyword: 'text-syntax-keyword',
+  method: 'text-syntax-method',
+  type: 'text-syntax-type',
+  number: 'text-syntax-number',
+  comment: 'text-fg-3',
+  text: '',
+};
 
 interface SourcePanelProps {
   readonly fileName: string;
@@ -39,7 +49,7 @@ export function SourcePanel({
 }: SourcePanelProps) {
   const currentIndex = currentLine === undefined ? undefined : currentLine - 1;
   const isMapped = currentIndex !== undefined && currentIndex >= 0 && currentIndex < lines.length;
-  const contentRef = useScrollFollow(isMapped ? currentIndex : undefined);
+  const contentRef = useScrollFollow(rowTopOf(isMapped ? currentIndex : undefined));
   const rows = useRowNavigation(lines.length, isMapped ? currentIndex : undefined);
   const highlighted = tokenizeJavaLines(lines);
 
@@ -96,11 +106,7 @@ export function SourcePanel({
               {isCurrent ? (
                 <CurrentRowHighlight layoutId="source-highlight" animate={animateHighlight} />
               ) : null}
-              <span
-                className={`w-7 shrink-0 text-right select-none ${
-                  isCurrent ? 'text-accent-dim' : isLinked ? 'text-fg-3' : 'text-fg-3'
-                }`}
-              >
+              <span className={`${NUMBER_COLUMN} ${isCurrent ? 'text-accent-dim' : 'text-fg-3'}`}>
                 {lineNumber}
               </span>
               <span className="grow whitespace-pre [tab-size:4]">

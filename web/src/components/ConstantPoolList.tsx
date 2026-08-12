@@ -1,39 +1,33 @@
-import { useLayoutEffect, useRef, type RefObject } from 'react';
-
+import { useRowNavigation } from '../hooks/useRowNavigation';
 import type { ConstantPoolRow } from '../services/class-view';
 
-import { CODE_ROW, ROW_HEIGHT } from './rhythm';
-import { useRowNavigation } from './useRowNavigation';
+import { CODE_ROW, NAME_COLUMN, POOL_INDEX_COLUMN } from './rhythm';
 
-export interface ConstantPoolTableProps {
+export interface ConstantPoolListProps {
   readonly rows: readonly ConstantPoolRow[];
   readonly selectedIndex?: number | undefined;
   readonly onSelectIndex?: ((index: number) => void) | undefined;
 }
 
-export function ConstantPoolTable({ rows, selectedIndex, onSelectIndex }: ConstantPoolTableProps) {
+const REFERENCE =
+  'shrink-0 rounded-row bg-raised px-1.5 py-0.5 text-micro leading-none text-accent-soft';
+
+export function ConstantPoolList({ rows, selectedIndex, onSelectIndex }: ConstantPoolListProps) {
   const selectedRow = rows.findIndex((row) => row.index === selectedIndex);
   const nav = useRowNavigation(rows.length, selectedRow < 0 ? undefined : selectedRow);
-  const listRef = useFollowSelected(selectedIndex);
 
   return (
-    <ol ref={listRef} className="isolate px-2.5">
+    <ol className="isolate px-2.5">
       {rows.map((row, position) => {
         const isSelected = row.index === selectedIndex;
         const tabIndex = position === nav.anchorIndex ? 0 : -1;
 
         const cells = (
           <>
-            <span
-              className={`w-9 shrink-0 text-right select-none ${
-                isSelected ? 'text-accent-dim' : 'text-fg-3'
-              }`}
-            >
+            <span className={`${POOL_INDEX_COLUMN} ${isSelected ? 'text-fg-2' : 'text-fg-3'}`}>
               #{row.index}
             </span>
-            <span className={`w-[104px] shrink-0 ${isSelected ? '' : 'text-fg-3'}`}>
-              {row.tagName}
-            </span>
+            <span className={`${NAME_COLUMN} ${isSelected ? '' : 'text-fg-3'}`}>{row.tagName}</span>
             <span className={isSelected ? '' : 'text-fg-2'}>{row.text}</span>
           </>
         );
@@ -44,7 +38,9 @@ export function ConstantPoolTable({ rows, selectedIndex, onSelectIndex }: Consta
             data-testid="constant-row"
             data-index={row.index}
             aria-current={isSelected ? 'true' : undefined}
-            className={`${CODE_ROW} ${isSelected ? 'bg-accent/[0.22] text-accent-text shadow-current' : ''}`}
+            className={`${CODE_ROW} ${
+              isSelected ? 'bg-raised-active text-fg shadow-control-raised' : ''
+            }`}
           >
             {onSelectIndex === undefined ? (
               <span className="flex grow items-center gap-3">{cells}</span>
@@ -95,54 +91,4 @@ export function ConstantPoolTable({ rows, selectedIndex, onSelectIndex }: Consta
       })}
     </ol>
   );
-}
-
-const REFERENCE =
-  'shrink-0 rounded-md bg-raised px-1.5 py-0.5 text-micro leading-none text-accent-soft';
-
-function useFollowSelected(selectedIndex: number | undefined): RefObject<HTMLOListElement> {
-  const listRef = useRef<HTMLOListElement>(null);
-
-  useLayoutEffect(() => {
-    const list = listRef.current;
-    if (list === null || selectedIndex === undefined) {
-      return;
-    }
-    const row = list.querySelector<HTMLElement>(`[data-index="${String(selectedIndex)}"]`);
-    const container = scrollingAncestorOf(list);
-    if (row === null || container === undefined) {
-      return;
-    }
-
-    const viewport = container.clientHeight;
-    if (viewport === 0) {
-      return;
-    }
-
-    const rowTop =
-      container.scrollTop + row.getBoundingClientRect().top - container.getBoundingClientRect().top;
-    const third = viewport / 3;
-    const isInsideMiddleThird =
-      rowTop >= container.scrollTop + third &&
-      rowTop + ROW_HEIGHT <= container.scrollTop + 2 * third;
-
-    if (isInsideMiddleThird) {
-      return;
-    }
-
-    const centred = rowTop - viewport / 2 + ROW_HEIGHT / 2;
-    container.scrollTop = Math.max(0, Math.min(centred, container.scrollHeight - viewport));
-  }, [selectedIndex]);
-
-  return listRef;
-}
-
-function scrollingAncestorOf(node: HTMLElement): HTMLElement | undefined {
-  for (let parent = node.parentElement; parent !== null; parent = parent.parentElement) {
-    const { overflowY } = getComputedStyle(parent);
-    if (overflowY === 'auto' || overflowY === 'scroll') {
-      return parent;
-    }
-  }
-  return undefined;
 }

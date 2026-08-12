@@ -157,6 +157,32 @@ describe('transport shortcuts', () => {
     expect(handlers.onStepForward).toHaveBeenCalledOnce();
   });
 
+  it('leaves the scroll keys to a focused panel body, so it can be read by keyboard', () => {
+    const handlers = setup();
+    const body = appendFocusable('div');
+    body.setAttribute('data-scroll-region', '');
+    body.tabIndex = 0;
+    body.focus();
+
+    expect(fireEvent.keyDown(body, { key: 'ArrowDown' })).toBe(true);
+    expect(fireEvent.keyDown(body, { key: 'Home' })).toBe(true);
+    expect(fireEvent.keyDown(body, { key: ' ' })).toBe(true);
+
+    expect(handlers.onStepOver).not.toHaveBeenCalled();
+    expect(handlers.onSeekToStart).not.toHaveBeenCalled();
+    expect(handlers.onTogglePlay).not.toHaveBeenCalled();
+  });
+
+  it('still steps the run from a key pressed outside any panel body', () => {
+    const handlers = setup();
+    const body = appendFocusable('div');
+    body.setAttribute('data-scroll-region', '');
+
+    fireEvent.keyDown(document.body, { key: 'ArrowDown' });
+
+    expect(handlers.onStepOver).toHaveBeenCalledOnce();
+  });
+
   it('ignores shortcuts combined with a modifier', () => {
     const handlers = setup();
 
@@ -179,5 +205,16 @@ describe('handlesKeyItself', () => {
   it('says nothing about a plain element', () => {
     expect(handlesKeyItself(appendFocusable('div'), ' ')).toBe(false);
     expect(handlesKeyItself(null, ' ')).toBe(false);
+  });
+
+  it('claims only the scrolling keys inside a scrollable region', () => {
+    const body = appendFocusable('div');
+    body.setAttribute('data-scroll-region', '');
+    const row = document.createElement('span');
+    body.append(row);
+
+    expect(handlesKeyItself(body, 'PageDown')).toBe(true);
+    expect(handlesKeyItself(row, 'ArrowUp')).toBe(true);
+    expect(handlesKeyItself(body, 'k')).toBe(false);
   });
 });

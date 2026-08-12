@@ -11,6 +11,18 @@ export interface TransportShortcuts {
   readonly onSeekToEnd: () => void;
 }
 
+const SCROLL_KEYS: ReadonlySet<string> = new Set([
+  ' ',
+  'ArrowLeft',
+  'ArrowRight',
+  'ArrowUp',
+  'ArrowDown',
+  'Home',
+  'End',
+  'PageUp',
+  'PageDown',
+]);
+
 export function handlesKeyItself(target: EventTarget | null, key: string): boolean {
   if (!(target instanceof HTMLElement)) {
     return false;
@@ -27,7 +39,7 @@ export function handlesKeyItself(target: EventTarget | null, key: string): boole
     case 'A':
       return key === ' ';
     default:
-      return false;
+      return SCROLL_KEYS.has(key) && target.closest('[data-scroll-region]') !== null;
   }
 }
 

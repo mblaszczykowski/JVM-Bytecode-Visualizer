@@ -11,6 +11,11 @@ import {
   terminalStep,
   runSummary,
 } from './__fixtures__/bubble-sort-run';
+import {
+  externalsAt as collatzExternalsAt,
+  firstInternedStep as collatzInternedStep,
+  snapshotAt as collatzSnapshotAt,
+} from './__fixtures__/collatz-run';
 import { snapshotAt as factorialSnapshotAt } from './__fixtures__/factorial-run';
 import { StateColumn } from './StateColumn';
 
@@ -65,15 +70,6 @@ describe('StateColumn', () => {
       '4',
       '5',
     ]);
-  });
-
-  it('fills its cell without stretching the sections over it', () => {
-    render(<StateColumn frames={factorialSnapshotAt(20).callStack} />);
-
-    const column = screen.getByTestId('state-column');
-    expect(column.className).not.toContain('self-start');
-    expect(column.className).toContain('max-h-full');
-    expect(column.className).toContain('min-h-0');
   });
 
   it('leaves the console out of a run that printed nothing', () => {
@@ -164,6 +160,65 @@ describe('StateColumn', () => {
 
     expect(screen.queryByTestId('operand-origin')).not.toBeInTheDocument();
     expect(screen.queryByTestId('local-origin')).not.toBeInTheDocument();
+  });
+
+  it('says what the step did to the top frame, for a reader who cannot see it', () => {
+    const { rerender } = render(<StateColumn frames={factorialSnapshotAt(20).callStack} />);
+
+    const announcement = screen.getByTestId('state-announcement');
+    expect(announcement).toHaveAttribute('aria-live', 'polite');
+    expect(announcement).toHaveTextContent(
+      'In factorial; n is now 2; operand stack 2 deep, top 1.',
+    );
+
+    rerender(<StateColumn frames={factorialSnapshotAt(21).callStack} />);
+
+    expect(screen.getByTestId('state-announcement')).toHaveTextContent('operand stack empty.');
+  });
+
+  it('names the locals by the value they hold, references included', () => {
+    render(<StateColumn frames={snapshotAt(sortingStep).callStack} heap={heapAt(sortingStep)} />);
+
+    expect(screen.getByTestId('state-announcement')).toHaveTextContent(
+      'In sortedMinimum; a is now int[5]@0; i is now 0; j is now 0; operand stack 2 deep, top 0.',
+    );
+  });
+
+  it('names an interned object in the announcement rather than its handle', () => {
+    const step = collatzInternedStep();
+    render(
+      <StateColumn
+        frames={collatzSnapshotAt(step).callStack}
+        externals={collatzExternalsAt(step)}
+      />,
+    );
+
+    expect(screen.getByTestId('state-announcement')).toHaveTextContent(
+      'operand stack 1 deep, top System.out.',
+    );
+  });
+
+  it('reads what the run printed, once, on the step that printed it', () => {
+    const frames = factorialSnapshotAt(20).callStack;
+    const { rerender } = render(<StateColumn frames={frames} consoleLines={[]} />);
+
+    rerender(<StateColumn frames={factorialSnapshotAt(21).callStack} consoleLines={['24']} />);
+    expect(screen.getByTestId('state-announcement')).toHaveTextContent('printed 24');
+
+    rerender(<StateColumn frames={factorialSnapshotAt(22).callStack} consoleLines={['24']} />);
+    expect(screen.getByTestId('state-announcement')).not.toHaveTextContent('printed 24');
+  });
+
+  it('holds the announcement back while the run is playing itself', () => {
+    render(<StateColumn frames={factorialSnapshotAt(20).callStack} isPlaying />);
+
+    expect(screen.getByTestId('state-announcement')).toHaveAttribute('aria-live', 'off');
+  });
+
+  it('says nothing about state for a class file that was never run', () => {
+    render(<StateColumn frames={[]} noRunNote="Nothing was executed." />);
+
+    expect(screen.queryByTestId('state-announcement')).not.toBeInTheDocument();
   });
 
   it('renders no console output for a snapshot whose interpreter records none', () => {

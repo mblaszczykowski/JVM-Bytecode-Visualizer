@@ -70,6 +70,22 @@ describe('walking a tour', () => {
     ).toBeInTheDocument();
   });
 
+  it('names its controls with the words on them, so voice control can reach them', () => {
+    renderStrip({ stopIndex: 1 });
+
+    expect(screen.getByTestId('tour-previous')).toHaveAccessibleName(/^Back\b/);
+    expect(screen.getByTestId('tour-next')).toHaveAccessibleName(/^Next\b/);
+  });
+
+  it('announces the whole stop, not only its prose', () => {
+    renderStrip({ stopIndex: 1 });
+
+    const live = screen.getByTestId('tour-strip').querySelector('[aria-live="polite"]');
+    expect(live).toHaveTextContent('The bottom');
+    expect(live).toHaveTextContent('2 / 3');
+    expect(live).toHaveTextContent('n reached 1, so this frame returns.');
+  });
+
   it('moves forward and back by index', () => {
     const props = renderStrip({ stopIndex: 1 });
 

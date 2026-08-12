@@ -1,13 +1,11 @@
 import { Fragment } from 'react';
 
+import type { EffectPill } from '../services/derivations';
+
 import { Pill } from './ui/Pill';
 
-export interface StackEffect {
-  readonly label: string;
-}
-
 export interface NextInstructionCardProps {
-  readonly effects: readonly StackEffect[];
+  readonly effects: readonly EffectPill[];
   readonly explanation: string;
   readonly cpChain?: readonly string[] | undefined;
 }
@@ -38,7 +36,7 @@ export function NextInstructionCard({ effects, explanation, cpChain }: NextInstr
                   →
                 </span>
               )}
-              <span className="rounded-[4px] bg-raised-active px-1.5 py-0.5 text-accent-soft">
+              <span className="rounded-chip bg-raised-active px-1.5 py-0.5 text-accent-soft">
                 {link}
               </span>
             </Fragment>

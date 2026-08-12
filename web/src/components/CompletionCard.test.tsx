@@ -68,6 +68,6 @@ describe('CompletionCard', () => {
       />,
     );
 
-    expect(screen.getByText('—')).toBeInTheDocument();
+    expect(screen.getByText('–')).toBeInTheDocument();
   });
 });

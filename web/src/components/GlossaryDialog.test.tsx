@@ -1,15 +1,10 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+
+import { closeGlossary, openGlossary } from '../services/glossary-store';
 
 import { GlossaryDialog } from './GlossaryDialog';
-import { closeGlossary, openGlossary } from './glossary-store';
-import { GlossaryButton } from './GlossaryTrigger';
-
-afterEach(() => {
-  act(() => {
-    closeGlossary();
-  });
-});
+import { GlossaryButton } from './GlossaryButton';
 
 function renderWithTrigger() {
   render(

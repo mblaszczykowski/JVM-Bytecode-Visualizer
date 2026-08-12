@@ -47,15 +47,14 @@ describe('ExamplePicker', () => {
     expect(onExampleSelected).not.toHaveBeenCalled();
   });
 
-  it('keeps the options on one scrolling rail at every width', () => {
+  it('keeps every option on one rail rather than wrapping some of them out of reach', () => {
     render(<ExamplePicker examples={examples} selectedId="gcd" onExampleSelected={vi.fn()} />);
 
-    const rail = screen.getByRole('radiogroup', { name: 'Example programs' }).parentElement;
-    expect(rail?.className).toContain('overflow-x-auto');
-    expect(rail?.className).not.toContain('md:overflow-visible');
-    expect(rail?.className).toContain('fade-x');
-    expect(rail?.className).toContain('snap-x');
-    expect(screen.getByRole('radio', { name: 'GCD' }).className).toContain('snap-start');
+    const group = screen.getByRole('radiogroup', { name: 'Example programs' });
+    const options = screen.getAllByRole('radio');
+
+    expect(options).toHaveLength(examples.length);
+    expect(options.every((option) => option.parentElement === group)).toBe(true);
   });
 
   it('reports the id of the example that was clicked', () => {
@@ -71,5 +70,95 @@ describe('ExamplePicker', () => {
     fireEvent.click(screen.getByRole('radio', { name: 'Sum of products' }));
 
     expect(onExampleSelected).toHaveBeenCalledWith('sum-of-products');
+  });
+});
+
+describe('the folded picker', () => {
+  function renderCollapsed(onExampleSelected = vi.fn()) {
+    render(
+      <ExamplePicker
+        examples={examples}
+        selectedId="factorial"
+        onExampleSelected={onExampleSelected}
+        collapsible
+      />,
+    );
+    return {
+      onExampleSelected,
+      trigger: screen.getByTestId('example-picker-trigger'),
+    };
+  }
+
+  it('names the current example on the trigger and says the sheet is shut', () => {
+    const { trigger } = renderCollapsed();
+
+    expect(trigger).toHaveAccessibleName('Example program: Factorial. Choose another');
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('opens as a named dialog and takes the focus', () => {
+    const { trigger } = renderCollapsed();
+    trigger.focus();
+
+    fireEvent.click(trigger);
+
+    const sheet = screen.getByRole('dialog', { name: 'Example programs' });
+    expect(sheet).toHaveAttribute('aria-modal', 'true');
+    expect(sheet).toHaveFocus();
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('keeps exactly one radiogroup, open or shut', () => {
+    const { trigger } = renderCollapsed();
+
+    expect(screen.getAllByRole('radiogroup')).toHaveLength(1);
+    fireEvent.click(trigger);
+    expect(screen.getAllByRole('radiogroup')).toHaveLength(1);
+  });
+
+  it('closes on Escape and hands the focus back to the trigger', () => {
+    const { trigger } = renderCollapsed();
+    trigger.focus();
+    fireEvent.click(trigger);
+
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+  });
+
+  it('closes on the scrim, choosing nothing', () => {
+    const { trigger, onExampleSelected } = renderCollapsed();
+    fireEvent.click(trigger);
+
+    fireEvent.click(screen.getByTestId('example-picker-scrim'));
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(onExampleSelected).not.toHaveBeenCalled();
+  });
+
+  it('picks an example and folds itself away again', () => {
+    const { trigger, onExampleSelected } = renderCollapsed();
+    trigger.focus();
+    fireEvent.click(trigger);
+
+    fireEvent.click(screen.getByRole('radio', { name: 'GCD' }));
+
+    expect(onExampleSelected).toHaveBeenCalledWith('gcd');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+  });
+
+  it('still moves between the options with the arrow keys inside the sheet', () => {
+    const { trigger } = renderCollapsed();
+    fireEvent.click(trigger);
+
+    const [first, second] = examples;
+    fireEvent.keyDown(screen.getByRole('radio', { name: first?.name ?? '' }), {
+      key: 'ArrowDown',
+    });
+
+    expect(screen.getByRole('radio', { name: second?.name ?? '' })).toHaveFocus();
   });
 });

@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 
 import { ROW_HEIGHT } from './rhythm';
+import { Button } from './ui/Button';
 
 const FILL_ROWS = 44;
 
@@ -16,7 +17,7 @@ function SkeletonPanel({ seed, raised = false, className = '', children }: Skele
     <div
       data-testid="panel-skeleton"
       className={`flex min-h-0 flex-col overflow-hidden rounded-panel px-4 py-4 ${
-        raised ? 'bg-panel/[0.065] shadow-panel-raised' : 'bg-ink shadow-panel-ink'
+        raised ? 'bg-panel shadow-panel-raised' : 'bg-ink shadow-panel-ink'
       } ${className}`}
     >
       {children}
@@ -57,13 +58,9 @@ export function LoadingPanels({ label, steps, onCancel }: LoadingPanelsProps) {
             </span>
           )}
           {onCancel === undefined ? null : (
-            <button
-              type="button"
-              onClick={onCancel}
-              className="focus-ring shrink-0 rounded-control bg-raised-active px-2.5 py-0.5 text-meta text-fg-2 transition-colors duration-150 hover:bg-raised-active hover:text-fg"
-            >
+            <Button tone="nested" size="sm" onClick={onCancel} className="shrink-0">
               Cancel
-            </button>
+            </Button>
           )}
         </div>
       </SkeletonPanel>

@@ -2,6 +2,7 @@ import { PLAYBACK_SPEEDS, type PlaybackSpeed } from '../hooks/useExecutionPlayer
 import type { TimelineEvent } from '../services/timeline';
 
 import { DepthTrack } from './DepthTrack';
+import { Button } from './ui/Button';
 import { Segment, SegmentedControl } from './ui/SegmentedControl';
 
 interface TransportControlsProps {
@@ -119,8 +120,7 @@ export function TransportControls({
           label={isPlaying ? 'Pause' : 'Play'}
           title="Play / pause (space)"
           selected={isPlaying}
-          tone="inverted"
-          prominent
+          primary
           onClick={onTogglePlay}
           className="h-11 w-12 md:h-8 md:w-[46px]"
         >
@@ -158,17 +158,17 @@ export function TransportControls({
         </Segment>
       </SegmentedControl>
 
-      <button
-        type="button"
+      <Button
+        tone="prominent"
         aria-label={`Playback speed ${String(speed)}×`}
         title="Playback speed: click to cycle 0.5× to 8×"
         onClick={() => {
           onSpeedChange(nextSpeed(speed));
         }}
-        className="focus-ring h-11 shrink-0 rounded-control bg-raised px-2.5 font-mono text-label text-fg shadow-control-raised transition-colors duration-150 hover:bg-raised-hover md:h-auto md:py-1.5"
+        className="h-11 shrink-0 font-mono md:h-auto md:py-1.5"
       >
         {speed}×
-      </button>
+      </Button>
 
       <div className="order-last flex basis-full items-center gap-3.5 md:order-none md:basis-auto md:grow">
         <DepthTrack

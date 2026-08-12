@@ -4,9 +4,9 @@ export type PillTone = 'neutral' | 'accent' | 'error' | 'warn';
 
 const TONE: Record<PillTone, string> = {
   neutral: 'bg-raised text-fg-3',
-  accent: 'bg-accent/25 text-accent-text',
-  error: 'bg-error/12 text-error',
-  warn: 'bg-warn/15 text-warn',
+  accent: 'bg-accent-fill text-accent-text',
+  error: 'bg-error-wash text-error',
+  warn: 'bg-warn-wash text-warn',
 };
 
 interface PillProps {
@@ -20,7 +20,7 @@ export function Pill({ tone = 'neutral', title, className = '', children }: Pill
   return (
     <span
       title={title}
-      className={`shrink-0 self-center rounded-[4px] px-1.5 py-px text-micro leading-none ${TONE[tone]} ${className}`}
+      className={`shrink-0 self-center rounded-chip px-1.5 py-px text-micro leading-none ${TONE[tone]} ${className}`}
     >
       {children}
     </span>

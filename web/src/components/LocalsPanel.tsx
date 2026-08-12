@@ -1,17 +1,19 @@
 import { motion, useReducedMotion } from 'framer-motion';
 import { useState } from 'react';
 
-import type { HeapObject, StackFrame } from '../core/interpreter/types';
+import type { ExternalValue, HeapObject, StackFrame } from '../core/interpreter';
+import { useRowNavigation } from '../hooks/useRowNavigation';
+import { describeValue } from '../services/derivations';
 
-import { referenceLabel } from './heap-view';
+import { OriginButton } from './OriginButton';
 import { EmptyState, Panel } from './Panel';
 import { ReferenceChip } from './ui/ReferenceChip';
-import { useRowNavigation } from './useRowNavigation';
 
 interface LocalsPanelProps {
   readonly frame: StackFrame | undefined;
   readonly frameIndex?: number;
   readonly heap?: readonly HeapObject[] | undefined;
+  readonly externals?: readonly ExternalValue[] | undefined;
   readonly caption?: string | undefined;
   readonly onSeekToStep?: ((step: number) => void) | undefined;
 }
@@ -24,8 +26,7 @@ const NO_LOCALS: Locals = [];
 
 const NO_HEAP: readonly HeapObject[] = [];
 
-const ORIGIN_BUTTON =
-  'focus-ring shrink-0 rounded-[4px] px-1 text-micro text-fg-3 transition-colors duration-150 hover:bg-raised-active hover:text-fg';
+const NO_EXTERNALS: readonly ExternalValue[] = [];
 
 interface Tracked {
   readonly frameIndex: number;
@@ -62,6 +63,7 @@ export function LocalsPanel({
   frameIndex = 0,
   caption,
   heap = NO_HEAP,
+  externals = NO_EXTERNALS,
   onSeekToStep,
 }: LocalsPanelProps) {
   const reduced = useReducedMotion() ?? false;
@@ -75,7 +77,7 @@ export function LocalsPanel({
 
   if (frame === undefined) {
     return (
-      <Panel title="Locals" meta="—" variant="state" className="grow">
+      <Panel title="Locals" meta="–" variant="state" className="grow">
         <EmptyState
           status="no active frame"
           detail="Local variables belong to a frame, and the run has none left."
@@ -104,9 +106,12 @@ export function LocalsPanel({
             const name = localNames[slot] ?? `slot ${String(slot)}`;
             const isInitialised = value !== undefined;
             const pulse = pulses[slot] ?? 0;
-            const isReference = frame.localKinds?.[slot] === 'ref';
+            const kind = frame.localKinds?.[slot];
+            const isReference = kind === 'ref' || kind === 'external';
             const origin = frame.localOrigins?.[slot];
             const originPosition = originRow.get(slot);
+            const label =
+              value === undefined ? UNINITIALISED : describeValue(kind, value, heap, externals);
 
             return (
               <li
@@ -124,41 +129,32 @@ export function LocalsPanel({
                     initial={{ opacity: 1 }}
                     animate={{ opacity: 0 }}
                     transition={{ duration: reduced ? 0 : 0.4, ease: 'easeOut' }}
-                    className="pointer-events-none absolute inset-0 -z-10 rounded-row bg-accent/25"
+                    className="pointer-events-none absolute inset-0 -z-10 rounded-row bg-accent-fill"
                   />
                 )}
                 <span className="w-3 shrink-0 font-mono text-micro text-fg-3">{slot}</span>
                 <span className={isInitialised ? 'text-fg-2' : 'text-fg-3'}>{name}</span>
-                {isInitialised ? (
+                {isInitialised && kind !== 'external' ? (
                   <span className="font-mono text-meta text-fg-3">
-                    {isReference ? ': int[]' : ': I'}
+                    {kind === 'ref' ? ': int[]' : ': I'}
                   </span>
                 ) : null}
                 <span className="grow" />
                 {origin === undefined ||
                 originPosition === undefined ||
                 onSeekToStep === undefined ? null : (
-                  <button
-                    type="button"
-                    data-testid="local-origin"
-                    data-origin-row={originPosition}
-                    tabIndex={originPosition === origins.anchorIndex ? 0 : -1}
-                    aria-label={`Go to step ${String(origin + 1)}, where ${name} was set to ${
-                      isReference ? referenceLabel(heap, value) : String(value)
-                    }`}
-                    onClick={() => {
-                      onSeekToStep(origin);
-                    }}
-                    onKeyDown={(event) => {
-                      origins.onKeyDown(event, originPosition);
-                    }}
-                    className={ORIGIN_BUTTON}
-                  >
-                    {`from ${String(origin + 1)}`}
-                  </button>
+                  <OriginButton
+                    step={origin}
+                    sentence={`${name} was set to ${label}`}
+                    testId="local-origin"
+                    row={originPosition}
+                    anchorRow={origins.anchorIndex}
+                    onSeekToStep={onSeekToStep}
+                    onKeyDown={origins.onKeyDown}
+                  />
                 )}
                 {isInitialised && isReference ? (
-                  <ReferenceChip heap={heap} handle={value} />
+                  <ReferenceChip label={label} />
                 ) : (
                   <span
                     className={`font-mono text-body ${isInitialised ? 'text-fg' : 'text-fg-3'}`}

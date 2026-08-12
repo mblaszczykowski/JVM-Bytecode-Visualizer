@@ -1,5 +1,7 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
+
+import type { ExternalValue, HeapObject } from '../core/interpreter';
 
 import {
   arrayAt,
@@ -94,5 +96,42 @@ describe('HeapPanel', () => {
 
     expect(currentCell()).toBeUndefined();
     expect(screen.getByText('length 5')).toBeInTheDocument();
+  });
+
+  describe('a field that holds a reference', () => {
+    const heap: readonly HeapObject[] = [
+      { kind: 'int-array', length: 2, elements: [7, 8] },
+      {
+        kind: 'instance',
+        className: 'Counter',
+        fields: [
+          { name: 'count', descriptor: 'I', value: 3, kind: 'int' },
+          { name: 'samples', descriptor: '[I', value: 0, kind: 'ref' },
+          { name: 'next', descriptor: 'LCounter;', value: 9, kind: 'ref' },
+          { name: 'sink', descriptor: 'Ljava/io/PrintStream;', value: 0, kind: 'external' },
+        ],
+      },
+    ];
+
+    const externals: readonly ExternalValue[] = [
+      { className: 'java/io/PrintStream', label: 'System.out' },
+    ];
+
+    function fieldNamed(name: string): HTMLElement {
+      const field = screen.getAllByTestId('heap-field').find((row) => row.dataset.field === name);
+      if (field === undefined) {
+        throw new Error(`No heap field rendered for ${name}`);
+      }
+      return field;
+    }
+
+    it('names the object a field points at rather than printing its handle', () => {
+      render(<HeapPanel heap={heap} externals={externals} />);
+
+      expect(within(fieldNamed('count')).getByText('3')).toBeInTheDocument();
+      expect(within(fieldNamed('samples')).getByText('int[2]@0')).toBeInTheDocument();
+      expect(within(fieldNamed('next')).getByText('null')).toBeInTheDocument();
+      expect(within(fieldNamed('sink')).getByText('System.out')).toBeInTheDocument();
+    });
   });
 });

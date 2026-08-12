@@ -73,15 +73,24 @@ describe('MethodPicker', () => {
   it('says why a method cannot be run instead of leaving the verdict unexplained', () => {
     render(<MethodPicker methods={library.methods} selected={undefined} onSelect={vi.fn()} />);
 
-    expect(rowOf('<init>()V')).toHaveAttribute(
-      'title',
-      'Listing only: an instance method; a run needs a static entry point',
+    expect(selectControlOf('<init>()V')).toHaveAccessibleName(
+      /Listing only: an instance method; a run needs a static entry point/,
     );
     expect(
       within(rowOf('twice(I)I')).getByText(
         /its descriptor is outside the int-only subset this machine executes/,
       ),
     ).toBeInTheDocument();
+  });
+
+  it('gives a screen reader the reason once, not once per element of the row', () => {
+    render(<MethodPicker methods={library.methods} selected={undefined} onSelect={vi.fn()} />);
+
+    const row = rowOf('<init>()V');
+    const reason = 'an instance method; a run needs a static entry point';
+
+    expect(row).not.toHaveAttribute('title');
+    expect(within(row).getAllByText(new RegExp(reason))).toHaveLength(1);
   });
 
   it('offers Run for a runnable method and starts the run with it', () => {
@@ -131,13 +140,11 @@ describe('MethodPicker', () => {
       />,
     );
 
-    const selected = rowOf('step(I)I');
-    expect(selected).toHaveAttribute('aria-current', 'true');
-    expect(selected.className).toContain('bg-raised-active');
+    expect(selectControlOf('step(I)I')).toHaveAttribute('aria-current', 'true');
 
     const entry = rowOf('count()I');
     expect(within(entry).getByText('entry')).toBeInTheDocument();
-    expect(entry).not.toHaveAttribute('aria-current');
+    expect(selectControlOf('count()I')).not.toHaveAttribute('aria-current');
   });
 
   it('renders the modifiers and the instruction count of each method', () => {
@@ -157,7 +164,8 @@ describe('MethodPicker', () => {
       maxStack: 0,
       maxLocals: 0,
       instructions: [],
-      truncatedAtOffset: undefined,
+      indexByOffset: new Map(),
+      undecodedFromOffset: undefined,
       lineNumbers: [],
       localVariables: [],
       executedOffsets: new Set(),

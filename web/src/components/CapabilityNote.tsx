@@ -26,7 +26,7 @@ export function CapabilityNote() {
 
       <div className="grid gap-x-6 gap-y-4 border-t border-line px-4 pt-3.5 pb-4 md:grid-cols-2">
         <section>
-          <h4 className="text-label font-medium text-fg-2">Executable instructions</h4>
+          <h3 className="text-label font-medium text-fg-2">Executable instructions</h3>
           <dl className="mt-2.5 flex flex-col gap-1.5">
             {families.map((family) => (
               <div key={family.name} data-testid="capability-family" className="flex gap-2.5">
@@ -38,7 +38,7 @@ export function CapabilityNote() {
         </section>
 
         <section>
-          <h4 className="text-label font-medium text-fg-2">Not implemented yet</h4>
+          <h3 className="text-label font-medium text-fg-2">Not implemented yet</h3>
           <ul className="mt-2.5 flex flex-col gap-1.5">
             {gaps.map((gap) => (
               <li key={gap.title} data-testid="capability-gap" className="text-meta text-fg-3">

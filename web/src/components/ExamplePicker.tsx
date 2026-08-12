@@ -1,4 +1,8 @@
-import { type KeyboardEvent, useEffect, useRef, useState } from 'react';
+import { type KeyboardEvent, useCallback, useRef, useState } from 'react';
+
+import { useDialogFocus } from '../hooks/useDialogFocus';
+
+import { Button } from './ui/Button';
 
 export interface ExampleOption {
   readonly id: string;
@@ -32,6 +36,12 @@ function ChevronIcon() {
 const SELECTED = 'bg-raised-active text-fg';
 const RESTING = 'text-fg-2 hover:bg-raised hover:text-fg';
 
+const RAIL =
+  'scroll-slim fade-x -mx-1 -my-1 flex min-w-0 snap-x snap-proximity items-center overflow-x-auto overflow-y-hidden py-1 pl-1 pr-7 scroll-pl-1 scroll-pr-7';
+
+const SHEET =
+  'fixed inset-x-0 bottom-0 z-50 max-h-[60dvh] flex-col items-stretch overflow-x-hidden overflow-y-auto rounded-t-panel bg-overlay p-2 pb-[calc(8px+env(safe-area-inset-bottom))] shadow-overlay outline-none md:static md:max-h-none md:flex-row md:items-center md:overflow-x-auto md:overflow-y-hidden md:rounded-none md:bg-transparent md:p-0 md:pb-1 md:shadow-none';
+
 export function ExamplePicker({
   examples,
   selectedId,
@@ -39,25 +49,18 @@ export function ExamplePicker({
   collapsible = false,
 }: ExamplePickerProps) {
   const groupRef = useRef<HTMLDivElement>(null);
+  const sheetRef = useRef<HTMLDivElement>(null);
   const [isOpen, setIsOpen] = useState(false);
   const [focusedIndex, setFocusedIndex] = useState<number | undefined>(undefined);
   const selectedIndex = examples.findIndex((example) => example.id === selectedId);
   const anchorIndex = focusedIndex ?? (selectedIndex < 0 ? 0 : selectedIndex);
+  const isSheet = collapsible && isOpen;
 
-  useEffect(() => {
-    if (!isOpen) {
-      return;
-    }
-    function onKey(event: globalThis.KeyboardEvent): void {
-      if (event.key === 'Escape') {
-        setIsOpen(false);
-      }
-    }
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [isOpen]);
+  const close = useCallback(() => {
+    setIsOpen(false);
+  }, []);
+
+  useDialogFocus(sheetRef, close, { active: isSheet });
 
   function handleKeyDown(event: KeyboardEvent<HTMLButtonElement>, index: number): void {
     const step = MOVES[event.key];
@@ -73,41 +76,39 @@ export function ExamplePicker({
 
   const selectedName = examples.find((example) => example.id === selectedId)?.name;
 
-  const RAIL =
-    'scroll-slim fade-x -mx-1 -my-1 flex min-w-0 snap-x snap-proximity items-center overflow-x-auto overflow-y-hidden py-1 pl-1 pr-7 scroll-pl-1 scroll-pr-7';
-
-  const SHEET =
-    'fixed inset-x-0 bottom-0 z-50 max-h-[60dvh] flex-col items-stretch overflow-x-hidden overflow-y-auto rounded-t-panel bg-overlay p-2 pb-[calc(8px+env(safe-area-inset-bottom))] shadow-overlay md:static md:max-h-none md:flex-row md:items-center md:overflow-x-auto md:overflow-y-hidden md:rounded-none md:bg-transparent md:p-0 md:pb-1 md:shadow-none';
-
   return (
     <>
       {collapsible ? (
-        <button
-          type="button"
+        <Button
+          tone="prominent"
           data-testid="example-picker-trigger"
           aria-expanded={isOpen}
           aria-label={`Example program: ${selectedName ?? 'none'}. Choose another`}
           onClick={() => {
             setIsOpen(true);
           }}
-          className="focus-ring text-meta flex min-w-0 shrink items-center gap-1 rounded-control bg-raised px-2.5 py-1 text-fg shadow-control-raised transition-colors duration-150 hover:bg-raised-hover md:hidden"
+          className="min-w-0 shrink md:hidden"
         >
           <span className="truncate">{selectedName ?? 'Examples'}</span>
           <ChevronIcon />
-        </button>
+        </Button>
       ) : null}
 
-      {collapsible && isOpen ? (
+      {isSheet ? (
         <div
           aria-hidden="true"
-          onClick={() => {
-            setIsOpen(false);
-          }}
+          data-testid="example-picker-scrim"
+          onClick={close}
           className="fixed inset-0 z-40 bg-scrim md:hidden"
         />
       ) : null}
 
       <div
+        ref={sheetRef}
+        role={isSheet ? 'dialog' : undefined}
+        aria-modal={isSheet ? true : undefined}
+        aria-label={isSheet ? 'Example programs' : undefined}
+        tabIndex={isSheet ? -1 : undefined}
         className={collapsible ? (isOpen ? `${RAIL} ${SHEET}` : `hidden md:flex ${RAIL}`) : RAIL}
       >
         <div

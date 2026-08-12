@@ -1,15 +1,8 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { fireEvent, render, screen } from '@testing-library/react';
+import { describe, expect, it } from 'vitest';
 
 import { GlossaryDialog } from './GlossaryDialog';
-import { closeGlossary } from './glossary-store';
 import { Panel } from './Panel';
-
-afterEach(() => {
-  act(() => {
-    closeGlossary();
-  });
-});
 
 describe('Panel', () => {
   it('names its region once, and repeats the name where it can be seen', () => {
@@ -71,6 +64,27 @@ describe('Panel', () => {
     );
 
     expect(getByTestId('glossary-trigger')).toHaveAttribute('data-term', term);
+  });
+
+  it('marks a scrolling body, so the transport gives it the arrow keys', () => {
+    const { rerender } = render(
+      <Panel title="Locals">
+        <p>slots</p>
+      </Panel>,
+    );
+
+    const body = screen.getByRole('region', { name: 'Locals' }).querySelector('[tabindex="0"]');
+    expect(body).toHaveAttribute('data-scroll-region');
+
+    rerender(
+      <Panel title="Locals" scrolls={false}>
+        <p>slots</p>
+      </Panel>,
+    );
+
+    expect(
+      screen.getByRole('region', { name: 'Locals' }).querySelector('[data-scroll-region]'),
+    ).toBeNull();
   });
 
   it('adds nothing to a panel that draws no concept of its own', () => {

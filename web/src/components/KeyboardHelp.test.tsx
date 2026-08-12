@@ -85,7 +85,7 @@ describe('KeyboardHelp', () => {
     trigger.focus();
 
     openSheet();
-    fireEvent.keyDown(window, { key: 'Escape' });
+    fireEvent.keyDown(screen.getByTestId('keyboard-help'), { key: 'Escape' });
 
     expect(screen.queryByTestId('keyboard-help')).not.toBeInTheDocument();
     expect(trigger).toHaveFocus();
@@ -98,6 +98,29 @@ describe('KeyboardHelp', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
 
     expect(screen.queryByTestId('keyboard-help')).not.toBeInTheDocument();
+  });
+
+  it('keeps Tab inside itself, in both directions', () => {
+    render(<KeyboardHelp groups={GROUPS} />);
+    openSheet();
+
+    const sheet = screen.getByTestId('keyboard-help');
+    const close = screen.getByRole('button', { name: 'Close' });
+
+    close.focus();
+    fireEvent.keyDown(close, { key: 'Tab' });
+    expect(close).toHaveFocus();
+
+    sheet.focus();
+    fireEvent.keyDown(sheet, { key: 'Tab', shiftKey: true });
+    expect(close).toHaveFocus();
+  });
+
+  it('takes the focus when it opens', () => {
+    render(<KeyboardHelp groups={GROUPS} />);
+    openSheet();
+
+    expect(screen.getByTestId('keyboard-help')).toHaveFocus();
   });
 
   it('keeps the transport from acting on keys pressed over the sheet', () => {

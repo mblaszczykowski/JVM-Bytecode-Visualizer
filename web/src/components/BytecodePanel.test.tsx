@@ -1,5 +1,5 @@
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen, within } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
 
 import { lineForOffset, type MethodListing } from '../services/program';
 
@@ -11,14 +11,7 @@ import {
 } from './__fixtures__/factorial-run';
 import { BytecodePanel } from './BytecodePanel';
 import { GlossaryDialog } from './GlossaryDialog';
-import { closeGlossary } from './glossary-store';
-import { ROW_HEIGHT } from './rhythm';
-
-afterEach(() => {
-  act(() => {
-    closeGlossary();
-  });
-});
+import { NUMBER_COLUMN, ROW_HEIGHT } from './rhythm';
 
 const factorial = factorialListing();
 const constructor = constructorListing();
@@ -138,10 +131,46 @@ describe('BytecodePanel', () => {
   });
 
   it('marks instructions outside the supported subset as unsupported', () => {
+    render(
+      <BytecodePanel
+        methodName="sync"
+        methodDescriptor="()V"
+        maxStack={1}
+        maxLocals={1}
+        instructions={[
+          { offset: 0, opcode: 0x2a, mnemonic: 'aload_0', operands: [] },
+          { offset: 1, opcode: 0xc2, mnemonic: 'monitorenter', operands: [], unsupported: true },
+          { offset: 2, opcode: 0xb1, mnemonic: 'return', operands: [] },
+        ]}
+        currentOffset={0}
+      />,
+    );
+
+    expect(within(rowOf('monitorenter')).getByText('unsupported')).toBeInTheDocument();
+    expect(rowOf('monitorenter')).toHaveClass('row-unsupported');
+    expect(within(rowOf('aload_0')).queryByText('unsupported')).not.toBeInTheDocument();
+  });
+
+  it('says nothing about a listing whose every instruction is supported', () => {
     renderListing(constructor, 0);
 
     expect(screen.queryAllByText('unsupported')).toHaveLength(0);
     expect(screen.getByTestId('current-instruction')).toHaveTextContent('aload_0');
+  });
+
+  it('leaves room for the widest offset a Code attribute can hold', () => {
+    render(
+      <BytecodePanel
+        methodName="long"
+        methodDescriptor="()V"
+        maxStack={0}
+        maxLocals={0}
+        instructions={[{ offset: 65535, opcode: 0xb1, mnemonic: 'return', operands: [] }]}
+        currentOffset={undefined}
+      />,
+    );
+
+    expect(screen.getByText('65535')).toHaveClass(...NUMBER_COLUMN.split(' '));
   });
 
   it('colours only the operands that point elsewhere in the class file', () => {
@@ -170,13 +199,25 @@ describe('BytecodePanel', () => {
 
   it('seeks to the first step at a row, by pointer and by keyboard', () => {
     const onSeek = vi.fn();
-    renderListing(factorial, 0, { stepForOffset: new Map([[11, 9]]), onSeek });
+    renderListing(factorial, 0, {
+      stepForOffset: new Map([
+        [11, 9],
+        [14, 12],
+      ]),
+      onSeek,
+    });
 
-    const targets = within(screen.getByRole('list')).getAllByRole('button');
-    expect(targets).toHaveLength(1);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Go to pc 11, invokestatic' }));
+    const first = screen.getByRole('button', { name: 'Go to pc 11, invokestatic' });
+    fireEvent.click(first);
     expect(onSeek).toHaveBeenCalledWith(9);
+
+    fireEvent.keyDown(first, { key: 'ArrowDown' });
+
+    const second = screen.getByRole('button', { name: 'Go to pc 14, imul' });
+    expect(second).toHaveFocus();
+
+    fireEvent.click(second);
+    expect(onSeek).toHaveBeenLastCalledWith(12);
   });
 
   it('explains the method descriptor from the descriptor itself', () => {
@@ -211,7 +252,7 @@ describe('BytecodePanel', () => {
   });
 
   it('reports the rest of the method as undecoded after a variable-length instruction', () => {
-    renderListing(constructor, 0, { truncatedAtOffset: 5 });
+    renderListing(constructor, 0, { undecodedFromOffset: 5 });
 
     expect(screen.getByText('… not decoded')).toBeInTheDocument();
   });
@@ -252,10 +293,10 @@ describe('BytecodePanel', () => {
       expect(stackCellOf('iconst_0')).toBe('+1');
     });
 
-    it('says the effect varies where the descriptor decides it', () => {
+    it('resolves an invokespecial descriptor rather than giving up on it', () => {
       renderListing(constructor, undefined, { constantPool: pool });
 
-      expect(stackCellOf('invokespecial')).toBe('varies');
+      expect(stackCellOf('invokespecial')).toBe('−1');
     });
 
     it('announces the stack effect of the current instruction', () => {

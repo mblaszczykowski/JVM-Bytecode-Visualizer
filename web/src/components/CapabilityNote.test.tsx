@@ -12,6 +12,18 @@ describe('CapabilityNote', () => {
     expect(screen.getByTestId('welcome-capabilities')).not.toHaveAttribute('open');
   });
 
+  it('heads its two columns at the level the welcome screen leaves off', () => {
+    render(<CapabilityNote />);
+
+    expect(
+      screen.getByRole('heading', { level: 3, name: 'Executable instructions' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { level: 3, name: 'Not implemented yet' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { level: 4 })).not.toBeInTheDocument();
+  });
+
   it('says what will actually happen to a file from a real project', () => {
     render(<CapabilityNote />);
 
@@ -43,13 +55,13 @@ describe('CapabilityNote', () => {
     expect(note).not.toHaveAttribute('open');
   });
 
-  it('is keyboard operable and keeps the focus ring', () => {
+  it('puts the disclosure on a summary, so the platform makes it operable', () => {
     render(<CapabilityNote />);
 
-    const summary = screen.getByTestId('welcome-capabilities').querySelector('summary');
+    const summary = screen.getByText(/Runs the integer subset of the JVM/).closest('summary');
 
     expect(summary).toBeInstanceOf(HTMLElement);
-    expect(summary?.className).toContain('focus-ring');
+    expect(summary?.parentElement).toBe(screen.getByTestId('welcome-capabilities'));
   });
 
   it('breaks the executable subset down by family', () => {

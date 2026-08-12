@@ -1,6 +1,9 @@
-import { useEffect, useRef } from 'react';
+import { useRef } from 'react';
 
+import { useDialogFocus } from '../hooks/useDialogFocus';
 import type { CompileDiagnostic, DiagnosticKind } from '../services/compile-client';
+
+import { Button } from './ui/Button';
 
 export const SEED_SOURCE = `public class FizzBuzz {
 
@@ -46,31 +49,18 @@ export function CompileEditor({
   onCompile,
   onClose,
 }: CompileEditorProps) {
+  const editorRef = useRef<HTMLElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  useEffect(() => {
-    textareaRef.current?.focus();
-  }, []);
-
-  useEffect(() => {
-    function handleKeyDown(event: KeyboardEvent): void {
-      if (event.key === 'Escape') {
-        onClose();
-      }
-    }
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [onClose]);
+  useDialogFocus(editorRef, onClose, { initialFocus: textareaRef });
 
   return (
     <section
+      ref={editorRef}
       role="region"
       aria-label="Java editor"
       data-testid="compile-editor"
-      className="col-span-full row-span-full flex min-h-0 flex-col rounded-panel bg-panel/[0.045] shadow-panel"
+      className="col-span-full row-span-full flex min-h-0 flex-col rounded-panel bg-panel shadow-panel"
     >
       <div className="flex shrink-0 items-baseline justify-between gap-3 px-4 pt-3.5 pb-2.5">
         <h2 className="text-title font-medium text-fg">Write Java</h2>
@@ -78,13 +68,9 @@ export function CompileEditor({
           <span className="hidden font-mono text-meta text-fg-3 sm:inline">
             javac on the server · executed in this tab
           </span>
-          <button
-            type="button"
-            onClick={onClose}
-            className="focus-ring shrink-0 rounded-control bg-raised px-3 py-1 text-label text-fg-2 transition-colors duration-150 hover:bg-raised-active"
-          >
+          <Button tone="raised" onClick={onClose} className="shrink-0">
             Close
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -123,14 +109,9 @@ export function CompileEditor({
         </div>
 
         <div className="flex shrink-0 items-center gap-3">
-          <button
-            type="button"
-            onClick={onCompile}
-            disabled={isCompiling}
-            className="focus-ring shrink-0 rounded-control bg-raised px-4 py-1.5 text-label text-fg shadow-control-raised transition-colors duration-150 hover:bg-raised-active disabled:opacity-40"
-          >
+          <Button tone="prominent" onClick={onCompile} disabled={isCompiling} className="shrink-0">
             {isCompiling ? 'Compiling…' : 'Compile'}
-          </button>
+          </Button>
           <span className="text-label text-fg-3">
             Static methods called from <span className="font-mono">main</span>: ints, int arrays,{' '}
             <span className="font-mono">Math</span> and{' '}
@@ -144,7 +125,7 @@ export function CompileEditor({
 
 function positionOf(diagnostic: CompileDiagnostic): string {
   if (diagnostic.line === undefined) {
-    return '—';
+    return '–';
   }
   return diagnostic.column === undefined
     ? String(diagnostic.line)

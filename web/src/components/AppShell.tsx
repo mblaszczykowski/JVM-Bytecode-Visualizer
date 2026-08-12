@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react';
 
+import { GlossaryDialog } from './GlossaryDialog';
+
 interface AppShellProps {
   readonly toolbar: ReactNode;
   readonly children: ReactNode;
@@ -14,9 +16,9 @@ export function AppShell({ toolbar, children, footer, isDropTarget = false }: Ap
         <div
           data-testid="drop-overlay"
           aria-hidden="true"
-          className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-app/80 shadow-[inset_0_0_0_1px_var(--color-accent)]"
+          className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-scrim shadow-drop-target"
         >
-          <p className="rounded-card bg-accent/12 px-4 py-2.5 text-body text-accent-text shadow-current-strong">
+          <p className="rounded-card bg-accent-wash px-4 py-2.5 text-body text-accent-text shadow-current-strong">
             Drop a .class file to run it
           </p>
         </div>
@@ -29,6 +31,8 @@ export function AppShell({ toolbar, children, footer, isDropTarget = false }: Ap
       </main>
 
       <footer className="sticky bottom-0 shrink-0">{footer}</footer>
+
+      <GlossaryDialog />
     </div>
   );
 }

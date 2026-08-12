@@ -1,21 +1,12 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 
+import { useDialogFocus } from '../hooks/useDialogFocus';
+import { useOpenGlossaryTerm } from '../hooks/useOpenGlossaryTerm';
 import { GLOSSARY, glossaryEntry, type GlossaryTermId } from '../services/glossary';
+import { closeGlossary } from '../services/glossary-store';
 
-import { closeGlossary, useOpenGlossaryTerm } from './glossary-store';
-
-const FOCUSABLE = 'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])';
-
-const TRANSPORT_KEYS: ReadonlySet<string> = new Set([
-  ' ',
-  'ArrowLeft',
-  'ArrowRight',
-  'ArrowUp',
-  'ArrowDown',
-  'Home',
-  'End',
-]);
+import { Button } from './ui/Button';
 
 function Prose({ text }: { readonly text: string }) {
   return (
@@ -65,57 +56,7 @@ function GlossarySheet({ initialTerm }: { readonly initialTerm: GlossaryTermId }
   const sheetRef = useRef<HTMLDivElement>(null);
   const entry = glossaryEntry(termId);
 
-  useEffect(() => {
-    const opener = document.activeElement;
-    sheetRef.current?.focus();
-
-    return () => {
-      if (opener instanceof HTMLElement) {
-        opener.focus();
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    function handleKeyDown(event: KeyboardEvent): void {
-      const sheet = sheetRef.current;
-      if (sheet === null) {
-        return;
-      }
-
-      if (event.key === 'Escape') {
-        event.stopPropagation();
-        closeGlossary();
-        return;
-      }
-
-      if (event.key === 'Tab') {
-        const focusable = [...sheet.querySelectorAll<HTMLElement>(FOCUSABLE)];
-        const first = focusable[0];
-        const last = focusable.at(-1);
-        if (first === undefined || last === undefined) {
-          return;
-        }
-        const leaving = event.shiftKey
-          ? document.activeElement === first || document.activeElement === sheet
-          : document.activeElement === last;
-        if (leaving) {
-          event.preventDefault();
-          (event.shiftKey ? last : first).focus();
-        }
-        return;
-      }
-
-      if (TRANSPORT_KEYS.has(event.key)) {
-        event.stopPropagation();
-      }
-    }
-
-    window.addEventListener('keydown', handleKeyDown, true);
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown, true);
-    };
-  }, []);
+  useDialogFocus(sheetRef, closeGlossary);
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-7">
@@ -138,13 +79,9 @@ function GlossarySheet({ initialTerm }: { readonly initialTerm: GlossaryTermId }
             <span className="hidden font-mono text-meta text-fg-3 sm:inline">
               terms used on these panels
             </span>
-            <button
-              type="button"
-              onClick={closeGlossary}
-              className="focus-ring shrink-0 rounded-control bg-raised px-3 py-1 text-label text-fg-2 transition-colors duration-150 hover:bg-raised-active"
-            >
+            <Button tone="raised" onClick={closeGlossary} className="shrink-0">
               Close
-            </button>
+            </Button>
           </div>
         </div>
 

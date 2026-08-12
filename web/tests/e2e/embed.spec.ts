@@ -16,6 +16,30 @@ test('shows the embedded run without the chooser', async ({ page }) => {
   await expect(page.getByTestId('current-instruction')).toContainText('iastore');
 });
 
+test('explains a panel from inside the frame, where there is no toolbar', async ({ page }) => {
+  await page.goto('/?embed#/bubble-sort/248');
+  await expect(page.getByTestId('step-counter')).toBeVisible();
+
+  await page
+    .getByRole('region', { name: 'Operand stack' })
+    .getByRole('button', { name: 'What is the operand stack?' })
+    .click();
+
+  await expect(page.getByRole('dialog', { name: 'Glossary' })).toBeVisible();
+  await expect(page.getByTestId('glossary-entry')).toHaveAttribute('data-term', 'operand-stack');
+
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog', { name: 'Glossary' })).toHaveCount(0);
+});
+
+test('names the embedded program in the one heading the frame has', async ({ page }) => {
+  await page.goto('/?embed#/bubble-sort/248');
+
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText(
+    'BubbleSort.java · JVM Bytecode Visualizer',
+  );
+});
+
 test('leads out to the same moment in the full application', async ({ page }) => {
   await page.goto('/?embed#/factorial/tour/recursion/3');
 

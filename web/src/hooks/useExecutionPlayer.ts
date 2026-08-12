@@ -10,15 +10,14 @@ export type PlaybackSpeed = (typeof PLAYBACK_SPEEDS)[number];
 
 export const BASE_STEP_INTERVAL_MS = 600;
 
-export const DEFAULT_SPEED: PlaybackSpeed = 1;
+const DEFAULT_SPEED: PlaybackSpeed = 1;
 
 export interface ExecutionPlayer {
   readonly stepIndex: number;
   readonly stepCount: number;
   readonly isPlaying: boolean;
   readonly speed: PlaybackSpeed;
-  readonly atStart: boolean;
-  readonly atEnd: boolean;
+  readonly depths: readonly number[];
   readonly play: () => void;
   readonly pause: () => void;
   readonly togglePlay: () => void;
@@ -30,7 +29,6 @@ export interface ExecutionPlayer {
   readonly canStepOut: boolean;
   readonly seekTo: (index: number) => void;
   readonly setSpeed: (speed: number) => void;
-  readonly reset: () => void;
 }
 
 function nearestSpeed(value: number): PlaybackSpeed {
@@ -129,18 +127,12 @@ export function useExecutionPlayer(snapshots: readonly Snapshot[]): ExecutionPla
     setSpeedState(nearestSpeed(value));
   }, []);
 
-  const reset = useCallback(() => {
-    setStepIndex(0);
-    setIsPlaying(false);
-  }, []);
-
   return {
     stepIndex,
     stepCount,
     isPlaying,
     speed,
-    atStart: stepIndex === 0,
-    atEnd: stepIndex >= lastIndex,
+    depths,
     play,
     pause,
     togglePlay,
@@ -152,6 +144,5 @@ export function useExecutionPlayer(snapshots: readonly Snapshot[]): ExecutionPla
     canStepOut: outTarget !== undefined,
     seekTo,
     setSpeed,
-    reset,
   };
 }

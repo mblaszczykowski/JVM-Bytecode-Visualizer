@@ -120,7 +120,7 @@ export function DepthTrack({
   }
 
   return (
-    <div className={`focus-ring-within relative h-11 grow rounded-md md:h-[34px] ${className}`}>
+    <div className={`focus-ring-within relative h-11 grow rounded-row md:h-[34px] ${className}`}>
       {hasMarks ? (
         <div
           aria-hidden="true"
@@ -130,7 +130,7 @@ export function DepthTrack({
             <span
               key={bars[bucket]?.firstStep ?? bucket}
               {...(mark === undefined ? {} : { 'data-testid': 'timeline-mark', 'data-kind': mark })}
-              className={`flex-1 rounded-[1px] ${mark === undefined ? '' : MARK_STYLES[mark]}`}
+              className={`flex-1 ${mark === undefined ? '' : MARK_STYLES[mark]}`}
             />
           ))}
         </div>
@@ -155,8 +155,8 @@ export function DepthTrack({
               className={`min-h-px flex-1 ${
                 played
                   ? inCurrentFrame
-                    ? 'bg-accent'
-                    : 'bg-accent/40'
+                    ? 'bg-fg-2'
+                    : 'bg-fg-3'
                   : inCurrentFrame
                     ? 'bg-fg-dim'
                     : 'bg-line-strong'

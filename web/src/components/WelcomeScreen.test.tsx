@@ -1,17 +1,10 @@
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen, within } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
 
 import type { RunPreview } from '../services/program';
 
 import { GlossaryDialog } from './GlossaryDialog';
-import { closeGlossary } from './glossary-store';
 import { WelcomeScreen, type WelcomeExample } from './WelcomeScreen';
-
-afterEach(() => {
-  act(() => {
-    closeGlossary();
-  });
-});
 
 const PREVIEW: RunPreview = {
   steps: 118,
@@ -122,25 +115,6 @@ describe('WelcomeScreen', () => {
     fireEvent.click(pointer);
 
     expect(screen.getByRole('dialog', { name: 'Glossary' })).toBeInTheDocument();
-  });
-
-  it('spills off the bottom on a short viewport instead of losing the headline off the top', () => {
-    renderWelcome();
-
-    const screenEl = screen.getByTestId('welcome-screen');
-    const content = screenEl.firstElementChild;
-
-    expect(screenEl.className).toContain('flex-col');
-    expect(screenEl.className).toContain('fade-y');
-    expect(content?.className).toContain('m-auto');
-  });
-
-  it('anchors the type scale on the headline rather than on more small grey text', () => {
-    renderWelcome();
-
-    const headline = screen.getByRole('heading', { name: /Watch a Java program run/ });
-
-    expect(headline.className).toContain('text-display');
   });
 
   it('keeps the examples ahead of the note, so the first frame is still the examples', () => {

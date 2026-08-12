@@ -10,19 +10,23 @@ interface CallStackPanelProps {
   readonly frames: readonly StackFrame[];
 }
 
-const OPACITY_BY_DISTANCE = [1, 0.76, 0.58, 0.42] as const;
-const DEEPEST_OPACITY = 0.42;
-
 const COLLAPSE_ABOVE = 8;
 const OLDEST_KEPT = 2;
 const NEWEST_KEPT = 5;
+
+const RECEDED_BELOW = 3;
 
 type Row =
   | { readonly kind: 'frame'; readonly frame: StackFrame; readonly index: number }
   | { readonly kind: 'collapsed'; readonly count: number };
 
-function frameOpacity(distanceFromTop: number): number {
-  return OPACITY_BY_DISTANCE[distanceFromTop] ?? DEEPEST_OPACITY;
+function frameSurface(distanceFromTop: number): string {
+  if (distanceFromTop === 0) {
+    return 'now-row text-accent-text';
+  }
+  return distanceFromTop < RECEDED_BELOW
+    ? 'bg-raised text-fg-2'
+    : 'row-unreached bg-raised text-fg-3';
 }
 
 function firstArgument(frame: StackFrame): string | undefined {
@@ -95,16 +99,16 @@ export function CallStackPanel({ frames }: CallStackPanelProps) {
                   key={`${String(index)}:${frame.methodName}${frame.methodDescriptor}`}
                   layout
                   initial={{ opacity: 0, y: -8 }}
-                  animate={{ opacity: frameOpacity(topIndex - index), y: 0 }}
+                  animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -8 }}
                   transition={{ duration, ease: 'easeOut' }}
                   data-testid="call-frame"
                   data-frame-index={index}
                   aria-current={isTop ? 'true' : undefined}
                   title={`${frame.methodName}${frame.methodDescriptor}`}
-                  className={`flex items-center gap-2 rounded-row px-2.5 py-1.5 text-label ${
-                    isTop ? 'now-row text-accent-text' : 'bg-raised text-fg-2'
-                  }`}
+                  className={`flex items-center gap-2 rounded-row px-2.5 py-1.5 text-label ${frameSurface(
+                    topIndex - index,
+                  )}`}
                 >
                   <span className="w-3 shrink-0 font-mono text-micro text-fg-3">{index}</span>
                   <span className="truncate font-medium">{frame.methodName}</span>

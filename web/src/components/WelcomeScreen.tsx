@@ -1,9 +1,11 @@
+import { openGlossary } from '../services/glossary-store';
 import type { RunPreview } from '../services/program';
 
 import { CapabilityNote } from './CapabilityNote';
 import { ErrorBanner, type BannerSeverity } from './ErrorBanner';
 import { FileUpload } from './FileUpload';
-import { openGlossary } from './glossary-store';
+import { Button } from './ui/Button';
+import { buttonSurface } from './ui/button-surface';
 
 export interface WelcomeExample {
   readonly id: string;
@@ -41,7 +43,7 @@ function DepthSparkline({ preview }: { readonly preview: RunPreview }) {
         <span
           key={bucket}
           data-testid="welcome-sparkline-bar"
-          className="min-h-px flex-1 rounded-[1px] bg-fg-dim transition-colors duration-150 group-hover:bg-accent"
+          className="min-h-px flex-1 bg-fg-dim transition-colors duration-150 group-hover:bg-accent"
           style={{ height: `${String((depth / scale) * 100)}%` }}
         />
       ))}
@@ -88,16 +90,16 @@ export function WelcomeScreen({
         <section aria-label="Example programs">
           <div className="flex items-baseline justify-between gap-3">
             <h3 className="text-label font-medium text-fg-2">Start with an example</h3>
-            <button
-              type="button"
+            <Button
+              size="sm"
               data-testid="welcome-glossary"
               onClick={() => {
                 openGlossary();
               }}
-              className="focus-ring shrink-0 rounded-control px-2 py-1 text-meta text-fg-2 transition-colors duration-150 hover:bg-raised hover:text-fg"
+              className="shrink-0"
             >
               New to the JVM? What these words mean
-            </button>
+            </Button>
           </div>
           <ul className="mt-2.5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             {examples.map((example) => (
@@ -146,9 +148,7 @@ export function WelcomeScreen({
               onClick={onWriteJava}
               className="focus-ring flex flex-wrap items-center justify-center gap-x-3 gap-y-1 rounded-panel bg-panel px-5 py-4 text-label text-fg-2 shadow-panel transition-colors duration-150 hover:bg-raised lg:w-[300px]"
             >
-              <span className="rounded-control bg-raised px-2.5 py-1 text-fg shadow-control-raised">
-                Write Java…
-              </span>
+              <span className={buttonSurface('prominent')}>Write Java…</span>
               <span className="text-meta text-fg-3">compile a small class and run it here</span>
             </button>
           )}

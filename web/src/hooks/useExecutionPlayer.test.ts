@@ -55,8 +55,17 @@ describe('useExecutionPlayer', () => {
     expect(result.current.stepCount).toBe(10);
     expect(result.current.isPlaying).toBe(false);
     expect(result.current.speed).toBe(1);
-    expect(result.current.atStart).toBe(true);
-    expect(result.current.atEnd).toBe(false);
+  });
+
+  it('reports the call depth of every step, so the timeline and step over share one pass', () => {
+    const history = historyOfDepths([1, 2, 2, 1]);
+    const { result, rerender } = renderPlayer(history);
+    const first = result.current.depths;
+
+    expect(first).toEqual([1, 2, 2, 1]);
+
+    rerender({ history });
+    expect(result.current.depths).toBe(first);
   });
 
   it('advances one step per interval while playing', () => {
@@ -156,7 +165,6 @@ describe('useExecutionPlayer', () => {
 
     expect(result.current.stepIndex).toBe(3);
     expect(result.current.isPlaying).toBe(false);
-    expect(result.current.atEnd).toBe(true);
     expect(vi.getTimerCount()).toBe(0);
   });
 
@@ -192,7 +200,6 @@ describe('useExecutionPlayer', () => {
       result.current.stepForward();
     });
     expect(result.current.stepIndex).toBe(2);
-    expect(result.current.atEnd).toBe(true);
 
     act(() => {
       result.current.stepBack();
@@ -321,25 +328,6 @@ describe('useExecutionPlayer', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it('rewinds and stops on reset, keeping the chosen speed', () => {
-    const { result } = renderPlayer(historyOf(10));
-
-    act(() => {
-      result.current.setSpeed(4);
-      result.current.seekTo(6);
-      result.current.play();
-    });
-
-    act(() => {
-      result.current.reset();
-    });
-
-    expect(result.current.stepIndex).toBe(0);
-    expect(result.current.isPlaying).toBe(false);
-    expect(result.current.speed).toBe(4);
-    expect(vi.getTimerCount()).toBe(0);
-  });
-
   it('rewinds and stops when a different history arrives', () => {
     const { result, rerender } = renderPlayer(historyOf(10));
 
@@ -386,8 +374,7 @@ describe('useExecutionPlayer', () => {
     const { result, rerender } = renderPlayer([]);
 
     expect(result.current.stepCount).toBe(0);
-    expect(result.current.atStart).toBe(true);
-    expect(result.current.atEnd).toBe(true);
+    expect(result.current.depths).toEqual([]);
     expect(result.current.canStepOver).toBe(false);
     expect(result.current.canStepOut).toBe(false);
 

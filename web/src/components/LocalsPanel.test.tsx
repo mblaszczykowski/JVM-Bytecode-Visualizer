@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
-import type { StackFrame } from '../core/interpreter/types';
+import type { ExternalValue, StackFrame } from '../core/interpreter';
 
 import {
   firstStepOf as bubbleSortStepOf,
@@ -24,6 +24,21 @@ const frameWithoutNames: StackFrame = {
   operandStack: [],
   locals: [7, undefined],
   localNames: [],
+};
+
+const externals: readonly ExternalValue[] = [
+  { className: 'java/io/PrintStream', label: 'System.out' },
+];
+
+const internedFrame: StackFrame = {
+  methodName: 'print',
+  methodDescriptor: '()V',
+  pc: 4,
+  operandStack: [],
+  locals: [5, 0],
+  localNames: ['n', 'out'],
+  localKinds: ['int', 'external'],
+  localOrigins: [1, 2],
 };
 
 function slotAt(index: number): HTMLElement {
@@ -73,6 +88,18 @@ describe('LocalsPanel', () => {
     const counter = within(slotAt(1));
     expect(counter.getByText(': I')).toBeInTheDocument();
     expect(counter.queryByTestId('ref-chip')).not.toBeInTheDocument();
+  });
+
+  it('names a slot holding a standard-library object rather than its handle', () => {
+    render(<LocalsPanel frame={internedFrame} externals={externals} onSeekToStep={vi.fn()} />);
+
+    const slot = within(slotAt(1));
+    expect(slot.getByTestId('ref-chip')).toHaveTextContent('System.out');
+    expect(slot.queryByText('0')).not.toBeInTheDocument();
+    expect(slot.queryByText(': I')).not.toBeInTheDocument();
+    expect(
+      slot.getByRole('button', { name: 'Go to step 3, where out was set to System.out' }),
+    ).toBeInTheDocument();
   });
 
   it('shows the missing frame of the terminal snapshot', () => {

@@ -1,3 +1,5 @@
+import { Button } from './ui/Button';
+
 export type BannerSeverity = 'error' | 'warning' | 'info';
 
 interface BannerAction {
@@ -13,8 +15,8 @@ interface ErrorBannerProps {
 }
 
 const SEVERITY_STYLE: Record<BannerSeverity, string> = {
-  error: 'bg-error/12 text-error shadow-banner-error',
-  warning: 'bg-warn/12 text-warn shadow-banner-warn',
+  error: 'bg-error-wash text-error shadow-banner-error',
+  warning: 'bg-warn-wash text-warn shadow-banner-warn',
   info: 'bg-raised text-fg-2 shadow-row-outline',
 };
 
@@ -37,23 +39,19 @@ export function ErrorBanner({ message, severity, action, onDismiss }: ErrorBanne
       <span className="shrink-0 text-label font-medium">{SEVERITY_LABEL[severity]}</span>
       <span className="grow">{message}</span>
       {action === undefined ? null : (
-        <button
-          type="button"
-          onClick={action.onAction}
-          className="focus-ring shrink-0 rounded-control bg-raised-active px-2.5 py-1 text-meta transition-colors duration-150 hover:bg-raised-active"
-        >
+        <Button tone="nested" onClick={action.onAction} className="shrink-0">
           {action.label}
-        </button>
+        </Button>
       )}
       {onDismiss === undefined ? null : (
-        <button
-          type="button"
+        <Button
+          size="sm"
           aria-label="Dismiss this message"
           onClick={onDismiss}
-          className="focus-ring -my-1 shrink-0 self-center rounded-control px-1.5 py-0.5 text-body leading-none text-fg-3 transition-colors duration-150 hover:bg-raised-active hover:text-fg"
+          className="-my-1 shrink-0 self-center text-body leading-none text-fg-3"
         >
           <span aria-hidden="true">×</span>
-        </button>
+        </Button>
       )}
     </div>
   );

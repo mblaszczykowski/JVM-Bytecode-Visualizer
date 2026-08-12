@@ -1,12 +1,13 @@
-import type { HeapObject } from '../core/interpreter/types';
+import type { ExternalValue, HeapObject } from '../core/interpreter';
 import type { RunSummary } from '../services/program';
 
-import { HeapArrayRow, HeapInstanceRow } from './HeapPanel';
+import { HeapArrayRow, HeapInstanceRow } from './HeapRows';
 import { Panel } from './Panel';
 
 interface CompletionCardProps {
   readonly summary: RunSummary;
   readonly heap?: readonly HeapObject[] | undefined;
+  readonly externals?: readonly ExternalValue[] | undefined;
 }
 
 interface FigureProps {
@@ -25,25 +26,31 @@ function Figure({ label, value }: FigureProps) {
 
 const NO_HEAP: readonly HeapObject[] = [];
 
-export function CompletionCard({ summary, heap = NO_HEAP }: CompletionCardProps) {
+const NO_EXTERNALS: readonly ExternalValue[] = [];
+
+export function CompletionCard({
+  summary,
+  heap = NO_HEAP,
+  externals = NO_EXTERNALS,
+}: CompletionCardProps) {
   const { resultName, resultValue, totalSteps, maxDepth, referenceValue } = summary;
 
   return (
     <Panel title="Result" meta="run complete" variant="state" scrolls={false} className="grow">
       <div data-testid="completion-card" className="px-2.5 pb-1">
-        <div className="rounded-row bg-accent/12 px-3 py-2.5 shadow-current">
+        <div className="rounded-row bg-accent-wash px-3 py-2.5 shadow-current">
           <div className="flex items-baseline gap-2">
             <span className="font-mono text-code text-accent-soft">{resultName}</span>
-            <span className="font-mono text-code text-accent-soft/70">=</span>
+            <span className="font-mono text-code text-accent-soft">=</span>
             <span
               data-testid="result-value"
               className="font-mono text-display leading-none font-medium text-accent-text tabular-nums"
             >
-              {resultValue ?? '—'}
+              {resultValue ?? '–'}
             </span>
           </div>
           {referenceValue === undefined ? null : (
-            <p className="mt-1.5 text-micro text-accent-soft/85">
+            <p className="mt-1.5 text-micro text-accent-soft">
               Matches the value a real JVM computed for this example when the fixtures were built.
             </p>
           )}
@@ -57,7 +64,13 @@ export function CompletionCard({ summary, heap = NO_HEAP }: CompletionCardProps)
                 object.kind === 'int-array' ? (
                   <HeapArrayRow key={handle} array={object} handle={handle} />
                 ) : (
-                  <HeapInstanceRow key={handle} instance={object} handle={handle} />
+                  <HeapInstanceRow
+                    key={handle}
+                    instance={object}
+                    handle={handle}
+                    heap={heap}
+                    externals={externals}
+                  />
                 ),
               )}
             </ol>

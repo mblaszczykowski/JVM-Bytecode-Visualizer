@@ -9,6 +9,11 @@ import {
   heapAt,
   operandRolesAt as bubbleSortRolesAt,
 } from './__fixtures__/bubble-sort-run';
+import {
+  externalsAt,
+  firstInternedStep,
+  frameAt as collatzFrameAt,
+} from './__fixtures__/collatz-run';
 import { firstStepOf, frameAt, operandRolesAt, snapshots } from './__fixtures__/factorial-run';
 import { OperandStackPanel } from './OperandStackPanel';
 
@@ -111,6 +116,14 @@ describe('OperandStackPanel', () => {
     expect(within(cellAt(0)).getByTestId('ref-chip')).toHaveTextContent('null');
   });
 
+  it('names a standard-library object getstatic interned rather than its handle', () => {
+    const step = firstInternedStep();
+    render(<OperandStackPanel frame={collatzFrameAt(step)} externals={externalsAt(step)} />);
+
+    expect(within(cellAt(0)).getByTestId('ref-chip')).toHaveTextContent('System.out');
+    expect(within(cellAt(0)).queryByText('0')).not.toBeInTheDocument();
+  });
+
   describe('where a value came from', () => {
     it('seeks to the step that pushed the cell', () => {
       const onSeekToStep = vi.fn();
@@ -142,6 +155,21 @@ describe('OperandStackPanel', () => {
 
       expect(
         within(cellAt(1)).getByRole('button', { name: /where int\[5\]@0 was pushed/ }),
+      ).toBeInTheDocument();
+    });
+
+    it('names an interned object in the accessible name, not the handle it holds', () => {
+      const step = firstInternedStep();
+      render(
+        <OperandStackPanel
+          frame={collatzFrameAt(step)}
+          externals={externalsAt(step)}
+          onSeekToStep={vi.fn()}
+        />,
+      );
+
+      expect(
+        within(cellAt(0)).getByRole('button', { name: /where System\.out was pushed/ }),
       ).toBeInTheDocument();
     });
 

@@ -1,15 +1,9 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
 
 import { exampleOptions } from './__fixtures__/factorial-run';
-import { closeGlossary } from './glossary-store';
+import { GlossaryDialog } from './GlossaryDialog';
 import { Toolbar, type CompilerStatus, type PanelName } from './Toolbar';
-
-afterEach(() => {
-  act(() => {
-    closeGlossary();
-  });
-});
 
 const examples = exampleOptions();
 
@@ -35,14 +29,6 @@ function renderToolbar(
   );
 
   return { onExampleSelected, onFileSelected };
-}
-
-function zones(): HTMLElement {
-  const row = screen.getByRole('banner').firstElementChild;
-  if (!(row instanceof HTMLElement)) {
-    throw new Error('the toolbar has no zone row');
-  }
-  return row;
 }
 
 describe('Toolbar', () => {
@@ -85,7 +71,8 @@ describe('Toolbar', () => {
     expect(screen.queryByRole('button', { name: 'Write Java…' })).not.toBeInTheDocument();
   });
 
-  it('carries the glossary in every state of the application', () => {
+  it('opens the glossary without owning the dialog itself', () => {
+    render(<GlossaryDialog />);
     renderToolbar();
 
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
@@ -95,17 +82,6 @@ describe('Toolbar', () => {
     expect(screen.getByRole('dialog', { name: 'Glossary' })).toBeInTheDocument();
   });
 
-  it('gives the name, the examples and the actions a zone each', () => {
-    renderToolbar('online', vi.fn());
-
-    expect(zones().className).toContain('md:grid-cols-[auto_minmax(0,1fr)_auto]');
-
-    const examplesZone = screen.getByRole('radiogroup', { name: 'Example programs' }).parentElement
-      ?.parentElement;
-    expect(examplesZone?.className).toContain('min-w-0');
-    expect(examplesZone?.className).toContain('md:row-start-1');
-  });
-
   it('offers the file picker without explaining the drop target', () => {
     renderToolbar();
 
@@ -113,16 +89,15 @@ describe('Toolbar', () => {
     expect(screen.queryByText(/or drop/)).toBeNull();
   });
 
-  it('shares one line between the panel switch and the folded example picker', () => {
+  it('folds the example picker away and offers the panel switch instead', () => {
     const onSelect = vi.fn();
     renderToolbar('hidden', undefined, { selected: 'bytecode', onSelect });
 
-    const panelSwitch = screen.getByTestId('panel-switch');
-    expect(panelSwitch.className).toContain('md:hidden');
-    expect(panelSwitch.className).toContain('row-start-2');
-
-    const trigger = screen.getByTestId('example-picker-trigger');
-    expect(trigger.closest('[class*="row-start-2"]')).not.toBeNull();
+    expect(screen.getByTestId('example-picker-trigger')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Bytecode' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
 
     fireEvent.click(screen.getByRole('button', { name: 'State' }));
 

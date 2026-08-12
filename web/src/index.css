@@ -28,11 +28,15 @@
   --color-accent-soft: light-dark(#4a55c9, #a8b2ff);
   --color-accent-dim: light-dark(#5661cf, #7d8bf5);
   --color-accent-text: light-dark(#2f379e, #c3caff);
+  --color-accent-wash: light-dark(#e9ebfa, #171a2c);
+  --color-accent-fill: light-dark(#d3d6f4, #212649);
   --color-now: light-dark(rgb(79 91 213 / 0.13), rgb(91 108 240 / 0.1));
 
   --color-ok: light-dark(#1a7f37, #3fb950);
   --color-warn: light-dark(#9a6700, #d29922);
+  --color-warn-wash: light-dark(#fbf3e3, #221c0e);
   --color-error: light-dark(#cf222e, #f85149);
+  --color-error-wash: light-dark(#fbeaea, #251214);
 
   --color-syntax-keyword: light-dark(#8250df, #c39aef);
   --color-syntax-method: light-dark(#1f7a4d, #82c7a5);
@@ -44,6 +48,7 @@
   --radius-row: 6px;
   --radius-code: 5px;
   --radius-control: 6px;
+  --radius-chip: 4px;
 
   --shadow-panel: inset 0 0 0 1px var(--color-line), var(--lift);
   --shadow-panel-ink: inset 0 0 0 1px var(--color-line), var(--lift);
@@ -53,6 +58,7 @@
   --shadow-control-raised: inset 0 0 0 1px var(--color-line-strong);
   --shadow-current: inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 34%, transparent);
   --shadow-current-strong: inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 50%, transparent);
+  --shadow-drop-target: inset 0 0 0 1px var(--color-accent);
   --shadow-glow-ok: 0 0 0 3px color-mix(in srgb, var(--color-ok) 18%, transparent);
   --shadow-banner-error: inset 0 0 0 1px color-mix(in srgb, var(--color-error) 42%, transparent);
   --shadow-banner-warn: inset 0 0 0 1px color-mix(in srgb, var(--color-warn) 42%, transparent);

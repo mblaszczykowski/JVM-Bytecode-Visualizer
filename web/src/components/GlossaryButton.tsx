@@ -1,6 +1,5 @@
 import { glossaryEntry, type GlossaryTermId } from '../services/glossary';
-
-import { openGlossary } from './glossary-store';
+import { openGlossary } from '../services/glossary-store';
 
 export function GlossaryButton({ term }: { readonly term: GlossaryTermId }) {
   const { question } = glossaryEntry(term);
@@ -42,7 +41,7 @@ export function GlossaryLink({
       onClick={() => {
         openGlossary(term);
       }}
-      className="focus-ring rounded-[3px] underline decoration-fg-dim decoration-dotted underline-offset-[3px] transition-colors duration-150 hover:text-fg-2 hover:decoration-fg-2"
+      className="focus-ring rounded-chip underline decoration-fg-dim decoration-dotted underline-offset-[3px] transition-colors duration-150 hover:text-fg-2 hover:decoration-fg-2"
     >
       {text}
     </button>

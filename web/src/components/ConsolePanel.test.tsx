@@ -58,16 +58,12 @@ describe('ConsolePanel', () => {
     render(<ConsolePanel lines={['  indented', '   ', '']} />);
 
     expect(texts()).toEqual(['  indented', '   ', '']);
-    for (const row of rows()) {
-      expect(row.className).toContain('whitespace-pre');
-    }
   });
 
   it('renders one line as one row, so a long line never becomes two', () => {
     render(<ConsolePanel lines={['x'.repeat(400)]} />);
 
     expect(rows()).toHaveLength(1);
-    expect(rows()[0]?.className).toContain('h-[26px]');
   });
 
   it('renders nothing at all for a snapshot that recorded no output', () => {

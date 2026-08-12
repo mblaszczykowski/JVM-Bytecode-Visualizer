@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
+import { useDialogFocus } from '../hooks/useDialogFocus';
 import { handlesKeyItself } from '../hooks/useTransportShortcuts';
+
+import { Button } from './ui/Button';
 
 export interface Shortcut {
   readonly keys: readonly string[];
@@ -19,7 +22,7 @@ interface KeyboardHelpProps {
 
 function Keycap({ label }: { readonly label: string }) {
   return (
-    <kbd className="rounded-[5px] bg-raised-active px-1.5 py-0.5 font-mono text-micro text-fg shadow-control-raised">
+    <kbd className="rounded-code bg-raised-active px-1.5 py-0.5 font-mono text-micro text-fg shadow-control-raised">
       {label}
     </kbd>
   );
@@ -28,34 +31,7 @@ function Keycap({ label }: { readonly label: string }) {
 function HelpSheet({ groups, onClose }: KeyboardHelpProps & { readonly onClose: () => void }) {
   const sheetRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    const opener = document.activeElement;
-    sheetRef.current?.focus();
-
-    return () => {
-      if (opener instanceof HTMLElement) {
-        opener.focus();
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    function handleKeyDown(event: KeyboardEvent): void {
-      if (event.key === 'Escape') {
-        event.stopPropagation();
-        onClose();
-        return;
-      }
-      if (event.key !== 'Tab') {
-        event.stopPropagation();
-      }
-    }
-
-    window.addEventListener('keydown', handleKeyDown, true);
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown, true);
-    };
-  }, [onClose]);
+  useDialogFocus(sheetRef, onClose);
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-7">
@@ -74,13 +50,9 @@ function HelpSheet({ groups, onClose }: KeyboardHelpProps & { readonly onClose: 
           <h2 id="shortcuts-title" className="text-title font-medium text-fg">
             Keyboard
           </h2>
-          <button
-            type="button"
-            onClick={onClose}
-            className="focus-ring shrink-0 rounded-control bg-raised px-3 py-1 text-label text-fg-2 transition-colors duration-150 hover:bg-raised-active"
-          >
+          <Button tone="raised" onClick={onClose} className="shrink-0">
             Close
-          </button>
+          </Button>
         </div>
 
         <div className="scroll-slim min-h-0 flex-1 overflow-auto px-3.5 pb-3.5">

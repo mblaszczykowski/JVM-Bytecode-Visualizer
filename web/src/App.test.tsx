@@ -798,7 +798,7 @@ describe('the compile editor', () => {
     await writeAndCompile();
 
     expect(await screen.findByTestId('error-banner')).toHaveTextContent(
-      'The compiler is busy (rate limit). Try again in a minute.',
+      'The compile service is limiting how often this browser may compile. Try again in a minute. The examples and .class uploads still work.',
     );
     expect(screen.getByLabelText('Java source')).toHaveValue(GCD_SOURCE);
   });
@@ -908,7 +908,7 @@ describe('the compile editor', () => {
     expect(screen.queryByTestId('compile-editor')).not.toBeInTheDocument();
   });
 
-  it('lets the editor keep the keys the transport also listens for', async () => {
+  it('holds the transport while the editor is open, and hands it back on close', async () => {
     stubFetch(compileRoutes(compiledGcd));
     await openApp(COMPILE_API);
     fireEvent.click(screen.getByRole('radio', { name: 'Factorial' }));
@@ -917,6 +917,11 @@ describe('the compile editor', () => {
 
     fireEvent.keyDown(textarea, { key: ' ' });
     fireEvent.keyDown(textarea, { key: 'ArrowRight' });
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Compile' }), { key: 'ArrowRight' });
+    fireEvent.keyDown(document.body, { key: 'End' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    await screen.findByTestId('step-counter');
 
     expect(screen.getByTestId('step-counter')).toHaveTextContent(
       `step 1 / ${String(FACTORIAL_STEPS)}`,

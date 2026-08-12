@@ -2,7 +2,7 @@ import type { ReactNode, RefObject } from 'react';
 
 import { glossaryTermForPanel } from '../services/glossary';
 
-import { GlossaryButton } from './GlossaryTrigger';
+import { GlossaryButton } from './GlossaryButton';
 
 export type PanelVariant = 'code' | 'state';
 
@@ -67,6 +67,7 @@ export function Panel({
       <div
         ref={contentRef}
         tabIndex={scrolls ? 0 : undefined}
+        data-scroll-region={scrolls ? '' : undefined}
         className={`${body} ${bodyClassName}`}
       >
         {children}

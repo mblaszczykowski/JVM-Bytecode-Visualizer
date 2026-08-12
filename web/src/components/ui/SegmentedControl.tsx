@@ -20,46 +20,36 @@ export function SegmentedControl({ label, className = 'p-0.5', children }: Segme
 
 interface SegmentProps {
   readonly selected?: boolean | undefined;
-  readonly tone?: 'default' | 'inverted';
-  readonly prominent?: boolean;
+  readonly primary?: boolean;
   readonly disabled?: boolean;
   readonly title?: string | undefined;
-  readonly label: string;
-  readonly labelIsVisible?: boolean;
+  readonly label?: string | undefined;
   readonly className?: string;
   readonly onClick: () => void;
   readonly children: ReactNode;
 }
 
-const RAISED = 'bg-raised-active text-fg shadow-control-raised';
-const INVERTED = 'bg-fg text-app hover:bg-fg-2';
+const PRIMARY = 'bg-fg text-app hover:bg-fg-2';
+const SELECTED = 'bg-raised-active text-fg shadow-control-raised';
 const RESTING = 'text-fg-2 hover:bg-raised hover:text-fg';
 
 export function Segment({
   selected,
-  tone = 'default',
-  prominent = false,
+  primary = false,
   disabled = false,
   title,
   label,
-  labelIsVisible = false,
   className = 'px-3 py-1',
   onClick,
   children,
 }: SegmentProps) {
-  const inverted = tone === 'inverted';
-  const active =
-    inverted && (prominent || selected === true)
-      ? INVERTED
-      : selected === true || prominent
-        ? RAISED
-        : RESTING;
+  const surface = primary ? PRIMARY : selected === true ? SELECTED : RESTING;
 
   return (
     <button
       type="button"
       aria-pressed={selected}
-      aria-label={labelIsVisible ? undefined : label}
+      aria-label={label}
       aria-disabled={disabled || undefined}
       title={title ?? label}
       onClick={() => {
@@ -67,7 +57,7 @@ export function Segment({
           onClick();
         }
       }}
-      className={`focus-ring flex items-center justify-center rounded-[4px] text-label transition-colors duration-150 aria-disabled:cursor-default aria-disabled:text-fg-dim ${active} ${className}`}
+      className={`focus-ring flex items-center justify-center rounded-chip text-label transition-colors duration-150 aria-disabled:cursor-default aria-disabled:text-fg-dim ${surface} ${className}`}
     >
       {children}
     </button>

@@ -29,8 +29,8 @@ function renderEditor({ diagnostics = [], isCompiling = false }: Options = {}) {
     );
   }
 
-  render(<Host />);
-  return { onCompile, onClose, textarea: screen.getByLabelText('Java source') };
+  const { unmount } = render(<Host />);
+  return { onCompile, onClose, unmount, textarea: screen.getByLabelText('Java source') };
 }
 
 describe('CompileEditor', () => {
@@ -92,7 +92,7 @@ describe('CompileEditor', () => {
     expect(rows[0]).toHaveAttribute('data-kind', 'error');
     expect(rows[0]).toHaveClass('text-error');
     expect(rows[1]).toHaveTextContent('7unchecked call');
-    expect(rows[2]).toHaveTextContent('—recompile with -Xlint');
+    expect(rows[2]).toHaveTextContent('–recompile with -Xlint');
   });
 
   it('shows nothing where the diagnostics go until there are some', () => {
@@ -109,5 +109,44 @@ describe('CompileEditor', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
     expect(onClose).toHaveBeenCalledTimes(2);
+  });
+
+  it('hands the focus back to whatever opened it', () => {
+    const opener = document.createElement('button');
+    document.body.append(opener);
+    opener.focus();
+
+    const { unmount, textarea } = renderEditor();
+    expect(textarea).toHaveFocus();
+
+    unmount();
+    expect(opener).toHaveFocus();
+    opener.remove();
+  });
+
+  it('keeps Tab inside itself, so the toolbar behind it stays out of reach', () => {
+    renderEditor();
+
+    const controls = screen.getAllByRole('button');
+    const first = screen.getByRole('button', { name: 'Close' });
+    const last = controls.at(-1);
+
+    last?.focus();
+    fireEvent.keyDown(document.body, { key: 'Tab' });
+    expect(first).toHaveFocus();
+
+    fireEvent.keyDown(document.body, { key: 'Tab', shiftKey: true });
+    expect(last).toHaveFocus();
+  });
+
+  it('holds on to the keys the transport listens for', () => {
+    const onWindowKey = vi.fn();
+    const { textarea } = renderEditor();
+
+    window.addEventListener('keydown', onWindowKey);
+    fireEvent.keyDown(textarea, { key: 'ArrowRight' });
+    window.removeEventListener('keydown', onWindowKey);
+
+    expect(onWindowKey).not.toHaveBeenCalled();
   });
 });

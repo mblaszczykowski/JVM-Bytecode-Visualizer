@@ -1,5 +1,6 @@
+import { rowTopOf, useScrollFollow } from '../hooks/useScrollFollow';
+
 import { EmptyState, Panel } from './Panel';
-import { useScrollFollow } from './useScrollFollow';
 
 export interface ConsolePanelProps {
   readonly lines: readonly string[];
@@ -10,7 +11,7 @@ const LINE =
 
 export function ConsolePanel({ lines }: ConsolePanelProps) {
   const newestIndex = lines.length - 1;
-  const contentRef = useScrollFollow(lines.length === 0 ? undefined : newestIndex);
+  const contentRef = useScrollFollow(rowTopOf(lines.length === 0 ? undefined : newestIndex));
 
   return (
     <div data-testid="console-panel" className="flex min-h-0 grow flex-col">

@@ -1,15 +1,18 @@
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 
-import type { HeapObject, StackFrame } from '../core/interpreter/types';
+import type { ExternalValue, HeapObject, StackFrame } from '../core/interpreter';
+import { describeValue } from '../services/derivations';
 
-import { referenceLabel } from './heap-view';
+import { useRowNavigation } from '../hooks/useRowNavigation';
+
+import { OriginButton } from './OriginButton';
 import { EmptyState, Panel } from './Panel';
 import { ReferenceChip } from './ui/ReferenceChip';
-import { useRowNavigation } from './useRowNavigation';
 
 interface OperandStackPanelProps {
   readonly frame: StackFrame | undefined;
   readonly heap?: readonly HeapObject[] | undefined;
+  readonly externals?: readonly ExternalValue[] | undefined;
   readonly frameIndex?: number;
   readonly annotations?: readonly (string | undefined)[] | undefined;
   readonly onSeekToStep?: ((step: number) => void) | undefined;
@@ -19,16 +22,16 @@ const BASE_LINE = 'h-px flex-1 bg-line';
 
 const LABEL_COLUMN = 'w-[30px] shrink-0 text-legend tracking-[0.1em]';
 
-const ORIGIN_BUTTON =
-  'focus-ring shrink-0 rounded-[4px] px-1 font-ui text-micro text-fg-3 transition-colors duration-150 hover:bg-raised-active hover:text-fg';
-
 const NO_HEAP: readonly HeapObject[] = [];
+
+const NO_EXTERNALS: readonly ExternalValue[] = [];
 
 export function OperandStackPanel({
   frame,
   frameIndex = 0,
   annotations,
   heap = NO_HEAP,
+  externals = NO_EXTERNALS,
   onSeekToStep,
 }: OperandStackPanelProps) {
   const reduced = useReducedMotion() ?? false;
@@ -43,7 +46,7 @@ export function OperandStackPanel({
 
   if (frame === undefined) {
     return (
-      <Panel title="Operand stack" meta="—" variant="state" className="grow">
+      <Panel title="Operand stack" meta="–" variant="state" className="grow">
         <EmptyState
           status="no active frame"
           detail="An operand stack belongs to a frame, and the run has none left."
@@ -70,7 +73,7 @@ export function OperandStackPanel({
             .map(({ value, index }) => {
               const isTop = index === topIndex;
               const annotation = annotations?.[index];
-              const isReference = frame.operandKinds?.[index] === 'ref';
+              const kind = frame.operandKinds?.[index];
               const origin = frame.operandOrigins?.[index];
               const originPosition = originRow.get(index);
 
@@ -92,33 +95,27 @@ export function OperandStackPanel({
                       isTop ? 'now-row text-accent-text' : 'bg-raised text-fg-2'
                     }`}
                   >
-                    {isReference ? (
-                      <ReferenceChip heap={heap} handle={value} onAccent={isTop} />
-                    ) : (
+                    {kind === 'int' || kind === undefined ? (
                       <span className="font-mono text-body">{value}</span>
+                    ) : (
+                      <ReferenceChip
+                        label={describeValue(kind, value, heap, externals)}
+                        onAccent={isTop}
+                      />
                     )}
                     <span className="grow" />
                     {origin === undefined ||
                     originPosition === undefined ||
                     onSeekToStep === undefined ? null : (
-                      <button
-                        type="button"
-                        data-testid="operand-origin"
-                        data-origin-row={originPosition}
-                        tabIndex={originPosition === origins.anchorIndex ? 0 : -1}
-                        aria-label={`Go to step ${String(origin + 1)}, where ${
-                          isReference ? referenceLabel(heap, value) : String(value)
-                        } was pushed`}
-                        onClick={() => {
-                          onSeekToStep(origin);
-                        }}
-                        onKeyDown={(event) => {
-                          origins.onKeyDown(event, originPosition);
-                        }}
-                        className={ORIGIN_BUTTON}
-                      >
-                        {`from ${String(origin + 1)}`}
-                      </button>
+                      <OriginButton
+                        step={origin}
+                        sentence={`${describeValue(kind, value, heap, externals)} was pushed`}
+                        testId="operand-origin"
+                        row={originPosition}
+                        anchorRow={origins.anchorIndex}
+                        onSeekToStep={onSeekToStep}
+                        onKeyDown={origins.onKeyDown}
+                      />
                     )}
                     {annotation === undefined ? null : (
                       <span

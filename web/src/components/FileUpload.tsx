@@ -1,5 +1,9 @@
 import { type ChangeEvent, type DragEvent, useId, useRef, useState } from 'react';
 
+import { MAX_UPLOAD_LABEL } from '../services/app-state';
+
+import { buttonSurface } from './ui/button-surface';
+
 export type FileUploadVariant = 'compact' | 'zone';
 
 interface FileUploadProps {
@@ -67,18 +71,15 @@ export function FileUpload({ onFileSelected, variant = 'compact' }: FileUploadPr
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       className={`focus-ring-within ${CONTAINER[variant]} transition-colors duration-150 ${
-        isDragging ? 'bg-accent/12' : IDLE_SURFACE[variant]
+        isDragging ? 'bg-accent-wash' : IDLE_SURFACE[variant]
       }`}
     >
-      <label
-        htmlFor={inputId}
-        className="text-label cursor-pointer rounded-control bg-raised px-2.5 py-1 text-fg shadow-control-raised transition-colors duration-150 hover:bg-raised-hover"
-      >
+      <label htmlFor={inputId} className={buttonSurface('prominent', 'md', 'cursor-pointer')}>
         Open .class…
       </label>
       {variant === 'zone' ? (
         <span className="text-meta text-fg-3">
-          or drop a .class file here (up to 512 KiB, parsed in this tab)
+          {`or drop a .class file here (up to ${MAX_UPLOAD_LABEL}, parsed in this tab)`}
         </span>
       ) : null}
       <input

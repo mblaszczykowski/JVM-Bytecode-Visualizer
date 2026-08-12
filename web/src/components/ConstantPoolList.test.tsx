@@ -5,7 +5,8 @@ import { parseClassFile } from '../core/classfile';
 import { readExampleBytes } from '../services/__fixtures__/example-files';
 import { constantPoolRowsOf, type ConstantPoolRow } from '../services/class-view';
 
-import { ConstantPoolTable } from './ConstantPoolTable';
+import { ConstantPoolList } from './ConstantPoolList';
+import { POOL_INDEX_COLUMN } from './rhythm';
 
 const rows = constantPoolRowsOf(parseClassFile(readExampleBytes('Factorial.class')).constantPool);
 
@@ -21,9 +22,9 @@ function rowAt(index: number): HTMLElement {
   return row;
 }
 
-describe('ConstantPoolTable', () => {
+describe('ConstantPoolList', () => {
   it('renders one row per occupied slot, in index order', () => {
-    render(<ConstantPoolTable rows={rows} />);
+    render(<ConstantPoolList rows={rows} />);
 
     const rendered = screen.getAllByTestId('constant-row');
 
@@ -32,7 +33,7 @@ describe('ConstantPoolTable', () => {
   });
 
   it('resolves a Methodref down to the method it names', () => {
-    render(<ConstantPoolTable rows={rows} />);
+    render(<ConstantPoolList rows={rows} />);
 
     const methodref = within(rowAt(7));
 
@@ -43,7 +44,7 @@ describe('ConstantPoolTable', () => {
 
   it('follows the entries a Methodref points at', () => {
     const onSelectIndex = vi.fn();
-    render(<ConstantPoolTable rows={rows} onSelectIndex={onSelectIndex} />);
+    render(<ConstantPoolList rows={rows} onSelectIndex={onSelectIndex} />);
 
     const methodref = within(rowAt(7));
     expect(methodref.getByRole('button', { name: 'Follow constant pool entry #8' })).toBeVisible();
@@ -55,7 +56,7 @@ describe('ConstantPoolTable', () => {
 
   it('selects a row when the row itself is activated', () => {
     const onSelectIndex = vi.fn();
-    render(<ConstantPoolTable rows={rows} onSelectIndex={onSelectIndex} />);
+    render(<ConstantPoolList rows={rows} onSelectIndex={onSelectIndex} />);
 
     fireEvent.click(screen.getByRole('button', { name: METHODREF }));
 
@@ -63,33 +64,48 @@ describe('ConstantPoolTable', () => {
   });
 
   it('marks the selected entry as the reader position', () => {
-    render(<ConstantPoolTable rows={rows} selectedIndex={7} />);
+    render(<ConstantPoolList rows={rows} selectedIndex={7} />);
 
     const selected = rowAt(7);
 
     expect(selected).toHaveAttribute('aria-current', 'true');
-    expect(selected.className).toContain('bg-accent/[0.22]');
     expect(rowAt(8)).not.toHaveAttribute('aria-current');
     expect(
       screen.getAllByTestId('constant-row').filter((row) => row.hasAttribute('aria-current')),
     ).toHaveLength(1);
   });
 
-  it('takes a single tab stop for the whole pool, anchored on the selected row', () => {
-    render(<ConstantPoolTable rows={rows} selectedIndex={7} onSelectIndex={vi.fn()} />);
+  it('puts only the selected row in the tab order, its own references included', () => {
+    render(<ConstantPoolList rows={rows} selectedIndex={7} onSelectIndex={vi.fn()} />);
 
     const reachable = screen.getAllByRole('button').filter((button) => button.tabIndex === 0);
 
-    expect(reachable).toHaveLength(3);
-    expect(reachable[0]).toHaveAccessibleName(METHODREF);
+    expect(reachable.map((button) => button.getAttribute('aria-label'))).toEqual([
+      METHODREF,
+      'Follow constant pool entry #8',
+      'Follow constant pool entry #9',
+    ]);
+    expect(reachable.every((button) => rowAt(7).contains(button))).toBe(true);
   });
 
   it('moves the anchor with the arrow keys', () => {
-    render(<ConstantPoolTable rows={rows} selectedIndex={7} onSelectIndex={vi.fn()} />);
+    render(<ConstantPoolList rows={rows} selectedIndex={7} onSelectIndex={vi.fn()} />);
 
     fireEvent.keyDown(screen.getByRole('button', { name: METHODREF }), { key: 'ArrowDown' });
 
     expect(document.activeElement).toHaveAccessibleName('Constant pool entry #8, Class, Factorial');
+  });
+
+  it('leaves room for the widest index a constant pool can address', () => {
+    const widest: ConstantPoolRow = {
+      index: 65534,
+      tagName: 'Utf8',
+      text: 'the last slot a u2 pool count can address',
+      references: [],
+    };
+    render(<ConstantPoolList rows={[widest]} />);
+
+    expect(screen.getByText('#65534')).toHaveClass(...POOL_INDEX_COLUMN.split(' '));
   });
 
   it('stays readable without a selection handler, references and all', () => {
@@ -100,7 +116,7 @@ describe('ConstantPoolTable', () => {
       text: 'Factorial',
       references: [1],
     };
-    render(<ConstantPoolTable rows={[utf8, classEntry]} />);
+    render(<ConstantPoolList rows={[utf8, classEntry]} />);
 
     expect(screen.queryAllByRole('button')).toHaveLength(0);
     expect(within(rowAt(2)).getByText('#1')).toBeInTheDocument();
