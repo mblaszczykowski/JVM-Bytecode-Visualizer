@@ -1,0 +1,90 @@
+{
+  "files": 8053,
+  "methodsWithCode": 88604,
+  "instructions": 1173738,
+  "classFileMajorVersions": [49, 51, 52, 53],
+  "classesWithRunnableEntry": 1,
+  "fullyExecutableMethods": 57732,
+  "fullyExecutableMethodPercent": 65.2,
+  "distinctOpcodesSeen": 196,
+  "distinctOpcodesExecutable": 90,
+  "instructionsExecutable": 1073924,
+  "instructionCoveragePercent": 91.5,
+  "mostCommon": [
+    {
+      "mnemonic": "aload_0",
+      "count": 143286,
+      "executable": true
+    },
+    {
+      "mnemonic": "invokevirtual",
+      "count": 84781,
+      "executable": true
+    },
+    {
+      "mnemonic": "aload_1",
+      "count": 68180,
+      "executable": true
+    },
+    {
+      "mnemonic": "areturn",
+      "count": 61029,
+      "executable": true
+    },
+    {
+      "mnemonic": "invokestatic",
+      "count": 59735,
+      "executable": true
+    },
+    {
+      "mnemonic": "aload",
+      "count": 44069,
+      "executable": true
+    },
+    {
+      "mnemonic": "getfield",
+      "count": 39356,
+      "executable": true
+    },
+    {
+      "mnemonic": "invokespecial",
+      "count": 38676,
+      "executable": true
+    },
+    {
+      "mnemonic": "aload_2",
+      "count": 31722,
+      "executable": true
+    },
+    {
+      "mnemonic": "dup",
+      "count": 31482,
+      "executable": true
+    },
+    {
+      "mnemonic": "invokeinterface",
+      "count": 30794,
+      "executable": false
+    },
+    {
+      "mnemonic": "iload",
+      "count": 28704,
+      "executable": true
+    },
+    {
+      "mnemonic": "iconst_0",
+      "count": 25152,
+      "executable": true
+    },
+    {
+      "mnemonic": "goto",
+      "count": 23674,
+      "executable": true
+    },
+    {
+      "mnemonic": "astore",
+      "count": 23181,
+      "executable": true
+    }
+  ]
+}

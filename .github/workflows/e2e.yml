@@ -22,12 +22,13 @@ permissions:
 
 concurrency:
   group: e2e-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   playwright:
     name: playwright / chromium
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -40,6 +41,12 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Restore the browser
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
 
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
@@ -58,6 +65,8 @@ jobs:
   compile-service:
     name: playwright / against the compile service
     runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: playwright
     env:
       COMPILE_API_URL: http://localhost:8080
       PREVIEW_ORIGIN: http://localhost:4173
@@ -95,6 +104,12 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Restore the browser
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
 
       - name: Install Chromium
         run: npx playwright install --with-deps chromium

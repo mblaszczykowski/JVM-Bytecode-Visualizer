@@ -5,15 +5,52 @@ import reactRefresh from 'eslint-plugin-react-refresh';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
+const REACT_PACKAGES = [
+  'react',
+  'react/*',
+  'react-dom',
+  'react-dom/*',
+  'framer-motion',
+  'motion',
+  'motion/*',
+];
+
 const CORE_FORBIDDEN_IMPORTS = [
   {
-    group: ['react', 'react/*', 'react-dom', 'react-dom/*', 'framer-motion', 'motion', 'motion/*'],
+    group: REACT_PACKAGES,
     message: 'src/core stays pure TypeScript: no React, DOM or animation imports (ADR-0001).',
   },
   {
     group: ['**/components/**', '**/hooks/**', '**/services/**', '**/app/**', '**/App', '**/main'],
     message:
       'src/core must not depend on the UI/application layer; dependencies flow UI to core only (ADR-0001).',
+  },
+];
+
+const REACT_LAYER_MODULES = String.raw`(^|/)(components|hooks)/(?!__fixtures__/)|(^|/)(App|main)$`;
+
+const SERVICES_FORBIDDEN_IMPORTS = [
+  {
+    group: REACT_PACKAGES,
+    message:
+      'src/services is the application layer: it holds no React, so every derivation can be tested without rendering.',
+  },
+  {
+    regex: REACT_LAYER_MODULES,
+    message:
+      'src/services must not depend on the React layer above it; dependencies flow components and hooks to services to core. A recorded run under __fixtures__ is test data and stays allowed.',
+  },
+];
+
+const WORKER_FORBIDDEN_IMPORTS = [
+  {
+    group: REACT_PACKAGES,
+    message: 'A worker has no DOM and no React; it runs the interpreter and posts snapshots back.',
+  },
+  {
+    regex: REACT_LAYER_MODULES,
+    message:
+      'A worker may use src/core and src/services only. Importing the React layer would pull the whole UI into the worker bundle.',
   },
 ];
 
@@ -30,7 +67,27 @@ const BANNED_CLASSNAMES = [
   {
     pattern: String.raw`\brounded-full\b`,
     message:
-      'Radii are 10/8/6/6/5 (rounded-panel / -card / -row / -control / -code). rounded-full is allowed only on something genuinely circular; disable this line and say which.',
+      'Radii are 10/8/6/6/5/4 (rounded-panel / -card / -row / -control / -code / -chip). rounded-full is allowed only on something genuinely circular; disable this line and say which.',
+  },
+  {
+    pattern: String.raw`\brounded-(?:\[|sm|md|lg|xl|2xl|3xl|4xl)`,
+    message:
+      'Every radius is a token: rounded-panel / -card / -row / -control / -code / -chip. Add one to the @theme block in src/index.css rather than an arbitrary or Tailwind-default radius.',
+  },
+  {
+    pattern: String.raw`\bshadow-\[`,
+    message:
+      'The shadow grammar is the inset hairline, and every shadow is a --shadow-* token in src/index.css. Add one there instead of writing the shadow inline.',
+  },
+  {
+    pattern: String.raw`\bbg-(?:accent|ok|warn|error)\/`,
+    message:
+      'A tinted surface is a token: bg-accent-wash / -fill, bg-warn-wash, bg-error-wash. An alpha over whatever happens to be behind is how the ad-hoc grey ramp came back.',
+  },
+  {
+    pattern: String.raw`\btext-[a-z][a-z-]*\/\d`,
+    message:
+      'Text hierarchy is the four steps (text-fg / -2 / -3 / -dim). An alpha on a text colour is opacity hierarchy under another name.',
   },
   {
     pattern: String.raw`\bbackdrop-(?:blur|saturate|brightness)`,
@@ -62,6 +119,22 @@ const BANNED_CLASSNAME_RULES = BANNED_CLASSNAMES.flatMap(({ pattern, message }) 
   { selector: `Literal[value=/${pattern}/]`, message },
   { selector: `TemplateElement[value.raw=/${pattern}/]`, message },
 ]);
+
+const EM_DASH = '—';
+
+const EM_DASH_MESSAGE =
+  'No em-dashes anywhere in the source or the copy it renders. Use a period, a comma, a colon or parentheses; the placeholder for an absent value is an en dash.';
+
+const PROSE_RULES = [
+  { selector: `Literal[value=/${EM_DASH}/]`, message: EM_DASH_MESSAGE },
+  { selector: `TemplateElement[value.raw=/${EM_DASH}/]`, message: EM_DASH_MESSAGE },
+  { selector: `JSXText[value=/${EM_DASH}/]`, message: EM_DASH_MESSAGE },
+  {
+    selector: 'JSXExpressionContainer > JSXEmptyExpression',
+    message:
+      'An empty {} in JSX renders nothing and reads as a deleted comment. Delete the braces too.',
+  },
+];
 
 export default tseslint.config(
   {
@@ -105,9 +178,16 @@ export default tseslint.config(
   },
 
   {
+    files: ['src/**/*.{ts,tsx}', 'tests/**/*.ts'],
+    rules: {
+      'no-restricted-syntax': ['error', ...PROSE_RULES],
+    },
+  },
+
+  {
     files: ['src/**/*.tsx', 'src/components/**/*.ts'],
     rules: {
-      'no-restricted-syntax': ['error', ...BANNED_CLASSNAME_RULES],
+      'no-restricted-syntax': ['error', ...PROSE_RULES, ...BANNED_CLASSNAME_RULES],
     },
   },
 
@@ -125,6 +205,23 @@ export default tseslint.config(
   },
 
   {
+    files: ['src/services/**/*.ts'],
+    rules: {
+      '@typescript-eslint/no-restricted-imports': [
+        'error',
+        { patterns: SERVICES_FORBIDDEN_IMPORTS },
+      ],
+    },
+  },
+
+  {
+    files: ['src/workers/**/*.ts'],
+    rules: {
+      '@typescript-eslint/no-restricted-imports': ['error', { patterns: WORKER_FORBIDDEN_IMPORTS }],
+    },
+  },
+
+  {
     files: ['*.config.ts', 'tests/e2e/**/*.ts'],
     languageOptions: {
       globals: globals.node,
@@ -132,8 +229,8 @@ export default tseslint.config(
   },
 
   {
-    files: ['**/*.js'],
-    extends: [tseslint.configs.disableTypeChecked],
+    files: ['**/*.{js,mjs}'],
+    extends: [js.configs.recommended, tseslint.configs.disableTypeChecked],
     languageOptions: {
       globals: globals.node,
     },

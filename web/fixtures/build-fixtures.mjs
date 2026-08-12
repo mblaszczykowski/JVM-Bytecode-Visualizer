@@ -1,10 +1,17 @@
 #!/usr/bin/env node
 
-import { execFileSync } from 'node:child_process';
 import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+
+import {
+  FixtureBuildError,
+  JAVA_RELEASE,
+  requireExpectedMajorVersion,
+  requirePinnedJdk,
+  runTool,
+} from './jdk.mjs';
 
 const FIXTURES_DIR = dirname(fileURLToPath(import.meta.url));
 const SOURCE_DIR = join(FIXTURES_DIR, 'src');
@@ -13,12 +20,12 @@ const OUTPUT_DIR = join(FIXTURES_DIR, '..', 'public', 'examples');
 
 const HARNESS_CLASS = 'ExpectedResults';
 
-const JAVA_RELEASE = '21';
-const EXPECTED_MAJOR_VERSION = 65;
-
 const MANIFEST_VERSION = 1;
 
-const SUPPORTED_INSTRUCTION_SET = Object.freeze({
+// Every mnemonic the interpreter executes, grouped for the error message below. The grouping is
+// presentational; fixtures/build-fixtures.test.ts asserts that the flattened set is exactly the
+// set of opcodes src/core/disassembler/opcodes.ts gives a stack effect to, so this cannot drift.
+export const SUPPORTED_INSTRUCTION_SET = Object.freeze({
   constants: [
     'nop',
     'aconst_null',
@@ -62,6 +69,7 @@ const SUPPORTED_INSTRUCTION_SET = Object.freeze({
   ],
   increment: ['iinc', 'iinc_w'],
   arrays: ['newarray', 'iaload', 'iastore', 'arraylength'],
+  objects: ['new', 'getfield', 'putfield'],
   stack: ['pop', 'pop2', 'dup', 'dup_x1', 'dup2', 'dup2_x1', 'swap'],
   arithmetic: ['iadd', 'isub', 'imul', 'idiv', 'irem', 'ineg'],
   'shifts and bitwise logic': ['ishl', 'ishr', 'iushr', 'iand', 'ior', 'ixor'],
@@ -80,13 +88,18 @@ const SUPPORTED_INSTRUCTION_SET = Object.freeze({
     'ifgt',
     'ifle',
   ],
+  'reference comparisons': ['if_acmpeq', 'if_acmpne', 'ifnull', 'ifnonnull'],
   jump: ['goto', 'tableswitch', 'lookupswitch'],
-  calls: ['invokestatic', 'invokevirtual', 'getstatic', 'ireturn', 'return'],
+  calls: ['invokestatic', 'invokevirtual', 'invokespecial', 'getstatic'],
+  returns: ['ireturn', 'areturn', 'return'],
+  exceptions: ['athrow'],
 });
 
-const ALLOWED_MNEMONICS = new Set(Object.values(SUPPORTED_INSTRUCTION_SET).flat());
+export const ALLOWED_MNEMONICS = new Set(Object.values(SUPPORTED_INSTRUCTION_SET).flat());
 
-const EXTERNAL_MEMBERS = Object.freeze([
+// The members of the standard library the interpreter implements. Kept equal to
+// EXTERNAL_FIELDS and EXTERNAL_METHODS in src/core/interpreter/externals.ts by the same test.
+export const EXTERNAL_MEMBERS = Object.freeze([
   'java/lang/System.out:Ljava/io/PrintStream;',
   'java/io/PrintStream.println:()V',
   ...['I', 'Z', 'C', 'Ljava/lang/String;'].flatMap((parameter) => [
@@ -102,15 +115,16 @@ const EXTERNAL_MEMBERS = Object.freeze([
 
 const ALLOWED_EXTERNALS = new Set(EXTERNAL_MEMBERS);
 
+const SUPER_CONSTRUCTOR = 'java/lang/Object."<init>":()V';
+
 const METHOD_REFERENCE = /^Method\s+(\S+):(\(\S*\)\S+)$/;
 const FIELD_REFERENCE = /^Field\s+(\S+):(\S+)$/;
-const SUPPORTED_DESCRIPTOR = /^\(I*\)[IV]$/;
+const CLASS_REFERENCE = /^class\s+(\S+)$/;
 
 const CONSTANT_KIND = /^(\w+)\b/;
 const LOADABLE_CONSTANT_KINDS = new Set(['int', 'String']);
 
 const MAIN_SIGNATURE = 'public static void main(java.lang.String[])';
-const SUPPORTED_SIGNATURE = /^(?:\w+\s+)*?(?:int|void)\s+\w+\(\s*(?:int(?:\s*,\s*int)*)?\s*\)$/;
 
 const EXAMPLES = Object.freeze([
   {
@@ -198,27 +212,6 @@ const EXAMPLES = Object.freeze([
   },
 ]);
 
-class FixtureBuildError extends Error {
-  constructor(message) {
-    super(message);
-    this.name = 'FixtureBuildError';
-  }
-}
-
-function runTool(command, args) {
-  try {
-    return execFileSync(command, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
-  } catch (cause) {
-    const stderr = typeof cause?.stderr === 'string' ? cause.stderr.trim() : '';
-    const stdout = typeof cause?.stdout === 'string' ? cause.stdout.trim() : '';
-    const details = [stderr, stdout].filter(Boolean).join('\n');
-    throw new FixtureBuildError(
-      `Command "${command} ${args.join(' ')}" failed.` +
-        (details ? `\n${details}` : `\n${String(cause?.message ?? cause)}`),
-    );
-  }
-}
-
 function compileAll(classesDir) {
   const sources = [
     ...EXAMPLES.map((example) => join(SOURCE_DIR, `${example.className}.java`)),
@@ -227,9 +220,17 @@ function compileAll(classesDir) {
   runTool('javac', ['-g', '-Xlint:all', '--release', JAVA_RELEASE, '-d', classesDir, ...sources]);
 }
 
+/**
+ * @typedef {{ offset: number; mnemonic: string; comment: string }} ParsedInstruction
+ * @typedef {'method' | 'class-init' | 'instance-init'} MethodKind
+ * @typedef {{ signature: string; kind: MethodKind; instructions: ParsedInstruction[] }} ParsedMethod
+ */
+
 function parseDisassembly(javapOutput, className) {
   const constructorPattern = new RegExp(`(?:^|\\s)${className}\\s*\\(`);
+  /** @type {ParsedMethod[]} */
   const methods = [];
+  /** @type {ParsedMethod | null} */
   let current = null;
 
   for (const line of javapOutput.split('\n')) {
@@ -241,11 +242,11 @@ function parseDisassembly(javapOutput, className) {
             'appeared before any method header.',
         );
       }
-      const operands = instruction[3];
+      const [, offset = '', mnemonic = '', operands = ''] = instruction;
       const commentAt = operands.indexOf('//');
       current.instructions.push({
-        offset: Number(instruction[1]),
-        mnemonic: instruction[2],
+        offset: Number(offset),
+        mnemonic,
         comment: commentAt === -1 ? '' : operands.slice(commentAt + 2).trim(),
       });
       continue;
@@ -253,7 +254,8 @@ function parseDisassembly(javapOutput, className) {
 
     const signature = /^\s{2}(\S.*);\s*$/.exec(line);
     if (signature) {
-      const text = signature[1].trim();
+      const text = (signature[1] ?? '').trim();
+      /** @type {MethodKind} */
       const kind = text.startsWith('static {}')
         ? 'class-init'
         : constructorPattern.test(text)
@@ -267,41 +269,87 @@ function parseDisassembly(javapOutput, className) {
   return methods;
 }
 
-function readMajorVersion(classesDir, className) {
-  const verbose = runTool('javap', ['-v', '-p', '-classpath', classesDir, className]);
-  const match = /^\s*major version:\s*(\d+)\s*$/m.exec(verbose);
-  if (!match) {
-    throw new FixtureBuildError(`Could not read the major version of class ${className}.`);
-  }
-  return Number(match[1]);
+function ownType(className) {
+  return `(?:int|${className})`;
 }
 
-function checkInvokeStatic(comment) {
+function supportedSignature(className) {
+  const type = ownType(className);
+  return new RegExp(
+    `^(?:\\w+\\s+)*?(?:void|${type})\\s+\\w+\\(\\s*(?:${type}(?:\\s*,\\s*${type})*)?\\s*\\)$`,
+  );
+}
+
+function supportedDescriptor(className) {
+  return new RegExp(`^\\((?:I|L${className};)*\\)(?:V|I|L${className};)$`);
+}
+
+function supportedFieldType(className) {
+  return new RegExp(`^(?:I|L${className};)$`);
+}
+
+function isExternalMember(target) {
+  return target.includes('.') || target.includes('/');
+}
+
+function checkCall(className, mnemonic, comment) {
   const reference = METHOD_REFERENCE.exec(comment);
-  if (!reference) {
-    return `could not read the call target from the javap comment ("${comment}")`;
+  const target = reference?.[1];
+  const descriptor = reference?.[2];
+  if (target === undefined || descriptor === undefined) {
+    return `could not read the ${mnemonic} target from the javap comment ("${comment}")`;
   }
 
-  const [, target, descriptor] = reference;
-  if (target.includes('.') || target.includes('/')) {
-    return checkExternal('invokestatic', `${target}:${descriptor}`);
+  const member = `${target}:${descriptor}`;
+  if (isExternalMember(target)) {
+    return mnemonic === 'invokespecial' && member === SUPER_CONSTRUCTOR
+      ? null
+      : checkExternal(mnemonic, member);
   }
-  if (!SUPPORTED_DESCRIPTOR.test(descriptor)) {
+  if (!supportedDescriptor(className).test(descriptor)) {
     return (
-      `invokestatic ${target} with descriptor ${descriptor}; only I parameters and an ` +
-      'I/V return type are supported'
+      `${mnemonic} ${member}; a method of the example takes int and ${className} parameters ` +
+      `and returns int, void or ${className}`
     );
   }
   return null;
 }
 
-function checkMemberReference(mnemonic, comment) {
-  const pattern = mnemonic === 'getstatic' ? FIELD_REFERENCE : METHOD_REFERENCE;
-  const reference = pattern.exec(comment);
-  if (!reference) {
+function checkFieldAccess(className, mnemonic, comment) {
+  const reference = FIELD_REFERENCE.exec(comment);
+  const target = reference?.[1];
+  const descriptor = reference?.[2];
+  if (target === undefined || descriptor === undefined) {
     return `could not read the ${mnemonic} target from the javap comment ("${comment}")`;
   }
-  return checkExternal(mnemonic, `${reference[1]}:${reference[2]}`);
+
+  if (isExternalMember(target)) {
+    return checkExternal(mnemonic, `${target}:${descriptor}`);
+  }
+  if (mnemonic === 'getstatic') {
+    return (
+      `getstatic ${target}: a static field of the example itself. The interpreter never runs ` +
+      '<clinit>, so the program would read uninitialised state.'
+    );
+  }
+  if (!supportedFieldType(className).test(descriptor)) {
+    return `${mnemonic} ${target}:${descriptor}; an instance field holds an int or a ${className}`;
+  }
+  return null;
+}
+
+function checkAllocation(className, comment) {
+  const allocated = CLASS_REFERENCE.exec(comment)?.[1];
+  if (allocated === undefined) {
+    return `could not read the allocated class from the javap comment ("${comment}")`;
+  }
+  if (allocated !== className) {
+    return (
+      `new ${allocated}: there is no second class file to load, so an example can only ` +
+      `instantiate ${className} itself`
+    );
+  }
+  return null;
 }
 
 function checkExternal(mnemonic, member) {
@@ -315,23 +363,28 @@ function checkExternal(mnemonic, member) {
 }
 
 function checkConstant(comment) {
-  const kind = CONSTANT_KIND.exec(comment);
-  if (!kind) {
+  const kind = CONSTANT_KIND.exec(comment)?.[1];
+  if (kind === undefined) {
     return `could not read the constant kind from the javap comment ("${comment}")`;
   }
-  if (!LOADABLE_CONSTANT_KINDS.has(kind[1])) {
-    return `ldc of a ${kind[1]} constant; only int and String constants can be pushed`;
+  if (!LOADABLE_CONSTANT_KINDS.has(kind)) {
+    return `ldc of a ${kind} constant; only int and String constants can be pushed`;
   }
   return null;
 }
 
-function checkOperands(mnemonic, comment) {
+function checkOperands(className, mnemonic, comment) {
   switch (mnemonic) {
     case 'invokestatic':
-      return checkInvokeStatic(comment);
     case 'invokevirtual':
+    case 'invokespecial':
+      return checkCall(className, mnemonic, comment);
     case 'getstatic':
-      return checkMemberReference(mnemonic, comment);
+    case 'getfield':
+    case 'putfield':
+      return checkFieldAccess(className, mnemonic, comment);
+    case 'new':
+      return checkAllocation(className, comment);
     case 'ldc':
     case 'ldc_w':
       return checkConstant(comment);
@@ -358,21 +411,19 @@ function validateScope(className, methods) {
   }
 
   const violations = [];
+  const signatureOf = supportedSignature(className);
   let instructionCount = 0;
 
   for (const method of methods) {
-    if (method.kind !== 'method') {
-      continue;
-    }
-
     const where = `${className}::${method.signature}`;
-    if (!/(?:^|\s)static\s/.test(method.signature)) {
-      violations.push(`${where}: non-static method; only invokestatic is supported`);
-    }
-    if (method.signature !== MAIN_SIGNATURE && !SUPPORTED_SIGNATURE.test(method.signature)) {
+    if (
+      method.kind === 'method' &&
+      method.signature !== MAIN_SIGNATURE &&
+      !signatureOf.test(method.signature)
+    ) {
       violations.push(
-        `${where}: unsupported signature; allowed are int parameters with an int/void ` +
-          `return type, or exactly "${MAIN_SIGNATURE}"`,
+        `${where}: unsupported signature; allowed are int and ${className} parameters with an ` +
+          `int, void or ${className} return type, or exactly "${MAIN_SIGNATURE}"`,
       );
     }
 
@@ -382,7 +433,7 @@ function validateScope(className, methods) {
         violations.push(`${where}  offset ${offset}: ${mnemonic} is not supported`);
         continue;
       }
-      const problem = checkOperands(mnemonic, comment);
+      const problem = checkOperands(className, mnemonic, comment);
       if (problem !== null) {
         violations.push(`${where}  offset ${offset}: ${problem}`);
       }
@@ -479,23 +530,18 @@ function writeArtifacts(classesDir, expectedResults, printedOutput) {
 }
 
 function main() {
+  const jdk = requirePinnedJdk();
+
   const classesDir = mkdtempSync(join(tmpdir(), 'jvm-bytecode-fixtures-'));
   try {
-    console.log(`javac -g --release ${JAVA_RELEASE} → ${classesDir}`);
+    console.log(`javac -g --release ${JAVA_RELEASE} → ${classesDir}  (${jdk})`);
     compileAll(classesDir);
 
     let totalInstructions = 0;
     for (const example of EXAMPLES) {
       const { className } = example;
 
-      const majorVersion = readMajorVersion(classesDir, className);
-      if (majorVersion !== EXPECTED_MAJOR_VERSION) {
-        throw new FixtureBuildError(
-          `${className}.class has major version ${majorVersion}, expected ` +
-            `${EXPECTED_MAJOR_VERSION} (Java ${JAVA_RELEASE}). Check the javac --release flag.`,
-        );
-      }
-
+      const majorVersion = requireExpectedMajorVersion(classesDir, className);
       const methods = parseDisassembly(
         runTool('javap', ['-c', '-p', '-classpath', classesDir, className]),
         className,
@@ -534,13 +580,17 @@ function main() {
   }
 }
 
-try {
-  main();
-} catch (error) {
-  if (error instanceof FixtureBuildError) {
-    console.error(`\nbuild-fixtures: ${error.message}\n`);
-    process.exitCode = 1;
-  } else {
-    throw error;
+// Guarded so that fixtures/build-fixtures.test.ts can import the tables above without compiling
+// anything.
+if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  try {
+    main();
+  } catch (error) {
+    if (error instanceof FixtureBuildError) {
+      console.error(`\nbuild-fixtures: ${error.message}\n`);
+      process.exitCode = 1;
+    } else {
+      throw error;
+    }
   }
 }

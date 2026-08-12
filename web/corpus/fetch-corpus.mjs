@@ -2,7 +2,7 @@
 
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -91,6 +91,15 @@ function unpack(jarPath, into) {
   execFileSync('unzip', ['-qq', '-o', jarPath, '*.class', '-d', into], { stdio: 'pipe' });
 }
 
+function isUnpacked(directory) {
+  if (!existsSync(directory)) {
+    return false;
+  }
+  return readdirSync(directory, { recursive: true, withFileTypes: true }).some(
+    (entry) => entry.isFile() && entry.name.endsWith('.class'),
+  );
+}
+
 async function main() {
   mkdirSync(JARS_DIR, { recursive: true });
   mkdirSync(CLASSES_DIR, { recursive: true });
@@ -100,7 +109,7 @@ async function main() {
     const jarPath = join(JARS_DIR, name);
     const into = join(CLASSES_DIR, name.replace(/\.jar$/, ''));
 
-    if (existsSync(jarPath) && sha1Of(readFileSync(jarPath)) === entry.sha1 && existsSync(into)) {
+    if (existsSync(jarPath) && sha1Of(readFileSync(jarPath)) === entry.sha1 && isUnpacked(into)) {
       console.log(`  = ${name} (cached)`);
       continue;
     }

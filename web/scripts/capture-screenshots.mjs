@@ -14,6 +14,12 @@ const BASE_URL = `http://localhost:${String(PORT)}`;
 const VIEWPORT = { width: 1280, height: 800 };
 const SCALE = 2;
 
+/**
+ * @typedef {import('@playwright/test').Page} Page
+ * @typedef {{ file: string; theme: 'dark' | 'light'; go: (page: Page) => Promise<void> }} Shot
+ */
+
+/** @type {readonly Shot[]} */
 const SHOTS = [
   {
     file: 'welcome.png',
@@ -71,6 +77,7 @@ async function expectStep(page, text) {
   await page.getByTestId('step-counter').filter({ hasText: text }).waitFor({ timeout: 15_000 });
 }
 
+/** @returns {Promise<void>} */
 function run(command, args, options = {}) {
   return new Promise((resolvePromise, reject) => {
     const child = spawn(command, args, { stdio: 'inherit', ...options });
@@ -84,10 +91,8 @@ function run(command, args, options = {}) {
 async function waitForServer(url, timeoutMs = 120_000) {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
-    try {
-      const response = await fetch(url);
-      if (response.ok) return;
-    } catch {}
+    const response = await fetch(url).catch(() => undefined);
+    if (response?.ok) return;
     if (Date.now() > deadline) throw new Error(`server did not come up at ${url}`);
     await new Promise((r) => setTimeout(r, 300));
   }

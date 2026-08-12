@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 
-import { execFileSync } from 'node:child_process';
 import {
   copyFileSync,
   mkdtempSync,
@@ -14,13 +13,16 @@ import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import {
+  FixtureBuildError,
+  JAVA_RELEASE,
+  requireExpectedMajorVersion,
+  requirePinnedJdk,
+  runTool,
+} from './jdk.mjs';
+
 const FIXTURES_DIR = dirname(fileURLToPath(import.meta.url));
 const WEB_DIR = join(FIXTURES_DIR, '..');
-
-const JAVA_RELEASE = '21';
-const EXPECTED_MAJOR_VERSION = 65;
-
-const REQUIRED_JAVAP_FEATURE = 25;
 
 const PINNED_MTIME = new Date('2026-08-05T12:00:00Z');
 const ENGLISH_LOCALE = ['-J-Duser.language=en', '-J-Duser.country=US'];
@@ -82,45 +84,8 @@ const FIXTURES = Object.freeze([
   },
 ]);
 
-class FixtureBuildError extends Error {
-  constructor(message) {
-    super(message);
-    this.name = 'FixtureBuildError';
-  }
-}
-
-function runTool(command, args) {
-  try {
-    return execFileSync(command, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
-  } catch (cause) {
-    const stderr = typeof cause?.stderr === 'string' ? cause.stderr.trim() : '';
-    const stdout = typeof cause?.stdout === 'string' ? cause.stdout.trim() : '';
-    const details = [stderr, stdout].filter(Boolean).join('\n');
-    throw new FixtureBuildError(
-      `Command "${command} ${args.join(' ')}" failed.` +
-        (details ? `\n${details}` : `\n${String(cause?.message ?? cause)}`),
-    );
-  }
-}
-
 function sourcePath(fixture) {
   return join(WEB_DIR, fixture.directory, `${fixture.className}.java`);
-}
-
-function requirePinnedJavap() {
-  const reported = runTool('javap', ['-version']).trim();
-  const feature = Number(/^\d+/.exec(reported)?.[0]);
-  if (feature !== REQUIRED_JAVAP_FEATURE) {
-    throw new FixtureBuildError(
-      `javap ${reported} cannot reproduce the committed dumps, which were written by a JDK ` +
-        `${REQUIRED_JAVAP_FEATURE} javap: the disassembly layout differs between releases.\n` +
-        `Install JDK ${REQUIRED_JAVAP_FEATURE} and put it on PATH. Moving to another release ` +
-        'means regenerating every dump with it and committing the result, plus raising ' +
-        'REQUIRED_JAVAP_FEATURE here and the JDK version of the fixtures job in ' +
-        '.github/workflows/web.yml.',
-    );
-  }
-  return reported;
 }
 
 function requireEverySourceDeclared() {
@@ -154,15 +119,6 @@ function compileAll(classesDir) {
     classesDir,
     ...FIXTURES.map((fixture) => sourcePath(fixture)),
   ]);
-}
-
-function readMajorVersion(classesDir, className) {
-  const verbose = runTool('javap', ['-v', '-p', '-classpath', classesDir, className]);
-  const match = /^\s*major version:\s*(\d+)\s*$/m.exec(verbose);
-  if (!match) {
-    throw new FixtureBuildError(`Could not read the major version of class ${className}.`);
-  }
-  return Number(match[1]);
 }
 
 function headerOf(dumpPath, command) {
@@ -231,23 +187,17 @@ function recordOutput(fixture, classesDir) {
 }
 
 function main() {
-  const javapVersion = requirePinnedJavap();
+  const jdk = requirePinnedJdk();
   requireEverySourceDeclared();
 
   const classesDir = mkdtempSync(join(tmpdir(), 'jvm-bytecode-test-fixtures-'));
   try {
-    console.log(`javac -g --release ${JAVA_RELEASE} → ${classesDir}  (javap ${javapVersion})`);
+    console.log(`javac -g --release ${JAVA_RELEASE} → ${classesDir}  (${jdk})`);
     compileAll(classesDir);
 
     for (const fixture of FIXTURES) {
       const { className } = fixture;
-      const majorVersion = readMajorVersion(classesDir, className);
-      if (majorVersion !== EXPECTED_MAJOR_VERSION) {
-        throw new FixtureBuildError(
-          `${className}.class has major version ${majorVersion}, expected ` +
-            `${EXPECTED_MAJOR_VERSION} (Java ${JAVA_RELEASE}). Check the javac --release flag.`,
-        );
-      }
+      requireExpectedMajorVersion(classesDir, className);
 
       const classFile = `${className}.class`;
       copyFileSync(join(classesDir, classFile), join(WEB_DIR, fixture.directory, classFile));

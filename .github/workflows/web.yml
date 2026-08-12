@@ -20,12 +20,13 @@ permissions:
 
 concurrency:
   group: web-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   quality:
     name: lint / typecheck / test / build
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -38,9 +39,6 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
-
-      - name: Check formatting
-        run: npm run format:check
 
       - name: Lint
         run: npm run lint
@@ -60,6 +58,7 @@ jobs:
   corpus:
     name: parses the real world
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -88,6 +87,7 @@ jobs:
   fixtures:
     name: fixtures match the JDK
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -99,7 +99,8 @@ jobs:
           cache: 'npm'
 
       # 25, not the 21 the class files target: javap changed its disassembly layout in 25 and
-      # the committed dumps are byte-exact. build-test-fixtures.mjs refuses any other release.
+      # the committed dumps are byte-exact. Both builders refuse any other release; the version
+      # lives in web/fixtures/jdk.mjs as REQUIRED_JDK_FEATURE.
       - name: Setup JDK
         uses: actions/setup-java@v4
         with:

@@ -1,10 +1,21 @@
 name: codeql
 
+# This analyses code, so a change that touches none is not worth two databases and a Maven build.
+# The docs workflow is the gate those changes run. Anchors are not supported here, so the two
+# lists have to be kept identical by hand.
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE'
   pull_request:
     branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE'
   schedule:
     - cron: '0 6 * * 1'
 
@@ -13,12 +24,13 @@ permissions:
 
 concurrency:
   group: codeql-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   analyze:
     name: analyze / ${{ matrix.language }}
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       security-events: write
       actions: read

@@ -12,6 +12,7 @@ export default defineConfig({
   plugins: [react({ babel: { plugins: [reactCompiler] } }), tailwindcss()],
   worker: { format: 'es' },
   build: {
+    sourcemap: 'hidden',
     rollupOptions: {
       output: {
         manualChunks: {
@@ -37,7 +38,15 @@ export default defineConfig({
           name: 'ui',
           environment: 'jsdom',
           setupFiles: ['./src/test/setup.ts'],
-          include: ['src/**/*.test.tsx', 'src/{components,hooks,services}/**/*.test.ts'],
+          include: ['src/**/*.test.tsx', 'src/{components,hooks,services,workers}/**/*.test.ts'],
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: 'scripts',
+          environment: 'node',
+          include: ['scripts/**/*.test.ts', 'fixtures/**/*.test.ts'],
         },
       },
     ],
@@ -47,6 +56,7 @@ export default defineConfig({
       include: ['src/**/*.{ts,tsx}'],
       exclude: ['src/**/*.test.{ts,tsx}', 'src/**/__fixtures__/**', 'src/test/**', 'src/main.tsx'],
       thresholds: {
+        perFile: true,
         'src/core/**/*.ts': { lines: 90, branches: 90, functions: 90 },
       },
     },
