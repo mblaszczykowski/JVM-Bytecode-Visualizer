@@ -1,0 +1,11 @@
+{
+  "case": "invalid-request",
+  "status": 400,
+  "headers": {
+    "Content-Type": "application/json"
+  },
+  "body": {
+    "error": "invalid-request",
+    "message": "source: source must not be empty"
+  }
+}

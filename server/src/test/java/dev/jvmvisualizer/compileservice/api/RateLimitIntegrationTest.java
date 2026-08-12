@@ -33,9 +33,11 @@ class RateLimitIntegrationTest {
             mockMvc.perform(compileRequest("10.1.0.1")).andExpect(status().isBadRequest());
         }
 
-        mockMvc.perform(compileRequest("10.1.0.1"))
+        ContractFixtures.record(ContractFixtures.Case.RATE_LIMIT_EXCEEDED, mockMvc.perform(compileRequest("10.1.0.1"))
                 .andExpect(status().isTooManyRequests())
-                .andExpect(jsonPath("$.error").value("rate-limit-exceeded"));
+                .andExpect(jsonPath("$.error").value("rate-limit-exceeded"))
+                .andExpect(header().string(HttpHeaders.RETRY_AFTER, "60"))
+                .andReturn());
     }
 
     @Test

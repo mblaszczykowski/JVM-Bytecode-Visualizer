@@ -28,8 +28,9 @@ primary_region = "fra"
   COMPILE_SERVICE_TRUST_FORWARDED_FOR = "true"
   COMPILE_SERVICE_TRUSTED_PROXY_HOPS = "1"
 
-  # Each concurrent compilation is a child JVM capped at 128 MB of heap; keep this in step with
-  # the memory below.
+  # Each concurrent compilation is a child JVM budgeted at ~270 MB: 240 MB of bounded regions
+  # (128 heap, 64 metaspace, 32 code cache, 16 direct) plus roughly 25 MB no flag bounds.
+  # Keep this in step with the memory below.
   COMPILE_SERVICE_MAX_CONCURRENT_COMPILATIONS = "2"
 
 [http_service]
@@ -51,7 +52,20 @@ primary_region = "fra"
 
 [[vm]]
   size = "shared-cpu-1x"
-  # The parent JVM takes at most half of this (-XX:MaxRAMPercentage=50 in the Dockerfile); the
-  # rest is for the compiler processes, up to max-concurrent-compilations x 128 MB of heap plus
-  # their own overhead. Lower it to 512 MB only together with max-concurrent-compilations = 1.
+  # Sized from the ceilings rather than from a measurement, so the arithmetic has to close on the
+  # bounds. -XX:MaxRAMPercentage=25 in the Dockerfile caps the parent's heap at 256 MB of this,
+  # and each of the two children is budgeted at ~270 MB (see the comment on that variable above):
+  #
+  #   256 + 2 x 270 = 796 MB against 1024
+  #
+  # The 228 MB left over is what the parent's own non-heap regions come out of; no flag bounds
+  # those, and the parent runs at roughly 375 MB of RSS in total, which puts the full worst case
+  # near 915 MB. A real compile commits about 184 MB per child rather than 270, so the ordinary
+  # figure is closer to 743 MB.
+  #
+  # If that stops fitting, the first lever is COMPILE_SERVICE_MAX_CONCURRENT_COMPILATIONS = "1"
+  # (256 + 270 = 526 MB on the bounds), and the second is a larger machine. Raising the memory
+  # alone also raises the parent's heap, since its share is a percentage.
+  #
+  # docs/deployment.md carries the measured numbers behind this.
   memory = "1gb"

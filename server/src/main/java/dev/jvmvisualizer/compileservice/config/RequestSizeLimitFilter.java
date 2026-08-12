@@ -2,6 +2,8 @@ package dev.jvmvisualizer.compileservice.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.jvmvisualizer.compileservice.api.dto.ErrorResponse;
+import dev.jvmvisualizer.compileservice.error.ErrorCode;
+import dev.jvmvisualizer.compileservice.error.RequestTooLargeException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ReadListener;
 import jakarta.servlet.ServletException;
@@ -19,8 +21,6 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 public class RequestSizeLimitFilter extends OncePerRequestFilter {
 
-    public static final String ERROR = "source-too-large";
-
     private final long maxRequestBytes;
     private final long maxSourceBytes;
     private final ObjectMapper objectMapper;
@@ -35,60 +35,40 @@ public class RequestSizeLimitFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
 
-        if (request.getContentLengthLong() > maxRequestBytes) {
-            reject(response, request.getContentLengthLong());
+        long declared = request.getContentLengthLong();
+        if (declared > maxRequestBytes) {
+            response.setStatus(HttpStatus.BAD_REQUEST.value());
+            response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+            objectMapper.writeValue(response.getOutputStream(),
+                    ErrorResponse.of(ErrorCode.SOURCE_TOO_LARGE, tooLargeMessage(declared, maxSourceBytes)));
             return;
         }
 
-        LimitedRequest limited = new LimitedRequest(request, maxRequestBytes);
-        try {
-            chain.doFilter(limited, response);
-        } catch (RequestTooLargeException e) {
-            if (!response.isCommitted()) {
-                response.reset();
-                reject(response, e.read());
-            }
-        }
+        chain.doFilter(new LimitedRequest(request, maxRequestBytes, maxSourceBytes), response);
     }
 
-    private void reject(HttpServletResponse response, long bytes) throws IOException {
-        response.setStatus(HttpStatus.BAD_REQUEST.value());
-        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-        objectMapper.writeValue(response.getOutputStream(), new ErrorResponse(ERROR,
-                "the request body is %s bytes; a source of at most %d bytes is accepted"
-                        .formatted(bytes < 0 ? "more than " + maxRequestBytes : String.valueOf(bytes),
-                                maxSourceBytes)));
-    }
-
-    public static final class RequestTooLargeException extends IOException {
-
-        private final long read;
-
-        RequestTooLargeException(long read) {
-            super("request body exceeds the accepted size");
-            this.read = read;
-        }
-
-        public long read() {
-            return read;
-        }
+    static String tooLargeMessage(long bytes, long maxSourceBytes) {
+        return "the request body is at least %d bytes; a source of at most %d bytes is accepted"
+                .formatted(bytes, maxSourceBytes);
     }
 
     private static final class LimitedRequest extends HttpServletRequestWrapper {
 
         private final long limit;
+        private final long maxSourceBytes;
         private ServletInputStream stream;
         private BufferedReader reader;
 
-        private LimitedRequest(HttpServletRequest request, long limit) {
+        private LimitedRequest(HttpServletRequest request, long limit, long maxSourceBytes) {
             super(request);
             this.limit = limit;
+            this.maxSourceBytes = maxSourceBytes;
         }
 
         @Override
         public ServletInputStream getInputStream() throws IOException {
             if (stream == null) {
-                stream = new LimitedStream(super.getInputStream(), limit);
+                stream = new LimitedStream(super.getInputStream(), limit, maxSourceBytes);
             }
             return stream;
         }
@@ -106,11 +86,13 @@ public class RequestSizeLimitFilter extends OncePerRequestFilter {
 
         private final ServletInputStream delegate;
         private final long limit;
+        private final long maxSourceBytes;
         private long read;
 
-        private LimitedStream(ServletInputStream delegate, long limit) {
+        private LimitedStream(ServletInputStream delegate, long limit, long maxSourceBytes) {
             this.delegate = delegate;
             this.limit = limit;
+            this.maxSourceBytes = maxSourceBytes;
         }
 
         @Override
@@ -134,7 +116,7 @@ public class RequestSizeLimitFilter extends OncePerRequestFilter {
         private void count(int bytes) throws RequestTooLargeException {
             read += bytes;
             if (read > limit) {
-                throw new RequestTooLargeException(read);
+                throw new RequestTooLargeException(tooLargeMessage(read, maxSourceBytes));
             }
         }
 

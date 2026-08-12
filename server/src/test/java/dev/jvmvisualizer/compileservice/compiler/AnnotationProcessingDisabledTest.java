@@ -1,12 +1,14 @@
 package dev.jvmvisualizer.compileservice.compiler;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.params.provider.Arguments.arguments;
 
 import java.io.IOException;
 import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.stream.Stream;
 import javax.tools.DiagnosticCollector;
 import javax.tools.JavaCompiler;
 import javax.tools.JavaFileObject;
@@ -17,6 +19,9 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 
 class AnnotationProcessingDisabledTest {
 
@@ -38,19 +43,25 @@ class AnnotationProcessingDisabledTest {
         System.clearProperty(MarkerProcessor.MARKER_PROPERTY);
     }
 
-    @Test
-    void controlRunShowsTheMarkerProcessorDoesExecuteWhenJavacIsAllowedTo() throws Exception {
-        boolean succeeded = compileWithProcessorPath(List.of("--release", "21"));
+    static Stream<Arguments> processorPathRuns() {
+        return Stream.of(
+                arguments("without the service options", List.of("--release", "21"), "true"),
+                arguments("with the service options", InMemoryCompiler.options(), null));
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("processorPathRuns")
+    void runsAProcessorOnTheProcessorPathOnlyWhenTheServiceOptionsAreAbsent(String name, List<String> options,
+                                                                           String expectedMarker) throws Exception {
+        boolean succeeded = compileWithProcessorPath(options);
 
         assertThat(succeeded).isTrue();
-        assertThat(System.getProperty(MarkerProcessor.MARKER_PROPERTY)).isEqualTo("true");
+        assertThat(System.getProperty(MarkerProcessor.MARKER_PROPERTY)).isEqualTo(expectedMarker);
     }
 
     @Test
     void serviceCompilerRunsNoAnnotationProcessor() {
-        assertThat(InMemoryCompiler.options()).contains("-proc:none");
-
-        CompilationResult result = new InMemoryCompiler().compile(ANNOTATED_SOURCE);
+        CompilationResult result = new InMemoryCompiler().compile(new SourceUnit("Annotated", ANNOTATED_SOURCE));
 
         assertThat(result).isInstanceOf(CompilationResult.Success.class);
         assertThat(System.getProperty(MarkerProcessor.MARKER_PROPERTY)).isNull();

@@ -1,0 +1,12 @@
+{
+  "case": "compiler-busy",
+  "status": 503,
+  "headers": {
+    "Content-Type": "application/json",
+    "Retry-After": "5"
+  },
+  "body": {
+    "error": "compiler-busy",
+    "message": "the compile service is at capacity, retry in a moment"
+  }
+}

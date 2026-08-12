@@ -29,6 +29,11 @@ management:
   endpoint:
     health:
       show-details: never
+  health:
+    # This service never touches the filesystem, so a full rootfs is not a reason to report DOWN
+    # and have the frontend hide the editor.
+    diskspace:
+      enabled: false
 
 logging:
   level:

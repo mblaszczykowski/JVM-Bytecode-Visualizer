@@ -1,0 +1,20 @@
+{
+  "case": "compile-success",
+  "status": 200,
+  "headers": {
+    "Content-Type": "application/json"
+  },
+  "body": {
+    "success": true,
+    "className": "Adder",
+    "classFileBase64": "yv66vg==",
+    "diagnostics": [
+      {
+        "line": 5,
+        "column": 9,
+        "kind": "WARNING",
+        "message": "unchecked call to add(int,int)"
+      }
+    ]
+  }
+}

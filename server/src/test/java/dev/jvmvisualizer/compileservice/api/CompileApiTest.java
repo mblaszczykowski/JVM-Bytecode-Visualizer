@@ -133,32 +133,36 @@ class CompileApiTest {
     void rejectsEmptySource() throws Exception {
         compile("")
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").isNotEmpty())
+                .andExpect(jsonPath("$.error").value("invalid-request"))
                 .andExpect(jsonPath("$.message", containsString("source")));
     }
 
     @Test
     void rejectsRequestWithoutSourceField() throws Exception {
-        mockMvc.perform(post("/api/compile").contentType(MediaType.APPLICATION_JSON).content("{}"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").value("invalid-request"));
+        ContractFixtures.record(ContractFixtures.Case.INVALID_REQUEST,
+                mockMvc.perform(post("/api/compile").contentType(MediaType.APPLICATION_JSON).content("{}"))
+                        .andExpect(status().isBadRequest())
+                        .andExpect(jsonPath("$.error").value("invalid-request"))
+                        .andReturn());
     }
 
     @Test
     void rejectsSourceLargerThan64KiB() throws Exception {
         String oversized = "public class Big {}\n// " + "x".repeat(70_000);
 
-        compile(oversized)
+        ContractFixtures.record(ContractFixtures.Case.SOURCE_TOO_LARGE, compile(oversized)
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value("source-too-large"))
-                .andExpect(jsonPath("$.message", containsString("65536")));
+                .andExpect(jsonPath("$.message", containsString("65536")))
+                .andReturn());
     }
 
     @Test
     void rejectsSourceWithoutAPublicClass() throws Exception {
-        compile("class PackagePrivate { }")
+        ContractFixtures.record(ContractFixtures.Case.NO_PUBLIC_CLASS, compile("class PackagePrivate { }")
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").value("no-public-class"));
+                .andExpect(jsonPath("$.error").value("no-public-class"))
+                .andReturn());
     }
 
     @Test
@@ -166,19 +170,22 @@ class CompileApiTest {
         byte[] body = ("{\"source\":\"" + "x".repeat(2_000_000) + "\"}").getBytes(StandardCharsets.UTF_8);
 
         long start = System.nanoTime();
-        mockMvc.perform(post("/api/compile").contentType(MediaType.APPLICATION_JSON).content(body))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").value("source-too-large"))
-                .andExpect(jsonPath("$.message", containsString("request body")));
+        ContractFixtures.record(ContractFixtures.Case.REQUEST_BODY_TOO_LARGE,
+                mockMvc.perform(post("/api/compile").contentType(MediaType.APPLICATION_JSON).content(body))
+                        .andExpect(status().isBadRequest())
+                        .andExpect(jsonPath("$.error").value("source-too-large"))
+                        .andExpect(jsonPath("$.message", containsString("request body")))
+                        .andReturn());
 
         assertThat(Duration.ofNanos(System.nanoTime() - start)).isLessThan(Duration.ofSeconds(2));
     }
 
     @Test
     void refusesASourceFieldLongerThanJacksonMayMaterialize() throws Exception {
-        compile("x".repeat(100_000))
+        ContractFixtures.record(ContractFixtures.Case.SOURCE_FIELD_TOO_LONG, compile("x".repeat(100_000))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").value("source-too-large"));
+                .andExpect(jsonPath("$.error").value("source-too-large"))
+                .andReturn());
     }
 
     @Test

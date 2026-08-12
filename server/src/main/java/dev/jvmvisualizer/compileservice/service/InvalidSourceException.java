@@ -1,15 +1,17 @@
 package dev.jvmvisualizer.compileservice.service;
 
+import dev.jvmvisualizer.compileservice.error.ErrorCode;
+
 public class InvalidSourceException extends RuntimeException {
 
-    private final String error;
+    private final ErrorCode error;
 
-    public InvalidSourceException(String error, String message) {
+    public InvalidSourceException(ErrorCode error, String message) {
         super(message);
         this.error = error;
     }
 
-    public String error() {
+    public ErrorCode error() {
         return error;
     }
 }

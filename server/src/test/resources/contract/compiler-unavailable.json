@@ -1,0 +1,12 @@
+{
+  "case": "compiler-unavailable",
+  "status": 503,
+  "headers": {
+    "Content-Type": "application/json",
+    "Retry-After": "5"
+  },
+  "body": {
+    "error": "compiler-unavailable",
+    "message": "the compiler could not be run; retry in a moment"
+  }
+}

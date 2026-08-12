@@ -1,0 +1,11 @@
+{
+  "case": "request-body-too-large",
+  "status": 400,
+  "headers": {
+    "Content-Type": "application/json"
+  },
+  "body": {
+    "error": "source-too-large",
+    "message": "the request body is at least 2000013 bytes; a source of at most 65536 bytes is accepted"
+  }
+}

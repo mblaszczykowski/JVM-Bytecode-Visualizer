@@ -9,6 +9,17 @@ final class CompilerProcessProtocol {
     private CompilerProcessProtocol() {
     }
 
+    record Request(String typeName, String source) {
+
+        static Request of(SourceUnit unit) {
+            return new Request(unit.typeName(), unit.source());
+        }
+
+        SourceUnit toUnit() {
+            return new SourceUnit(typeName, source);
+        }
+    }
+
     record Payload(boolean success, String className, String classFileBase64,
                    List<DiagnosticPayload> diagnostics) {
 

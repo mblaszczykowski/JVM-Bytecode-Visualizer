@@ -5,13 +5,12 @@ import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.Ticker;
 import dev.jvmvisualizer.compileservice.api.dto.ErrorResponse;
+import dev.jvmvisualizer.compileservice.error.ErrorCode;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
-import java.net.InetAddress;
-import java.net.UnknownHostException;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -29,6 +28,8 @@ public class RateLimitFilter extends OncePerRequestFilter {
     private static final int MAX_TRACKED_CLIENTS = 10_000;
     private static final String X_FORWARDED_FOR = "X-Forwarded-For";
     private static final int MAX_ADDRESS_LENGTH = 45;
+    private static final int IPV6_GROUPS = 8;
+    private static final int MAX_HEX_GROUP_DIGITS = 4;
 
     private final Cache<String, Window> windows;
     private final int limit;
@@ -68,7 +69,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
         response.setStatus(HttpStatus.TOO_MANY_REQUESTS.value());
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         response.setHeader(HttpHeaders.RETRY_AFTER, String.valueOf(WINDOW.toSeconds()));
-        objectMapper.writeValue(response.getOutputStream(), new ErrorResponse("rate-limit-exceeded",
+        objectMapper.writeValue(response.getOutputStream(), ErrorResponse.of(ErrorCode.RATE_LIMIT_EXCEEDED,
                 "at most %d requests per minute are allowed".formatted(limit)));
     }
 
@@ -119,12 +120,49 @@ public class RateLimitFilter extends OncePerRequestFilter {
     }
 
     private static boolean isIpv6Literal(String candidate) {
-        try {
-            InetAddress.getByName(candidate);
-            return true;
-        } catch (UnknownHostException e) {
+        int compression = candidate.indexOf("::");
+        if (compression < 0) {
+            return groupsIn(candidate, true) == IPV6_GROUPS;
+        }
+        if (candidate.indexOf("::", compression + 1) >= 0) {
             return false;
         }
+        int head = groupsIn(candidate.substring(0, compression), false);
+        int tail = groupsIn(candidate.substring(compression + 2), true);
+        return head >= 0 && tail >= 0 && head + tail < IPV6_GROUPS;
+    }
+
+    private static int groupsIn(String text, boolean mayEndWithIpv4) {
+        if (text.isEmpty()) {
+            return 0;
+        }
+        String[] parts = text.split(":", -1);
+        int groups = 0;
+        for (int i = 0; i < parts.length; i++) {
+            String part = parts[i];
+            if (mayEndWithIpv4 && i == parts.length - 1 && part.indexOf('.') >= 0) {
+                return isIpv4Literal(part) ? groups + 2 : -1;
+            }
+            if (!isHexGroup(part)) {
+                return -1;
+            }
+            groups++;
+        }
+        return groups;
+    }
+
+    private static boolean isHexGroup(String part) {
+        if (part.isEmpty() || part.length() > MAX_HEX_GROUP_DIGITS) {
+            return false;
+        }
+        for (int i = 0; i < part.length(); i++) {
+            char c = part.charAt(i);
+            boolean hex = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+            if (!hex) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static boolean isIpv4Literal(String candidate) {

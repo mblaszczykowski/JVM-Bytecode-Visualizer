@@ -1,13 +1,18 @@
 package dev.jvmvisualizer.compileservice.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.util.List;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -136,6 +141,64 @@ class RateLimitFilterTest {
         assertThat(call(filter, "10.0.0.1", "203.0.113.7").getStatus())
                 .isEqualTo(HttpStatus.TOO_MANY_REQUESTS.value());
         assertThat(call(filter, "10.0.0.1", "[2001:db8::1]:443").getStatus()).isEqualTo(HttpStatus.OK.value());
+    }
+
+    @Test
+    void keysOnEveryShapeOfIpv6Literal() throws Exception {
+        List<String> literals = List.of("::", "::1", "fe80::1", "2001:db8:0:0:0:0:0:1",
+                "2001:0db8:85a3:0000:0000:8a2e:0370:7334", "::ffff:203.0.113.7", "2001:db8::7:1.2.3.4",
+                "1:2:3:4:5:6:7::");
+
+        for (String literal : literals) {
+            RateLimitFilter filter = filter(true, ONE_PROXY);
+            for (int i = 1; i <= LIMIT; i++) {
+                assertThat(call(filter, "10.0.0." + i, literal).getStatus()).as(literal)
+                        .isEqualTo(HttpStatus.OK.value());
+            }
+
+            assertThat(call(filter, "10.0.0.9", literal).getStatus()).as(literal)
+                    .isEqualTo(HttpStatus.TOO_MANY_REQUESTS.value());
+        }
+    }
+
+    @Test
+    void fallsBackToTheRemoteAddressForEntriesThatOnlyLookLikeIpv6() throws Exception {
+        List<String> notLiterals = List.of("1::2::3", "gggg::1", "12345::1", "1:2:3:4:5:6:7:8:9", ":1:2:3:4:5:6:7",
+                "1:2:3:4:5:6:7", "::ffff:203.0.113.300", "fe80::1%eth0", "::ffff:1.2.3.4:5");
+
+        for (String entry : notLiterals) {
+            RateLimitFilter filter = filter(true, ONE_PROXY);
+            for (int i = 1; i <= LIMIT; i++) {
+                assertThat(call(filter, "10.0.0.1", entry).getStatus()).as(entry)
+                        .isEqualTo(HttpStatus.OK.value());
+            }
+
+            assertThat(call(filter, "10.0.0.1").getStatus()).as(entry)
+                    .isEqualTo(HttpStatus.TOO_MANY_REQUESTS.value());
+        }
+    }
+
+    @Test
+    void neverResolvesAForwardedForEntry() throws Exception {
+        RecordingResolverProvider.reset();
+        RateLimitFilter filter = filter(true, ONE_PROXY);
+
+        call(filter, "10.0.0.1", "zz" + "a".repeat(18) + ".attacker.example:1:2");
+        call(filter, "10.0.0.1", "a:b.attacker.example:1");
+        call(filter, "10.0.0.1", "attacker.example");
+        call(filter, "10.0.0.1", "[2001:db8::1]:443");
+
+        assertThat(RecordingResolverProvider.namesLookedUp()).isEmpty();
+    }
+
+    @Test
+    void theRecorderWouldHaveSeenAResolutionHadOneHappened() {
+        RecordingResolverProvider.reset();
+        String name = "absent-" + UUID.randomUUID() + ".invalid";
+
+        assertThatThrownBy(() -> InetAddress.getByName(name)).isInstanceOf(UnknownHostException.class);
+
+        assertThat(RecordingResolverProvider.namesLookedUp()).contains(name);
     }
 
     @Test

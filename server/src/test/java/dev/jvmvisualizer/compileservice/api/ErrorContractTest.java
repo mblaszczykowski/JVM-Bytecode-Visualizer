@@ -12,6 +12,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.jvmvisualizer.compileservice.compiler.CompilerBusyException;
+import dev.jvmvisualizer.compileservice.compiler.CompilerUnavailableException;
+import dev.jvmvisualizer.compileservice.compiler.ForkedCompiler;
 import dev.jvmvisualizer.compileservice.service.CompileService;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -76,6 +78,7 @@ class ErrorContractTest {
                 .andExpect(jsonPath("$.error").value("internal-error"))
                 .andReturn();
 
+        ContractFixtures.record(ContractFixtures.Case.INTERNAL_ERROR, result);
         assertErrorShape(result);
         assertThat(result.getResponse().getContentAsString()).doesNotContain("connection string leaked");
     }
@@ -83,15 +86,36 @@ class ErrorContractTest {
     @Test
     void answersASaturatedCompilerWith503AndRetryAfter() throws Exception {
         given(compileService.compile(anyString()))
-                .willThrow(new CompilerBusyException("at capacity", Duration.ofSeconds(5)));
+                .willThrow(new CompilerBusyException(ForkedCompiler.BUSY_MESSAGE, ForkedCompiler.RETRY_AFTER));
 
-        assertErrorShape(mockMvc.perform(post("/api/compile")
+        MvcResult result = mockMvc.perform(post("/api/compile")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"source\":\"public class A { }\"}"))
                 .andExpect(status().isServiceUnavailable())
                 .andExpect(jsonPath("$.error").value("compiler-busy"))
                 .andExpect(header().string(HttpHeaders.RETRY_AFTER, "5"))
-                .andReturn());
+                .andReturn();
+
+        ContractFixtures.record(ContractFixtures.Case.COMPILER_BUSY, result);
+        assertErrorShape(result);
+    }
+
+    @Test
+    void answersACompilerThatCouldNotBeRunWith503AndRetryAfter() throws Exception {
+        given(compileService.compile(anyString()))
+                .willThrow(new CompilerUnavailableException(ForkedCompiler.UNAVAILABLE_MESSAGE,
+                        ForkedCompiler.RETRY_AFTER));
+
+        MvcResult result = mockMvc.perform(post("/api/compile")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"source\":\"public class A { }\"}"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.error").value("compiler-unavailable"))
+                .andExpect(header().string(HttpHeaders.RETRY_AFTER, "5"))
+                .andReturn();
+
+        ContractFixtures.record(ContractFixtures.Case.COMPILER_UNAVAILABLE, result);
+        assertErrorShape(result);
     }
 
     private void assertErrorShape(MvcResult result) throws Exception {

@@ -1,0 +1,11 @@
+{
+  "case": "source-too-large",
+  "status": 400,
+  "headers": {
+    "Content-Type": "application/json"
+  },
+  "body": {
+    "error": "source-too-large",
+    "message": "source is 70023 bytes, the limit is 65536 bytes"
+  }
+}

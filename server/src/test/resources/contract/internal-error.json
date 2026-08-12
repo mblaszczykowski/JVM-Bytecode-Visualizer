@@ -1,0 +1,11 @@
+{
+  "case": "internal-error",
+  "status": 500,
+  "headers": {
+    "Content-Type": "application/json"
+  },
+  "body": {
+    "error": "internal-error",
+    "message": "the service failed to handle this request"
+  }
+}

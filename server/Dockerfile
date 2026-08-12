@@ -37,7 +37,9 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=3s --start-period=30s --retries=3 \
     CMD curl -fsS "http://127.0.0.1:${PORT}/actuator/health" | grep -q '"status":"UP"' || exit 1
 
-# Half the container. The rest belongs to the compiler processes, which take up to
-# compile.max-concurrent-compilations x 128 MB while they run.
-ENTRYPOINT ["java", "-XX:MaxRAMPercentage=50", "-cp", "/app/classes:/app/lib/*", \
+# A quarter of the container, because most of it belongs to the compiler processes. Each child is
+# capped at 240 MB (128 MB heap, 64 MB metaspace, 32 MB code cache, 16 MB direct buffers) plus
+# roughly 25 MB of JVM bookkeeping, and compile.max-concurrent-compilations of them run at a time.
+# This service holds no state and its own working set is small; the sizing is in docs/deployment.md.
+ENTRYPOINT ["java", "-XX:MaxRAMPercentage=25", "-cp", "/app/classes:/app/lib/*", \
             "dev.jvmvisualizer.compileservice.CompileServiceApplication"]

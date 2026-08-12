@@ -103,26 +103,27 @@
             <configuration>
               <rules>
                 <!-- Each package is measured on its own. The minima sit just under what the
-                     suite reaches today (compiler 75.7% lines / 66.4% branches, config 81.4%
-                     / 63.6%), so the gate catches regressions. CompilerProcessMain runs in the
-                     forked JVM, which the agent never sees; that alone accounts for 13 uncovered
-                     lines in the compiler package. -->
+                     suite reaches today (compiler 87.0% lines / 82.8% branches, config 90.2%
+                     / 76.9%, service 97.1% / 88.9%), so the gate catches regressions.
+                     CompilerProcessMain runs in the forked JVM, which the agent never sees;
+                     that alone accounts for 15 uncovered lines in the compiler package. -->
                 <rule>
                   <element>PACKAGE</element>
                   <includes>
                     <include>dev.jvmvisualizer.compileservice.compiler</include>
                     <include>dev.jvmvisualizer.compileservice.config</include>
+                    <include>dev.jvmvisualizer.compileservice.service</include>
                   </includes>
                   <limits>
                     <limit>
                       <counter>LINE</counter>
                       <value>COVEREDRATIO</value>
-                      <minimum>0.75</minimum>
+                      <minimum>0.85</minimum>
                     </limit>
                     <limit>
                       <counter>BRANCH</counter>
                       <value>COVEREDRATIO</value>
-                      <minimum>0.63</minimum>
+                      <minimum>0.75</minimum>
                     </limit>
                   </limits>
                 </rule>

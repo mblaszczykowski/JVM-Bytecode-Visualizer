@@ -1,7 +1,9 @@
 package dev.jvmvisualizer.compileservice.service;
 
 import dev.jvmvisualizer.compileservice.compiler.SourceNames;
+import dev.jvmvisualizer.compileservice.compiler.SourceUnit;
 import dev.jvmvisualizer.compileservice.config.CompileProperties;
+import dev.jvmvisualizer.compileservice.error.ErrorCode;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -13,19 +15,19 @@ public class SourceValidator {
         this.maxSourceBytes = properties.maxSourceSize().toBytes();
     }
 
-    public void validate(String source) {
+    public SourceUnit validate(String source) {
         if (source == null || source.isBlank()) {
-            throw new InvalidSourceException("empty-source", "source must not be empty");
+            throw new InvalidSourceException(ErrorCode.EMPTY_SOURCE, "source must not be empty");
         }
         long bytes = utf8Length(source);
         if (bytes > maxSourceBytes) {
-            throw new InvalidSourceException("source-too-large",
+            throw new InvalidSourceException(ErrorCode.SOURCE_TOO_LARGE,
                     "source is %d bytes, the limit is %d bytes".formatted(bytes, maxSourceBytes));
         }
-        if (SourceNames.publicTypeName(source).isEmpty()) {
-            throw new InvalidSourceException("no-public-class",
-                    "source must declare a public top-level class");
-        }
+        return SourceNames.publicTypeName(source)
+                .map(typeName -> new SourceUnit(typeName, source))
+                .orElseThrow(() -> new InvalidSourceException(ErrorCode.NO_PUBLIC_CLASS,
+                        "source must declare a public top-level class"));
     }
 
     private static long utf8Length(String source) {

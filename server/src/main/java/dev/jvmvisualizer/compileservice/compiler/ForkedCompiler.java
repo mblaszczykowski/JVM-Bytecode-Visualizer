@@ -3,8 +3,8 @@ package dev.jvmvisualizer.compileservice.compiler;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.lang.ProcessBuilder.Redirect;
 import java.net.URL;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -30,22 +30,25 @@ import org.slf4j.LoggerFactory;
 
 public class ForkedCompiler implements SourceCompiler, AutoCloseable {
 
+    public static final String UNAVAILABLE_MESSAGE = "the compiler could not be run; retry in a moment";
+    public static final String BUSY_MESSAGE = "the compile service is at capacity, retry in a moment";
+    public static final Duration RETRY_AFTER = Duration.ofSeconds(5);
+
     static final String TIMEOUT_MESSAGE = "compilation timed out";
-    static final String UNAVAILABLE_MESSAGE = "the compiler could not be run; the compilation was abandoned";
-    static final String BUSY_MESSAGE = "the compile service is at capacity, retry in a moment";
 
     private static final Logger log = LoggerFactory.getLogger(ForkedCompiler.class);
 
     private static final List<String> CHILD_VM_OPTIONS = List.of(
             "-Xmx128m",
+            "-XX:MaxMetaspaceSize=64m",
+            "-XX:ReservedCodeCacheSize=32m",
+            "-XX:MaxDirectMemorySize=16m",
             "-Xss1m",
             "-XX:+UseSerialGC",
             "-XX:TieredStopAtLevel=1",
             "-XX:-UsePerfData");
 
     private static final Duration REAPING_GRACE = Duration.ofSeconds(5);
-    private static final Duration RETRY_AFTER = Duration.ofSeconds(5);
-    private static final int MAX_LOGGED_STDERR = 2_000;
 
     private final Duration timeout;
     private final List<String> command;
@@ -56,8 +59,12 @@ public class ForkedCompiler implements SourceCompiler, AutoCloseable {
     private volatile boolean closed;
 
     public ForkedCompiler(Duration timeout, int maxConcurrentCompilations) {
+        this(timeout, maxConcurrentCompilations, List.of());
+    }
+
+    ForkedCompiler(Duration timeout, int maxConcurrentCompilations, List<String> extraChildVmOptions) {
         this.timeout = Objects.requireNonNull(timeout, "timeout");
-        this.command = command();
+        this.command = command(extraChildVmOptions);
         this.pool = boundedPool(maxConcurrentCompilations);
         this.watchdog = Executors.newSingleThreadScheduledExecutor(daemonThreads("compile-watchdog"));
         log.info("compiling in child processes: at most {} at a time, {} each, command {}",
@@ -76,10 +83,10 @@ public class ForkedCompiler implements SourceCompiler, AutoCloseable {
     }
 
     @Override
-    public CompilationResult compile(String source) {
+    public CompilationResult compile(SourceUnit unit) {
         Future<CompilationResult> pending;
         try {
-            pending = pool.submit(() -> run(source));
+            pending = pool.submit(() -> run(unit));
         } catch (RejectedExecutionException e) {
             throw new CompilerBusyException(BUSY_MESSAGE, RETRY_AFTER);
         }
@@ -91,8 +98,11 @@ public class ForkedCompiler implements SourceCompiler, AutoCloseable {
             log.warn("compiler process outlived {} plus the reaping grace", timeout);
             return CompilationResult.Failure.of(TIMEOUT_MESSAGE);
         } catch (ExecutionException e) {
+            if (e.getCause() instanceof CompilerUnavailableException unavailable) {
+                throw unavailable;
+            }
             log.error("compiler process failed", e.getCause());
-            return CompilationResult.Failure.of(UNAVAILABLE_MESSAGE);
+            throw new CompilerUnavailableException(UNAVAILABLE_MESSAGE, RETRY_AFTER);
         } catch (InterruptedException e) {
             pending.cancel(true);
             Thread.currentThread().interrupt();
@@ -100,8 +110,8 @@ public class ForkedCompiler implements SourceCompiler, AutoCloseable {
         }
     }
 
-    private CompilationResult run(String source) throws IOException, InterruptedException {
-        Process process = new ProcessBuilder(command).start();
+    private CompilationResult run(SourceUnit unit) throws IOException, InterruptedException {
+        Process process = new ProcessBuilder(command).redirectError(Redirect.INHERIT).start();
         running.add(process);
 
         AtomicBoolean killed = new AtomicBoolean();
@@ -109,28 +119,27 @@ public class ForkedCompiler implements SourceCompiler, AutoCloseable {
 
         try {
             if (closed) {
-                return CompilationResult.Failure.of(UNAVAILABLE_MESSAGE);
+                throw new CompilerUnavailableException(UNAVAILABLE_MESSAGE, RETRY_AFTER);
             }
             deadline = watchdog.schedule(() -> {
                 killed.set(true);
                 process.destroyForcibly();
             }, timeout.toMillis(), TimeUnit.MILLISECONDS);
 
-            writeSource(process, source);
+            writeRequest(process, unit);
             byte[] payload = process.getInputStream().readAllBytes();
             int exitCode = process.waitFor();
 
             CompilationResult result = parse(payload);
             if (result != null) {
-                logStderr(process, exitCode);
                 return result;
             }
             if (killed.get()) {
                 log.warn("compilation exceeded {}; the compiler process was killed", timeout);
                 return CompilationResult.Failure.of(TIMEOUT_MESSAGE);
             }
-            log.error("compiler process exited with {} and no result: {}", exitCode, stderrOf(process));
-            return CompilationResult.Failure.of(UNAVAILABLE_MESSAGE);
+            log.error("compiler process exited with {} and no result", exitCode);
+            throw new CompilerUnavailableException(UNAVAILABLE_MESSAGE, RETRY_AFTER);
         } finally {
             if (deadline != null) {
                 deadline.cancel(false);
@@ -140,9 +149,9 @@ public class ForkedCompiler implements SourceCompiler, AutoCloseable {
         }
     }
 
-    private void writeSource(Process process, String source) {
+    private void writeRequest(Process process, SourceUnit unit) {
         try (OutputStream stdin = process.getOutputStream()) {
-            stdin.write(source.getBytes(StandardCharsets.UTF_8));
+            objectMapper.writeValue(stdin, CompilerProcessProtocol.Request.of(unit));
         } catch (IOException e) {
             log.debug("could not hand the source to the compiler process", e);
         }
@@ -157,22 +166,6 @@ public class ForkedCompiler implements SourceCompiler, AutoCloseable {
         } catch (IOException | IllegalArgumentException e) {
             log.error("compiler process wrote {} bytes that are not a result document", payload.length, e);
             return null;
-        }
-    }
-
-    private void logStderr(Process process, int exitCode) {
-        String stderr = stderrOf(process);
-        if (!stderr.isEmpty()) {
-            log.warn("compiler process (exit {}) wrote to stderr: {}", exitCode, stderr);
-        }
-    }
-
-    private String stderrOf(Process process) {
-        try {
-            String stderr = new String(process.getErrorStream().readAllBytes(), StandardCharsets.UTF_8).strip();
-            return stderr.length() > MAX_LOGGED_STDERR ? stderr.substring(0, MAX_LOGGED_STDERR) + "…" : stderr;
-        } catch (IOException e) {
-            return "";
         }
     }
 
@@ -192,10 +185,11 @@ public class ForkedCompiler implements SourceCompiler, AutoCloseable {
         return pool;
     }
 
-    private static List<String> command() {
+    private static List<String> command(List<String> extraChildVmOptions) {
         List<String> command = new ArrayList<>();
         command.add(Path.of(System.getProperty("java.home"), "bin", "java").toString());
         command.addAll(CHILD_VM_OPTIONS);
+        command.addAll(extraChildVmOptions);
         command.add("-cp");
         command.add(System.getProperty("java.class.path"));
         command.add(CompilerProcessMain.class.getName());

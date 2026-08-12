@@ -1,0 +1,11 @@
+{
+  "case": "no-public-class",
+  "status": 400,
+  "headers": {
+    "Content-Type": "application/json"
+  },
+  "body": {
+    "error": "no-public-class",
+    "message": "source must declare a public top-level class"
+  }
+}

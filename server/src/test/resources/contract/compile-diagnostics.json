@@ -1,0 +1,26 @@
+{
+  "case": "compile-diagnostics",
+  "status": 200,
+  "headers": {
+    "Content-Type": "application/json"
+  },
+  "body": {
+    "success": false,
+    "className": null,
+    "classFileBase64": null,
+    "diagnostics": [
+      {
+        "line": 3,
+        "column": 16,
+        "kind": "ERROR",
+        "message": "';' expected"
+      },
+      {
+        "line": null,
+        "column": null,
+        "kind": "NOTE",
+        "message": "some input files use unchecked or unsafe operations"
+      }
+    ]
+  }
+}

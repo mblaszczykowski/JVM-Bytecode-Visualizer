@@ -31,8 +31,6 @@ public class InMemoryCompiler implements SourceCompiler {
             "--release", "21",
             "-g");
 
-    private static final String FALLBACK_UNIT_NAME = "CompilationUnit";
-
     private static final int MAX_LOGGED_COMPILER_OUTPUT = 2_000;
 
     private final JavaCompiler compiler;
@@ -49,8 +47,7 @@ public class InMemoryCompiler implements SourceCompiler {
     }
 
     @Override
-    public CompilationResult compile(String source) {
-        String unitName = SourceNames.publicTypeName(source).orElse(FALLBACK_UNIT_NAME);
+    public CompilationResult compile(SourceUnit unit) {
         DiagnosticCollector<JavaFileObject> collector = new DiagnosticCollector<>();
         StringWriter compilerOutput = new StringWriter();
 
@@ -60,8 +57,8 @@ public class InMemoryCompiler implements SourceCompiler {
 
             standardFileManager.setLocation(StandardLocation.CLASS_PATH, List.of());
 
-            JavaCompiler.CompilationTask task = compiler.getTask(
-                    compilerOutput, fileManager, collector, OPTIONS, null, List.of(new StringSource(unitName, source)));
+            JavaCompiler.CompilationTask task = compiler.getTask(compilerOutput, fileManager, collector, OPTIONS, null,
+                    List.of(new StringSource(unit.typeName(), unit.source())));
 
             boolean succeeded = call(task);
             logCompilerOutput(compilerOutput);

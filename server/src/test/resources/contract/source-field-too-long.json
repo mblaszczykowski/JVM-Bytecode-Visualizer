@@ -1,0 +1,11 @@
+{
+  "case": "source-field-too-long",
+  "status": 400,
+  "headers": {
+    "Content-Type": "application/json"
+  },
+  "body": {
+    "error": "source-too-large",
+    "message": "the source field is larger than this service accepts"
+  }
+}

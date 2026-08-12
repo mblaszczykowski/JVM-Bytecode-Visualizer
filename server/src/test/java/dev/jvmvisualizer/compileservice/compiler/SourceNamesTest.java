@@ -71,6 +71,28 @@ class SourceNamesTest {
     }
 
     @Test
+    void ignoresADeclarationInsideACharacterOrEscapedLiteral() {
+        String source = """
+                class Escaping {
+                    static char brace = '}';
+                    static String quote = "a \\" public class Escaped { } ";
+                }
+                public class Real { }
+                """;
+
+        assertThat(SourceNames.publicTypeName(source)).contains("Real");
+    }
+
+    @Test
+    void findsNothingInATruncatedSource() {
+        assertThat(SourceNames.publicTypeName("public class Open { /* unterminated")).contains("Open");
+        assertThat(SourceNames.publicTypeName("class A { String s = \"unterminated")).isEmpty();
+        assertThat(SourceNames.publicTypeName("class A { char c = 'u")).isEmpty();
+        assertThat(SourceNames.publicTypeName("class A { String s = \"\"\"\n unterminated")).isEmpty();
+        assertThat(SourceNames.publicTypeName("} } } public class Recovered { }")).contains("Recovered");
+    }
+
+    @Test
     void ignoresPublicMembersOfANonPublicType() {
         String source = """
                 class PackagePrivate {

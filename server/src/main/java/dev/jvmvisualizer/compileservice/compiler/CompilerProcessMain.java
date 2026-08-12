@@ -17,9 +17,11 @@ public final class CompilerProcessMain {
 
         int status = 0;
         try {
-            String source = new String(System.in.readAllBytes(), StandardCharsets.UTF_8);
-            CompilationResult result = new InMemoryCompiler().compile(source);
-            protocol.write(new ObjectMapper().writeValueAsBytes(CompilerProcessProtocol.Payload.of(result)));
+            ObjectMapper objectMapper = new ObjectMapper();
+            CompilerProcessProtocol.Request request =
+                    objectMapper.readValue(System.in.readAllBytes(), CompilerProcessProtocol.Request.class);
+            CompilationResult result = new InMemoryCompiler().compile(request.toUnit());
+            protocol.write(objectMapper.writeValueAsBytes(CompilerProcessProtocol.Payload.of(result)));
             protocol.flush();
         } catch (Throwable t) {
             System.err.println("compiler process failed: " + t);

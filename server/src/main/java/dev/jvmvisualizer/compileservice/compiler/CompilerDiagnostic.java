@@ -1,5 +1,6 @@
 package dev.jvmvisualizer.compileservice.compiler;
 
+import java.util.Locale;
 import javax.tools.Diagnostic;
 import javax.tools.JavaFileObject;
 
@@ -14,7 +15,7 @@ public record CompilerDiagnostic(Diagnostic.Kind kind, Integer line, Integer col
                 diagnostic.getKind(),
                 position(diagnostic.getLineNumber()),
                 position(diagnostic.getColumnNumber()),
-                diagnostic.getMessage(null));
+                diagnostic.getMessage(Locale.ROOT));
     }
 
     private static Integer position(long value) {

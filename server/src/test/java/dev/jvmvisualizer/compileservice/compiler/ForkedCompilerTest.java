@@ -3,7 +3,10 @@ package dev.jvmvisualizer.compileservice.compiler;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.time.Duration;
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -25,13 +28,15 @@ class ForkedCompilerTest {
             }
             """;
 
-    private static final String RUNAWAY = runaway(24);
+    private static final SourceUnit ADDER_UNIT = new SourceUnit("Adder", ADDER);
+
+    private static final SourceUnit RUNAWAY = new SourceUnit("Runaway", runaway(24));
 
     @Test
     @Timeout(60)
     void compilesInAChildProcess() {
         try (ForkedCompiler compiler = new ForkedCompiler(Duration.ofSeconds(30), 1)) {
-            CompilationResult result = compiler.compile(ADDER);
+            CompilationResult result = compiler.compile(ADDER_UNIT);
 
             assertThat(result).isInstanceOfSatisfying(CompilationResult.Success.class, success -> {
                 assertThat(success.className()).isEqualTo("Adder");
@@ -44,12 +49,48 @@ class ForkedCompilerTest {
     @Timeout(60)
     void reportsDiagnosticsFromTheChildProcess() {
         try (ForkedCompiler compiler = new ForkedCompiler(Duration.ofSeconds(30), 1)) {
-            CompilationResult result = compiler.compile("public class Broken { int value() { return 1 } }");
+            CompilationResult result = compiler.compile(
+                    new SourceUnit("Broken", "public class Broken { int value() { return 1 } }"));
 
             assertThat(result).isInstanceOf(CompilationResult.Failure.class);
-            assertThat(result.diagnostics()).isNotEmpty();
-            assertThat(result.diagnostics()).allSatisfy(diagnostic ->
-                    assertThat(diagnostic.message()).isNotBlank());
+            assertThat(result.diagnostics()).extracting(CompilerDiagnostic::message).contains("';' expected");
+        }
+    }
+
+    @Test
+    @Timeout(120)
+    void stillReturnsAResultWhenTheChildFloodsItsStandardError() throws Exception {
+        Process run = new ProcessBuilder(Path.of(System.getProperty("java.home"), "bin", "java").toString(),
+                "-cp", System.getProperty("java.class.path"), FloodedCompileRun.class.getName())
+                .redirectError(ProcessBuilder.Redirect.DISCARD)
+                .start();
+        String className = new String(run.getInputStream().readAllBytes(), StandardCharsets.UTF_8).strip();
+
+        assertThat(run.waitFor()).isZero();
+        assertThat(className).isEqualTo("Adder");
+    }
+
+    @Test
+    @Timeout(60)
+    void refusesToCompileWhenTheChildCannotStart() {
+        try (ForkedCompiler compiler = new ForkedCompiler(Duration.ofSeconds(30), 1,
+                List.of("-XX:+NoSuchFlagExistsHere"))) {
+
+            assertThatThrownBy(() -> compiler.compile(ADDER_UNIT))
+                    .isInstanceOf(CompilerUnavailableException.class)
+                    .hasMessage(ForkedCompiler.UNAVAILABLE_MESSAGE);
+        }
+    }
+
+    @Test
+    @Timeout(60)
+    void refusesToCompileWhenTheChildWritesSomethingOtherThanAResult() {
+        try (ForkedCompiler compiler = new ForkedCompiler(Duration.ofSeconds(30), 1,
+                List.of("-XX:+PrintFlagsFinal"))) {
+
+            assertThatThrownBy(() -> compiler.compile(ADDER_UNIT))
+                    .isInstanceOfSatisfying(CompilerUnavailableException.class, e ->
+                            assertThat(e.retryAfter()).isEqualTo(Duration.ofSeconds(5)));
         }
     }
 
@@ -92,7 +133,7 @@ class ForkedCompilerTest {
             assertThat(started.await(10, TimeUnit.SECONDS)).isTrue();
             waitForChildProcesses(before + 1);
 
-            assertThatThrownBy(() -> compiler.compile(ADDER))
+            assertThatThrownBy(() -> compiler.compile(ADDER_UNIT))
                     .isInstanceOf(CompilerBusyException.class)
                     .hasMessageContaining("capacity");
 
@@ -112,7 +153,11 @@ class ForkedCompilerTest {
         ForkedCompiler compiler = new ForkedCompiler(Duration.ofSeconds(30), 1);
         Thread holder = new Thread(() -> {
             started.countDown();
-            compiler.compile(RUNAWAY);
+            try {
+                compiler.compile(RUNAWAY);
+            } catch (CompilerUnavailableException expected) {
+                assertThat(expected).hasMessage(ForkedCompiler.UNAVAILABLE_MESSAGE);
+            }
         }, "slot-holder");
         holder.setDaemon(true);
         holder.start();

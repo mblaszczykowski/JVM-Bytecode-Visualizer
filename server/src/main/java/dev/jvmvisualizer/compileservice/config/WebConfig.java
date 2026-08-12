@@ -23,7 +23,7 @@ class WebConfig {
     private static final int RATE_LIMIT_ORDER = Ordered.HIGHEST_PRECEDENCE + 50;
     private static final int SIZE_LIMIT_ORDER = Ordered.HIGHEST_PRECEDENCE + 100;
 
-    private static final int MAX_JSON_STRING_LENGTH = 70 * 1024;
+    private static final int SOURCE_FIELD_HEADROOM = 8 * 1024;
 
     private final CompileProperties properties;
 
@@ -80,9 +80,10 @@ class WebConfig {
 
     @Bean
     Jackson2ObjectMapperBuilderCustomizer boundedStringLength() {
+        int maxStringLength = Math.toIntExact(properties.maxSourceSize().toBytes()) + SOURCE_FIELD_HEADROOM;
         return builder -> builder.factory(JsonFactory.builder()
                 .streamReadConstraints(StreamReadConstraints.builder()
-                        .maxStringLength(MAX_JSON_STRING_LENGTH)
+                        .maxStringLength(maxStringLength)
                         .build())
                 .build());
     }
