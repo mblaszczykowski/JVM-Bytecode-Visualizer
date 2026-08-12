@@ -45,7 +45,7 @@ knows nothing about React or the DOM; the boundary is enforced by an ESLint rule
   testing against a real JVM and property-based testing of the arithmetic possible.
 - Runtime errors (division by zero, unsupported opcode) still return the history up to the error, so
   the UI can show where the program stopped and not only that it stopped.
-- No state is shared between the UI and the domain; the hook is a player, not an execution engine.
+- No state is shared between the UI and the domain. The hook plays a recording; it drives nothing.
 
 **Negative / costs**
 

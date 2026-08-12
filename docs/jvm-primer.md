@@ -5,7 +5,7 @@ comfortable in some language and has never opened the JVM specification: no Java
 assumed beyond reading a `for` loop, and no bytecode experience at all.
 
 Every rule asserted here cites the section of the _Java Virtual Machine Specification_ (Java SE 21)
-that states it, so nothing has to be taken on trust. Everything is illustrated with the panels of
+that states it, so you can go and read the original. Everything is illustrated with the panels of
 this application (**Source**, **Bytecode**, **Call stack**, **Operand stack**, **Locals** and the
 **Next** card) and with `javap` output you can reproduce on your own machine.
 
@@ -45,7 +45,7 @@ Two consequences show up immediately in the **Bytecode** panel:
    §4.10). That is why the `i` prefix is everywhere in this project: the executable subset is the
    `int` instructions.
 
-## 2. Two stacks, not one
+## 2. The JVM has two stacks
 
 This is the single most common confusion, so it gets the most room. The JVM has two structures with
 "stack" in the name and they have nothing to do with each other.
@@ -67,7 +67,7 @@ beside the panels that describe it, with `main` at the top.
 
 ### The worked example
 
-This is the whole of it. Compile with `javac -g Sum.java`:
+Compile with `javac -g Sum.java`:
 
 ```java
 public class Sum {
@@ -150,7 +150,7 @@ stack (JVMS §2.6.4, §6.5 `ireturn`):
 flowchart TB
   subgraph after["Call stack at its deepest"]
     direction TB
-    f0["main (pc at the invokestatic)<br/>operand stack: (empty)"]
+    f0["main (pc past the invokestatic)<br/>operand stack: (empty)"]
     f1["factorial(4)<br/>operand stack: 4"]
     f2["factorial(3)<br/>operand stack: 3"]
     f3["factorial(2)<br/>operand stack: 2"]
@@ -160,7 +160,10 @@ flowchart TB
 ```
 
 The depth chart under the scrubber is exactly this number over time: the length of the call stack in
-every snapshot. Recursion is the shape that goes up and comes back down.
+every snapshot, which is why a recursive program draws a rise and a fall.
+
+Each caller's `pc` in that diagram already points at the instruction _after_ its `invokestatic`, for
+the reason given in section 3.
 
 ## 3. The frame
 
@@ -335,9 +338,11 @@ followed by the return type (JVMS §4.3.3):
 The parentheses are what make it parseable: parameters are read until the `)`, so no separator is
 needed and no ambiguity arises. `(II)Z` is two parameters; `(I)IZ` is not a valid descriptor at all.
 
-This is also why an unsupported program can be rejected precisely. Because the parser implements the
-whole grammar and not just the `int` subset, an attempt to call a method whose descriptor is `(J)J`
-can report "unsupported parameter type: long" instead of "unknown descriptor".
+The parser implements the whole grammar, which is what lets the application read a descriptor it
+cannot execute. `parameterKinds` in the interpreter then decides
+whether a call is one the machine can make: `int` and reference types pass, and anything else stops
+the run at the call with `Unsupported call:` and the method it names. A method declared `(J)J` is
+therefore listed, disassembled and readable, and calling it stops the run.
 
 ## 7. From a byte offset back to a line of source
 
@@ -371,8 +376,8 @@ has nothing to highlight.
 
 ## 8. Cross-checking with `javap`
 
-Everything above is inspectable with the JDK you already have, and it is the fastest way to check
-that this application is not making anything up.
+Everything above is inspectable with the JDK you already have, and comparing the two is a quick way
+to check any claim here against the reference tooling.
 
 | Command           | What it prints                                                       | Which panel it corresponds to    |
 | ----------------- | -------------------------------------------------------------------- | -------------------------------- |
@@ -402,19 +407,27 @@ parser and disassembler tests are transcribed from, so it can be read without a 
 
 ## 9. Where this machine stops
 
-This interpreter executes the integer instructions and control flow, not the JVM. It has no heap
-object model beyond what the executable subset can create, no `long`/`float`/`double`, no exception
-dispatch, no dynamic dispatch and no verifier (JVMS §4.10): it checks the few invariants it needs
-and reports a typed error instead of running off its own rails.
+This interpreter executes the integer instructions, objects of the class in front of it, and control
+flow. It has no `long`/`float`/`double`, no second class file, no `invokedynamic`, no interface
+dispatch and no verifier (JVMS §4.10): it checks the few invariants it needs and reports a typed
+error instead of running off its own rails.
+
+Exception _dispatch_ it does have. `athrow` runs, the `exception_table` of a method is read, and a
+fault the machine raises (`ArithmeticException`, `ArrayIndexOutOfBoundsException`,
+`NullPointerException`, `NegativeArraySizeException`) unwinds the call stack a visible step at a
+time looking for a handler, matching by class hierarchy. What is missing is the other half:
+constructing an exception object of your own, which needs a class the file does not contain.
 
 None of that changes the model this document describes. Frames, slots, the operand stack, the
 constant pool and descriptors work the same way in a production JVM; what a production JVM adds is
 more types, more instructions and a JIT compiler that eventually stops interpreting altogether.
 
 For the precise boundary, and for what happens when a given Java construct crosses it, see
-[Scope and limitations](../README.md#scope-and-limitations). For why the boundary is drawn there,
-see [ADR-0002](adr/0002-int-only-mvp-without-heap.md), and
-[ADR-0005](adr/0005-heap-of-int-arrays.md) for where it moved to when arrays arrived.
+[Scope and limitations](../README.md#scope-and-limitations). Four records draw it:
+[ADR-0002](adr/0002-int-only-mvp-without-heap.md) set it at `int` with no heap,
+[ADR-0005](adr/0005-heap-of-int-arrays.md) moved it when arrays arrived,
+[ADR-0007](adr/0007-exceptions-without-an-object-model.md) added catching, and
+[ADR-0008](adr/0008-objects-of-the-loaded-class.md) added objects of the loaded class.
 
 ## Further reading
 

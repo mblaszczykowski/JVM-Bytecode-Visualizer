@@ -3,6 +3,9 @@
 A browser-based JVM bytecode visualizer: load a `.class` file or write Java, then watch the virtual
 machine execute it one instruction at a time.
 
+> Not deployed yet, so there is no link to click. `npm install && npm run dev` is the whole setup,
+> and [`docs/deployment.md`](docs/deployment.md) covers what a deploy would need.
+
 ![Four frames deep into a recursive factorial, with the branch arcs and the depth chart](docs/screenshots/app-ready.png)
 
 ## What it does
@@ -70,7 +73,7 @@ flowchart LR
 ```
 
 The domain layer (`web/src/core/`) is plain TypeScript: no React, no DOM, no dependency on the
-application layer. That is a lint rule, not a convention ([Design decisions](#design-decisions)).
+application layer. A lint rule enforces it ([Design decisions](#design-decisions)).
 
 ## Correctness
 
@@ -95,42 +98,57 @@ The interpreter is the part that has to be right, so it is pinned from four dire
   tables of both switch instructions compared against javap's own arms. The full dump is committed
   next to the fixture (`web/src/core/classfile/__fixtures__/Factorial.javap.txt`), so a reviewer
   needs no JDK.
-- A corpus nobody here wrote. 8,053 class files from ten Maven Central libraries (javac across a
-  decade, plus `kotlinc` and `scalac`) parsed and disassembled with zero failures on every CI run. It
-  also measures the interpreter's reach; see [Scope and limitations](#scope-and-limitations).
+- A corpus nobody here wrote. 8,053 class files from ten Maven Central libraries, built by `javac`,
+  `kotlinc` and `scalac`, parsed and disassembled with zero failures on every CI run. Its figures are
+  committed to `web/corpus/scan.json` and the suite fails if a scan disagrees with them. It also
+  measures the interpreter's reach; see [Scope and limitations](#scope-and-limitations).
 
-Under that: over a thousand unit and component tests, a Playwright suite that replays a recursive
-program end to end, scrubs into the recursion, opens a class with no entry point in the explorer and
-rejects a non-class file, and a second end-to-end job running the editor against the compile service
-built from its own Dockerfile. Coverage thresholds are CI-enforced: `web/src/core/**` must stay at
-90% lines, branches and functions, configured in `web/vite.config.ts`.
+Under that: 1,348 unit and component tests across 78 files, a Playwright suite that replays a
+recursive program end to end, scrubs into the recursion, opens a class with no entry point in the
+explorer and rejects a non-class file, and a second end-to-end job running the editor against the
+compile service built from its own Dockerfile. Coverage thresholds are CI-enforced: `web/src/core/**`
+must stay at 90% lines, branches and functions, measured per file rather than in aggregate, in
+`web/vite.config.ts`. The server has its own gate in `server/pom.xml`: 0.85 line and 0.75 branch
+coverage per package on `compiler`, `config` and `service`, against 93 tests, which today sit at
+87.0/82.8, 90.2/76.9 and 97.1/88.9. The `api` package is left out of it on purpose, because its
+branch coverage is the handler arms for statuses this service cannot produce and gating it would mean
+a shared minimum too low to constrain the other three.
 
 ## Performance
 
-Recording every step is the design's central cost, so it is measured and the measurements are budgets
-that fail a build when they move.
+Recording every step is what this design pays for its replay, so the cost is measured and the
+measurements are budgets that fail a build when they move.
 
 - ~600,000 steps a second: a 20,007-step counting loop parsed, disassembled, executed and recorded in
-  33 ms. Measured under Node 20 on one core with `vitest`, on a development machine and not a
+  33 ms. Measured under Node 20 on one core with `vitest`, on a development machine rather than a
   benchmark rig, so it catches an order of magnitude and is not comparable to a JIT.
-- A frame is copied once per change, not once per step it survives. Two hundred nested calls produce
-  1,608 frozen frames where copying the whole call stack per step would produce 142,911, 89× fewer.
-  That reuse is what makes [ADR-0001](docs/adr/0001-snapshot-history.md) affordable, and
-  `web/src/core/interpreter/performance.test.ts` asserts the ratio.
-- The history has a ceiling: 8M live array elements and 24M recorded ones, both surfaced as
+- A frame is copied once per change rather than once per step it survives. Two hundred nested calls
+  produce 1,408 snapshots holding 1,608 frozen frames, where copying the whole call stack per step
+  would produce 142,911: 88.9× fewer. That reuse is what makes
+  [ADR-0001](docs/adr/0001-snapshot-history.md) affordable, and
+  `web/src/core/interpreter/performance.test.ts` pins all three counts exactly, so a change to the
+  sharing shows up as a diff rather than as a slow drift.
+- The history has a ceiling: 8M live heap elements and 24M recorded ones, both surfaced as
   `OutOfMemoryError` exactly as a real JVM would, so a program that asks for more stops with its
-  history intact.
-- So does the bundle. `npm run size -w web` fails when a shipped chunk outgrows its gzipped budget,
-  and CI runs it after the build. Raising a budget is normal; doing it in a commit that says why is
-  the point.
+  history intact. The recording ceiling is shared by the heap, the console and the interned external
+  objects, so a print-heavy run reaches it too.
+- So does the bundle. `npm run size -w web` fails when a shipped chunk outgrows its gzipped budget or
+  a static asset outgrows its raw one, and CI runs it after the build.
 
 ```
-✓ index.js                   85.7 kB gzip /  95 kB  the application itself
+✓ index.js                   99.0 kB gzip / 108 kB  the application itself
 ✓ react.js                   42.2 kB gzip /  48 kB  react + react-dom
 ✓ motion.js                  44.1 kB gzip /  50 kB  framer-motion
-✓ index.css                  10.1 kB gzip /  14 kB  the whole stylesheet
-✓ run-program.worker.js      12.2 kB gzip /  16 kB  parser + interpreter
+✓ index.css                   8.5 kB gzip /  14 kB  the whole stylesheet
+✓ run-program.worker.js      12.3 kB gzip /  16 kB  parser + interpreter
+✓ og-image.jpg              134.8 kB raw  / 160 kB  the social card
+✓ favicon.svg                 0.7 kB raw  /   4 kB  the tab icon
 ```
+
+`index.js` grew from a 95 kB budget to 108 kB, and it is worth saying what bought the 13 kB: ninety
+opcode explanations that did not exist before, full constant pool resolution so every tag renders and
+cross-links, the compile service's error copy, and the shared button and dialog primitives. Raising a
+budget is a normal thing to do; doing it without saying what arrived is not.
 
 Timing on a shared CI runner is not evidence, so only the wall-clock figure is a smoke ceiling. The
 assertions that matter are about shape: frames shared, budgets enforced, nothing quadratic.
@@ -172,25 +190,33 @@ program loads the first example, since a frame in someone else's page should not
 
 ## Scope and limitations
 
-A teaching instrument for how a stack machine works, not a JVM. The scope is closed so that what
-exists can be complete: [ADR-0002](docs/adr/0002-int-only-mvp-without-heap.md) has the reasoning and
-the exit path, [ADR-0005](docs/adr/0005-heap-of-int-arrays.md) where the boundary moved to.
+This is a teaching instrument for how a stack machine works. It implements part of the JVM, and the
+scope is closed so that the part it implements can be complete.
+[ADR-0002](docs/adr/0002-int-only-mvp-without-heap.md) has the reasoning and the exit path, and
+[ADR-0005](docs/adr/0005-heap-of-int-arrays.md), [ADR-0007](docs/adr/0007-exceptions-without-an-object-model.md)
+and [ADR-0008](docs/adr/0008-objects-of-the-loaded-class.md) record where the boundary moved to.
 
 The parser and the disassembler are measured against the real world; the interpreter is not.
 `npm run corpus -w web` fetches ten libraries from Maven Central, pinned by SHA-1 and chosen so that
-four compilers are represented: javac across a decade (a Java 6 target through a Java 17 one), plus
-`kotlinc` and `scalac`, which emit shapes javac never does, plus ASM, a bytecode library and
-therefore full of the format's own corners. `npm run test:corpus -w web` puts every class file
-through the same parse → disassemble path the application uses, on every change:
+three compilers are represented: `javac`, `kotlinc` and `scalac`, the last two emitting shapes javac
+never does. One of the ten is ASM, a bytecode library compiled by javac like the rest, included
+because a library that writes class files is full of the format's own corners.
 
-| Over 10 jars from Maven Central       |           |
-| ------------------------------------- | --------- |
-| Class files parsed                    | 8,053     |
-| Failures                              | **0**     |
-| Methods disassembled                  | 88,604    |
-| Instructions decoded                  | 1,173,738 |
-| Methods with an undecodable tail      | **0**     |
-| Class file major versions encountered | 49–53     |
+`npm run test:corpus -w web` puts every class file through the same parse → disassemble path the
+application uses, on every change. The figures are committed to `web/corpus/scan.json` and the suite
+fails if a scan disagrees with them, so the numbers below are checked rather than remembered:
+
+| Over 10 jars from Maven Central       |                |
+| ------------------------------------- | -------------- |
+| Class files parsed                    | 8,053          |
+| Failures                              | **0**          |
+| Methods disassembled                  | 88,604         |
+| Instructions decoded                  | 1,173,738      |
+| Methods with an undecodable tail      | **0**          |
+| Class file major versions encountered | 49, 51, 52, 53 |
+
+The versions are Java 5, 7, 8 and 9. There is no major 50 in the set, so the range is not
+contiguous, and nothing here is compiled for Java 17.
 
 Execution is the narrower claim, and the same corpus measures it. 91.5% of those 1.17 million
 instructions are ones the interpreter implements, but a method replays only if _every_ instruction in
@@ -199,24 +225,24 @@ them) consist entirely of implemented instructions.**
 
 The most common instruction still outside the subset is `invokeinterface`, and behind it sit the
 things a second class file would be needed for. The boundary: **everything resolves inside the
-uploaded class.** Its own objects, constructors, instance methods and fields all run;
-`new ArrayList<>()` does not, and neither does `throw new IllegalStateException(...)`, for want of a
-class to load, not for want of an instruction.
+uploaded class.** Its own objects, constructors, instance methods and fields all run.
+`new ArrayList<>()` and `throw new IllegalStateException(...)` stop, and what stops them is the
+missing class file rather than a missing instruction: `new` and `invokespecial` are both implemented.
 
 A separate limit decides whether a file replays at all: a run needs a static method it can enter, and
 only one of the 8,053 has a `main`, which is why the explorer matters as much as the transport. A
 file that does not replay is not a dead end: parsing, the constant pool, the method table and the
 full listing do not depend on execution, and a run that stops midway keeps the history it recorded.
 
-| In the Java source                                                                                                        | In the bytecode                                         | What the application does                                                                                                          |
-| ------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| A type other than the one loaded: `new ArrayList<>()`, `throw new IllegalStateException(...)`, a second class of your own | `new`, `invokespecial`, `getfield` naming another class | Stops at the instruction that names it. Objects of the _loaded_ class work; there is no second class file to load.                 |
-| Static fields                                                                                                             | `putstatic`, `getstatic` outside the externals table    | Stops at the write. There is no class initialisation and no static state.                                                          |
-| `long`, `float`, `double`                                                                                                 | `ladd`, `fmul`, `dload`, two-slot locals                | Stops at the first such instruction; a method taking one cannot be called.                                                         |
-| Lambdas, method references, `"a" + b`                                                                                     | `invokedynamic`                                         | Stops at the call site. String concatenation compiles to `invokedynamic` on Java 9 and later.                                      |
-| Arrays of anything but `int`                                                                                              | `anewarray`, `multianewarray`, `baload`, …              | Stops at the allocation. The heap holds `int` arrays only.                                                                         |
-| Standard library calls beyond `Math` and `System.out`                                                                     | `invokestatic`/`invokevirtual` on another type          | Stops with `unsupported-call`. The recognised members are a table in `web/src/core/interpreter/externals.ts`; adding one is a row. |
-| No static `main`: a utility class, an interface, an enum, a record, a nested class                                        | no entry point to run                                   | Opens in the explorer with no run attached: the listing, the pool and the class header are all still there to read.                |
+| In the Java source                                                                                                        | In the bytecode                                         | What the application does                                                                                                                                                                                             |
+| ------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A type other than the one loaded: `new ArrayList<>()`, `throw new IllegalStateException(...)`, a second class of your own | `new`, `invokespecial`, `getfield` naming another class | Stops at the instruction that names it. Objects of the _loaded_ class work; there is no second class file to load.                                                                                                    |
+| Static fields                                                                                                             | `putstatic`, `getstatic` outside the externals table    | Stops at the write. There is no class initialisation and no static state.                                                                                                                                             |
+| `long`, `float`, `double`                                                                                                 | `ladd`, `fmul`, `dload`, two-slot locals                | Stops at the first such instruction; a method taking one cannot be called.                                                                                                                                            |
+| Lambdas, method references, `"a" + b`                                                                                     | `invokedynamic`                                         | Stops at the call site, which still reads like javap (`#0:makeConcatWithConstants:(...)`) and is labelled with the Java construct it came from. String concatenation compiles to `invokedynamic` on Java 9 and later. |
+| Arrays of anything but `int`                                                                                              | `anewarray`, `multianewarray`, `baload`, …              | Stops at the allocation. The heap holds `int` arrays only.                                                                                                                                                            |
+| Standard library calls beyond `Math` and `System.out`                                                                     | `invokestatic`/`invokevirtual` on another type          | Stops with `unsupported-call`. The recognised members are a table in `web/src/core/interpreter/externals.ts`; adding one is a row.                                                                                    |
+| No static `main`: a utility class, an interface, an enum, a record, a nested class                                        | no entry point to run                                   | Opens in the explorer with no run attached: the listing, the pool and the class header are all still there to read.                                                                                                   |
 
 The parts that hold regardless of which file is loaded:
 
@@ -224,23 +250,43 @@ The parts that hold regardless of which file is loaded:
   small heap, plus opaque tokens for the few external members it recognises. No
   `long`/`float`/`double`, no second class file, no inheritance beyond `Object`, no interfaces, no
   static state, no threads, no lambdas, no bytecode verification.
+- The executable subset is 90 opcodes. `EXECUTABLE_OPCODES` in
+  `web/src/core/interpreter/interpreter.ts` is the definitive list, built from the `Op` table the
+  dispatch switch uses, and the welcome screen states it at runtime so it cannot drift. Grouped as
+  JVMS §6.5 lays them out:
+  - constants: `nop`, `aconst_null`, `iconst_m1` through `iconst_5`, `bipush`, `sipush`, `ldc`,
+    `ldc_w`
+  - loads and stores: `iload`, `aload` and their `_0`–`_3` forms, `istore`, `astore` and theirs,
+    `iaload`, `iastore`, `iinc`
+  - stack: `pop`, `pop2`, `dup`, `dup_x1`, `dup2`, `dup2_x1`, `swap`
+  - arithmetic: `iadd`, `isub`, `imul`, `idiv`, `irem`, `ineg`, the shifts `ishl`/`ishr`/`iushr`,
+    the bitwise `iand`/`ior`/`ixor`, and the `i2b`/`i2c`/`i2s` narrowings
+  - control flow: the `if<cond>`, `if_icmp<cond>` and `if_acmp<cond>` families, `ifnull`,
+    `ifnonnull`, `goto`, `tableswitch`, `lookupswitch`, `ireturn`, `areturn`, `return`, `athrow`
+  - objects and fields: `new`, `newarray`, `arraylength`, `getstatic`, `getfield`, `putfield`
+  - calls: `invokestatic`, `invokespecial`, `invokevirtual`, resolving within the class being
+    executed plus the members on the externals table (`java/lang/Math` and `System.out`)
+
+  `wide` is not in that list because it is folded into the instruction it widens at decode time,
+  which is the representation javap prints. `putstatic` is not in it either; see the static fields
+  row above.
+
 - Objects of the loaded class run: `new`, the constructor, instance methods and instance fields.
   Shape is fixed at allocation from the class's own field table, each field starts at its
-  descriptor's default, and the heap panel draws the fields by name as the run writes them
-  ([ADR-0008](docs/adr/0008-objects-of-the-loaded-class.md)).
-- The executable subset: constants, load/store, `iinc`, stack manipulation, integer arithmetic,
-  shifts and bitwise operations, narrowing conversions, the `if<cond>`/`if_icmp<cond>` families,
-  `goto`, `tableswitch`/`lookupswitch`, `wide`, `int` array access, `athrow`, and
-  `invokestatic`/`ireturn`/`return`, with `invokestatic` resolving within the class being executed
-  plus the `java/lang/Math` methods on the externals table. `STACK_EFFECTS` in
-  `web/src/core/disassembler/opcodes.ts` is the definitive list, and the welcome screen states it at
-  runtime so it cannot drift.
+  descriptor's default, and the heap panel draws the fields by name as the run writes them. A null
+  receiver at `getfield`, `putfield` or `invokevirtual` raises `NullPointerException` the way a real
+  JVM does ([ADR-0008](docs/adr/0008-objects-of-the-loaded-class.md)).
 - Decoding is wider than execution: every assigned opcode below `0xca` is fully decoded (mnemonic,
   operands, branch targets, switch tables) whether or not the interpreter runs it, so `getfield #3`
   reads as `getfield #3 // Field Counter.value:I` in a class that never executes. Decoding stops only
   at bytes with no instruction boundary after them.
-- The parser is wider still: the whole class file format, every constant pool tag, unknown attributes
-  skipped by length, because a modern `javac` emits attributes a narrow parser would choke on.
+- The parser is wider still, and a class the machine cannot execute still reads completely. Every
+  constant pool tag JVMS §4.4 defines is parsed into typed indices and values and every one of them
+  renders, so the pool panel cross-links `InterfaceMethodref`, `MethodHandle`, `MethodType`,
+  `Dynamic`, `InvokeDynamic`, `Module` and `Package`, and prints `Float`, `Long` and `Double` values
+  with javap's `f`/`l`/`d` suffixes. Unknown attributes are skipped by length, because a modern
+  `javac` emits attributes a narrow parser would choke on. Overlong modified-UTF-8 is rejected the
+  way a real class loader rejects it.
 - `try`/`catch` catches what the machine raises: `ArithmeticException`,
   `ArrayIndexOutOfBoundsException`, `NullPointerException`, `NegativeArraySizeException`. The
   `exception_table` is read, `athrow` runs, and a thrown exception unwinds the call stack one visible
@@ -276,8 +322,10 @@ The parts that hold regardless of which file is loaded:
 
 ## Getting started
 
-Node ≥ 20.18.1 and npm ≥ 10. A JDK 21+ is needed only for the compile service and for rebuilding
-fixtures; the example `.class` files are committed, so the frontend needs no Java at all.
+Node ≥ 20.18.1 and npm ≥ 10. The example `.class` files are committed, so the frontend needs no Java
+at all. Java is needed for two separate things, and they want different JDKs: the compile service
+builds and runs on JDK 21, and rebuilding the fixtures requires JDK 25 exactly (see
+[Rebuilding the fixtures](#rebuilding-the-fixtures)).
 
 ```bash
 npm install
@@ -328,10 +376,19 @@ The first Playwright run needs a browser: `npx playwright install chromium`.
 npm run fixtures -w web
 ```
 
-Requires a JDK 21+ on `PATH`. The script compiles the sources in `web/fixtures/src/` with
-`javac -g --release 21`, runs each program on a real JVM to capture its result, and regenerates
-`web/public/examples/` together with `manifest.json`. Those artifacts are committed, which is why CI
-and deployment need no JDK.
+Requires **JDK 25** on `PATH`, and refuses to run on anything else: the builders check that both
+`javac` and `javap` report feature version 25 and stop with an explanation if they do not. The class
+files still target Java 21 (`--release 21`, major version 65), so the bytecode does not depend on the
+JDK that produced it. The pin is about reproducibility: the `.class` files and the `javap` dumps are
+committed and byte-diffed by CI, and javap's disassembly layout, which the builders parse back,
+changed between releases.
+
+The script compiles the sources in `web/fixtures/src/` with `javac -g --release 21`, runs each
+program on a real JVM to capture its result, and regenerates `web/public/examples/` together with
+`manifest.json`. Those artifacts are committed, which is why everything except this one command needs
+no JDK. Moving to a different JDK means regenerating every fixture with it, committing the result,
+and raising `REQUIRED_JDK_FEATURE` in `web/fixtures/jdk.mjs` and the fixtures job in
+`.github/workflows/web.yml`.
 
 ### Regenerating the screenshots
 
@@ -345,10 +402,13 @@ change, so the README never describes an interface that no longer exists.
 
 ## Design decisions
 
-The interface is flat and separated by hairlines, not by shadow, on four text steps, one
-accent that means only "the machine is here now", and a single spacing scale. Both palettes come
-from one set of tokens written as `light-dark()` pairs, and `web/eslint.config.js` fails the build
-on the ad-hoc greys, arbitrary radii and one-off spacing values that the design replaced.
+The interface is flat and separated by hairlines rather than by shadow, on four text steps, six
+radii, and a single spacing scale. The accent means "the machine is here now" and nothing else:
+selection is drawn from the surface ramp and progress from the foreground ramp, so the one colour
+that says where execution is has no competition. A tinted surface uses one of four declared wash and
+fill tokens, which replaced nineteen ad-hoc alpha tints. Both palettes come from one set of tokens
+written as `light-dark()` pairs, and `web/eslint.config.js` fails the build on the ad-hoc greys,
+undeclared radii, alpha-tinted surfaces and one-off spacing values that the design replaced.
 
 ![The same run in the light palette, which is generated from the same tokens](docs/screenshots/light-theme.png)
 
@@ -366,7 +426,7 @@ error taxonomy.
 - [ADR-0003: The backend compiles, it never executes user code](docs/adr/0003-backend-compiles-never-executes.md).
   In memory with `-proc:none`, an empty class path and a size cap, inside a child JVM killed at the
   deadline and rationed by a bounded pool and a per-IP rate limit.
-- [ADR-0004: The backend is progressive enhancement, not a dependency](docs/adr/0004-backend-as-progressive-enhancement.md).
+- [ADR-0004: The backend is progressive enhancement](docs/adr/0004-backend-as-progressive-enhancement.md).
   The demo, the local setup and the frontend CI all work with no server running.
 - [ADR-0005: A heap that holds `int` arrays and nothing else](docs/adr/0005-heap-of-int-arrays.md).
   Arrays on an append-only heap, references as handles, and a kind tag per value so the machine
@@ -382,9 +442,19 @@ error taxonomy.
   The corpus measurement chose this over `long`/`double`: three of the four most common instructions
   the interpreter could not run were one feature.
 
+- [ADR-0009: One table is the authority for what an instruction means](docs/adr/0009-one-table-for-opcode-metadata.md).
+  The explanation, the pushed kind, the frame effect and the varying stack delta live in one row per
+  opcode, with a test over `EXECUTABLE_OPCODES` that fails the build if a row is missing.
+- [ADR-0010: Security headers for the published page](docs/adr/0010-security-headers-for-the-page.md).
+  What each CSP directive is for, why `frame-ancestors *` is deliberate, and what the sha256 in
+  `script-src` is pinned to.
+
 `web/eslint.config.js` enforces the ADR-0001 boundary: no imports of React, the DOM or the
-application layer from `web/src/core/**`, and no `window`, `document` or `localStorage` there.
-Dependencies flow UI → core, and a stray import fails the build.
+application layer from `web/src/core/**`, and no `window`, `document` or `localStorage` there. The
+import half of that rule now covers `web/src/services/**` and `web/src/workers/**` too, which may not
+reach back into `components/` or `hooks/`. The globals half stays scoped to `core/`, because deep
+links, the theme, telemetry and embed detection legitimately read the browser. Dependencies flow
+UI → core, and a stray import fails the build.
 
 ## Project structure
 
@@ -394,9 +464,12 @@ web/
     classfile/      ByteReader, parser, descriptors, typed ClassFileError
     disassembler/   full opcode table, decoding, branch targets, switch tables
     interpreter/    execute() → snapshots, frames, int32, heap, external members
+  src/workers/      the run off the main thread, streamed back in batches
   src/components/   panels, transport, branch gutter, depth chart, constant pool
-  src/services/     program building, app state machine, capabilities, compile client
-  fixtures/         example .java sources + the build script
+  src/hooks/        the player, row navigation, scroll follow, dialog focus
+  src/services/     program building, app state machine, derivations, compile client
+  corpus/           the Maven Central fetch script and the committed scan
+  fixtures/         example .java sources + the build scripts
   public/examples/  committed .class files and manifest.json
   tests/e2e/        Playwright specs
 server/             Spring Boot compile service (Java 21)
@@ -405,7 +478,8 @@ docs/adr/           architecture decision records
 
 ## Roadmap
 
-Ordered by how often an uploaded file runs into them, not by how easy they are to build.
+Ordered by how often an uploaded file runs into them, which is a different order from how easy they
+are to build.
 
 1. Arguments for the method a run starts from. `ExecuteOptions` names an entry method but has no
    channel for argument values, so a static `int` method that takes parameters is listed and marked

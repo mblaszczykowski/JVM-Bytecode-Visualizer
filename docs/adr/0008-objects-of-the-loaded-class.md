@@ -35,7 +35,7 @@ shape.
 `super()` is the single exception. It compiles to `java/lang/Object.<init>()V` on every class here,
 and `Object` has nothing this machine models, so the receiver is popped and the call is over.
 
-Three details are decisions, not mechanics:
+Three details were decided rather than falling out of the implementation:
 
 - An instance's shape is fixed at allocation, from the class's own field table, which is why fields
   are an array and not a map. A real heap decides an object's layout once, from the class; making it

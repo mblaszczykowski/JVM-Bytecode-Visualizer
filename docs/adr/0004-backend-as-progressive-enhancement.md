@@ -1,4 +1,4 @@
-# ADR-0004: The backend is progressive enhancement, not a dependency
+# ADR-0004: The backend is progressive enhancement
 
 - **Status:** Accepted
 - **Date:** 2026-07-16

@@ -1,6 +1,9 @@
 # ADR-0005: A heap that holds `int` arrays and nothing else
 
-- **Status:** Accepted
+- **Status:** Accepted. The sentence below that the heap "holds fixed-length arrays of `int` and no
+  other object" is superseded by [ADR-0008](0008-objects-of-the-loaded-class.md) (2026-08-04), which
+  takes the exit path named at the end of this record. Everything else here (handles, kind tags, the
+  append-only heap, the frozen view) stands as written and is what objects were built on.
 - **Date:** 2026-07-30
 - **Amends:** [ADR-0002](0002-int-only-mvp-without-heap.md), the "no heap" half of that decision,
   along the exit path it named.
@@ -11,7 +14,7 @@ ADR-0002 closed the MVP at the `int` type with no heap, and said what would have
 boundary to move: arrays are "the first candidate for v2", the snapshot model "would need to grow a
 heap, which changes the domain contract and calls for a new ADR". This is that ADR.
 
-The int-only machine had a pedagogical ceiling, not a technical one. With locals and the
+What the int-only machine ran into was a ceiling on what it could teach. With locals and the
 operand stack as the entire state, nothing on screen ever outlives the frame that created it or is
 reachable from two frames at once. A viewer watching `Factorial` or `Gcd` sees a stack machine
 compute a number, and never sees a data structure that instructions read and write by reference.
@@ -37,7 +40,7 @@ of a run and never unwound. It holds fixed-length arrays of `int` and no other o
   on what it allocated; the `aload`/`astore` families move references between slots and the operand
   stack; `aconst_null` pushes the null reference. The executable set is the `Op` table and the
   dispatch `switch` in `web/src/core/interpreter/interpreter.ts`, which is the definitive list.
-- A reference is a handle, not an address: the index of the array in the heap, so a `ref`
+- A reference is a handle: the index of the array in the heap, with no address arithmetic, so a `ref`
   value `h` names `snapshot.heap[h]`. `null` is the handle `-1`, at which no array ever lives (JVMS
   §2.4). A handle that names no cell, whether `null` or anything else out of range, is a
   `null-reference` fault, which is the `NullPointerException` a real JVM raises.
@@ -47,13 +50,26 @@ of a run and never unwound. It holds fixed-length arrays of `int` and no other o
   verifier's job in a real JVM (JVMS §4.10), and this interpreter has no verifier.
 - Faults are named for the exception a real JVM throws: `array-index-out-of-bounds`,
   `negative-array-size`, `null-reference`, alongside the existing kinds. They are returned with the
-  history so far, like every other `VmError`; an out-of-bounds write is a stopped run, not a crash.
+  history so far, like every other `VmError`, so an out-of-bounds write stops the run and leaves it
+  playable.
 - The heap is append-only. Arrays are never freed and handles are never reused, so there is no
   garbage collector and no aliasing question a snapshot has to answer. `freeze()` produces the
   immutable view a snapshot carries: a step that touched no array hands back the identical view it
   handed back last time, and a step that wrote to one array keeps the frozen objects of all the
-  others. The history therefore costs one element copy per allocation and per mutating step, not one
-  per array per step, which is the same sharing the call stack already uses (ADR-0001).
+  others. The history therefore costs one element copy per allocation and per mutating step rather
+  than one per array per step, which is the same sharing the call stack already uses (ADR-0001).
+- Two bounds, and they measure different things. `MAX_HEAP_ELEMENTS` (8,000,000) is what the program
+  holds live at once, so `new int[Integer.MAX_VALUE]` stops at the allocation.
+  `MAX_RECORDED_ELEMENTS` (24,000,000) is what the history retains, which is the larger number
+  because a loop writing to one array records a copy per step. Both surface as `OutOfMemoryError`
+  with `resource` naming which one was hit, and both leave the run playable up to that point.
+
+  The recording bound is no longer the heap's alone. One `RecordingBudget` per run is shared by the
+  heap, the console and the interned external objects, and each recorded step charges one slot per
+  heap handle plus the elements or fields of the cells that actually changed, plus the console lines
+  it hands back, plus the length of the externals pool. A run that prints on every step therefore
+  costs history even with an empty heap, which is the case that used to escape the bound entirely.
+
 - The `Snapshot` change is additive. `heap` and the two kind arrays are optional fields that
   `execute()` always fills, so a panel that only reads numbers keeps working and an int-only run
   produces the same frozen empty heap on every step.

@@ -1,8 +1,11 @@
 # ADR-0002: MVP on `int` only, without a heap
 
-- **Status:** Accepted. The "no heap" half is amended by [ADR-0005](0005-heap-of-int-arrays.md)
-  (2026-07-30), which takes the exit path named below. The `int`-only value model and the closed
-  instruction set stand as written.
+- **Status:** Accepted, and amended three times as the boundary moved.
+  [ADR-0005](0005-heap-of-int-arrays.md) (2026-07-30) takes the exit path named below and adds a
+  heap of `int` arrays. [ADR-0007](0007-exceptions-without-an-object-model.md) (2026-08-02) amends
+  the "no exceptions" half. [ADR-0008](0008-objects-of-the-loaded-class.md) (2026-08-04) amends the
+  "no objects" half. The `int`-only value model and the argument for a closed instruction set stand
+  as written.
 - **Date:** 2026-07-16
 
 ## Context

@@ -74,8 +74,28 @@ releases the history it had accumulated, which the token alone could never do, s
 discarded a result that had already been computed in full.
 
 Where no `Worker` exists (jsdom, Node, a browser that refuses a module worker, a missing chunk) the
-run happens inline exactly as before. The fallback is a property of the runner and not a branch at
-each call site, and the UI stops offering to cancel instead of offering it falsely.
+run happens inline exactly as before. The fallback is a property of the runner rather than a branch
+at each call site, and the UI stops offering to cancel where cancelling would do nothing.
+
+The fallback is narrow: it applies to a worker that never produced a first message.
+Once a worker has started streaming, a later failure rejects rather than starting the same run again
+on the main thread, which would block the tab for as long as the first attempt had already run and
+would do it at the moment the reader has been told something went wrong. A worker silent for 60 s is
+treated the same way.
+
+## What bounds a long run
+
+The step limit is not the only ceiling, and after this decision it is not the interesting one. A
+`RecordingBudget` shared by the heap, the console output and the interned external objects caps the
+history at `MAX_RECORDED_ELEMENTS` (24,000,000 slots retained). Each recorded step charges one slot
+per heap handle, the elements or fields of whichever cells changed, the console lines it produced,
+and the length of the externals pool.
+
+The practical difference is what happens at 500,000 steps of a program that prints. Before, the
+worker grew until the tab killed it, and the run was retried inline, where it did the same thing to
+the main thread. Now it ends with an `OutOfMemoryError` naming the history, the recorded prefix stays
+loaded and scrubbable, and the reader is told what happened. That is the same treatment the step
+limit already gets, applied to the bound that a long run actually hits first.
 
 ## Consequences
 

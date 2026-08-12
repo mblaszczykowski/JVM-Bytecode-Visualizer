@@ -15,8 +15,10 @@ without touching it.
 | `web/`: the visualizer         | Vercel (static) | `npm --workspace web run build`             | [`vercel.json`](../vercel.json)         |
 | `server/`: the compile service | Fly.io          | [`server/Dockerfile`](../server/Dockerfile) | [`server/fly.toml`](../server/fly.toml) |
 
-Neither deploy is wired into CI. `.github/workflows/` runs lint, tests and the Playwright suite; the
-deploys are a Vercel git integration and a `fly deploy` you run yourself.
+Neither deploy is wired into CI. `.github/workflows/` runs five workflows (`web`, `server`, `e2e`,
+`codeql` and `docs`) covering lint, types, unit tests, the corpus, a fixture drift check, the
+Playwright suite, `mvn verify` and prose; the deploys are a Vercel git integration and a
+`fly deploy` you run yourself.
 
 ## Frontend on Vercel
 
@@ -33,9 +35,14 @@ deploys are a Vercel git integration and a `fly deploy` you run yourself.
    - The `rewrites` entry is the single-page-app fallback. Vercel checks the filesystem before
      rewrites, so real files still win; only a path with nothing behind it falls back to
      `index.html`, which is what a client-side route needs.
-   - The `headers` entry marks `/assets/*` immutable. Those filenames are content-hashed by Vite.
-     `public/examples/` is left on the default caching, because those filenames are stable and their
-     contents can be regenerated.
+   - The first `headers` entry marks `/assets/*` immutable. Those filenames are content-hashed by
+     Vite. `public/examples/` is left on the default caching, because those filenames are stable and
+     their contents can be regenerated.
+   - The second sets the security headers on every response: `Content-Security-Policy`,
+     `X-Content-Type-Options`, `Referrer-Policy` and `Permissions-Policy`. The CSP has one moving
+     part: `script-src` carries a sha256 of the inline theme script in `web/index.html`, so editing
+     that script means recomputing the hash. [ADR-0010](adr/0010-security-headers-for-the-page.md)
+     covers what each directive is for and what breaks if it is wrong.
 3. Node version: 20 or 22. The root `package.json` requires `node >= 20.18.1`.
 4. Environment variables: none are required. To light up the Java editor, add `VITE_COMPILE_API_URL`
    with the base URL of the compile service, scheme and host only, no trailing slash and no path:
@@ -112,11 +119,35 @@ environment-driven by default: 10 requests per minute per IP, a 64 KiB source, a
 body and a 10 s compile deadline. Spring Boot's relaxed binding still reaches them if a deployment
 needs to differ: `COMPILE_TIMEOUT`, `COMPILE_RATELIMIT_REQUESTSPERMINUTE`.
 
+One health indicator is turned off there: `management.health.diskspace`. The service never touches
+the filesystem, and on a container whose rootfs had filled up the indicator reported DOWN, the
+frontend's health check failed, and the editor disappeared for a reason that had nothing to do with
+compiling.
+
+### What the API answers on a failure
+
+Every failure leaves as `{ error, message }`. The `error` values the service names are
+`empty-source`, `no-public-class`, `source-too-large`, `invalid-request`, `rate-limit-exceeded`,
+`compiler-busy`, `compiler-unavailable`, `internal-error` and `request-error`. Anything Spring
+answers that nothing maps explicitly gets a code derived from the HTTP status name, so a 405 reads
+`method-not-allowed` and a 415 `unsupported-media-type`; the shape stays the same either way, which
+is what the client's schema depends on.
+
+Two of these are worth knowing when reading logs. `compiler-busy` means every compile slot was
+taken and is pure backpressure. `compiler-unavailable` means the child JVM could not be run at all,
+and is the one that indicates something wrong with the deployment rather than with the load. Both
+answer 503 with `Retry-After: 5`; the rate limiter answers 429 with `Retry-After: 60`.
+
+A compile that hits the 10 s deadline is not one of these. It answers 200 with `success: false` and
+a diagnostic, because from the caller's side the source is what did not compile.
+
+The exact bytes of each of these responses are committed under
+`server/src/test/resources/contract/`, one file per case. The server's tests assert it produces
+them and the web client's tests parse them, so changing a status or a code fails on both sides.
+
 ### Sizing and image requirements
 
-- Memory. The parent JVM takes at most half the machine (`-XX:MaxRAMPercentage=50`); the rest is for
-  compiler processes, each capped at 128 MB of heap plus its own overhead. 1 GB with two slots is
-  comfortable. Dropping to 512 MB means dropping to one slot.
+- Memory. This needs arithmetic rather than a rule of thumb, and it has its own section below.
 - The runtime is a JDK, not a JRE. The service compiles Java on demand, and without the
   `jdk.compiler` module there is no compiler to run. The Dockerfile already uses a JDK image; keep
   it that way.
@@ -129,6 +160,92 @@ needs to differ: `COMPILE_TIMEOUT`, `COMPILE_RATELIMIT_REQUESTSPERMINUTE`.
   afterwards pays a JVM start-up. The frontend gives the health check two seconds before it decides
   the service is not there, so after a stop the editor may be missing on the first visit and present
   on the second. Set `min_machines_running = 1` if that matters more than the idle cost.
+
+### Sizing the machine
+
+`-Xmx128m` bounds the child's heap. It does not bound the child. Five flags in
+`ForkedCompiler.CHILD_VM_OPTIONS` bound five different regions:
+
+| Flag                            | Region              | Bound            |
+| ------------------------------- | ------------------- | ---------------- |
+| `-Xmx128m`                      | heap                | 128 MB           |
+| `-XX:MaxMetaspaceSize=64m`      | metaspace           | 64 MB            |
+| `-XX:ReservedCodeCacheSize=32m` | JIT code cache      | 32 MB            |
+| `-XX:MaxDirectMemorySize=16m`   | direct byte buffers | 16 MB            |
+| `-Xss1m`                        | thread stack        | 1 MB, per thread |
+
+The first four total **240 MB**. `-Xss1m` is a size per thread rather than a total, so it does not
+add a fifth term; it keeps a compiler that recurses deeply from reserving a large stack, and javac
+runs few enough threads that the sum stays under a megabyte or two. Beyond those, no flag bounds GC
+structures, thread-local allocation, symbol tables or the JVM's own bookkeeping, which run to
+roughly 25 MB. So the figure to size against is **about 270 MB per concurrent compilation**.
+
+What a real compile actually commits, measured with Native Memory Tracking:
+
+| Region               | Committed  |
+| -------------------- | ---------- |
+| Heap (pre-committed) | 128 MB     |
+| Metaspace            | 15 MB      |
+| Code cache           | 6 MB       |
+| Thread stacks        | 0.5 MB     |
+| Everything else      | ~34 MB     |
+| **Total**            | **184 MB** |
+
+plus a 14 MB file-backed CDS archive, which is shared between processes and mapped rather than
+allocated.
+
+The gap between 270 and 184 is javac not filling regions it was allowed to fill. It is a
+comfortable margin rather than a smaller budget: nothing in the configuration keeps a pathological
+source from using the metaspace it was granted.
+
+#### The parent
+
+`-XX:MaxRAMPercentage=25` in the Dockerfile caps the parent's heap at a quarter of the machine,
+which on the shipped 1 GB is **256 MB**. That flag bounds the heap and nothing else, exactly as
+`-Xmx128m` does for a child. The parent's metaspace, code cache, thread stacks and GC structures are
+unbounded, and for a Spring Boot service that validates a string and forks a process they come to
+roughly 120 MB, so the parent sits at about **375 MB of RSS** in total.
+
+A quarter is a small share for the process that serves every request. It works because this service
+holds no state between requests: it validates a string, forks a process and streams the answer back,
+so the memory that decides the sizing is the children's.
+
+#### The arithmetic
+
+The shipped `fly.toml` is a 1 GB machine with `max-concurrent-compilations = 2`. On the bounds:
+
+```
+parent heap    256 MB
+2 children   + 540 MB   (2 x 270)
+             ---------
+               796 MB   against 1024
+```
+
+The 228 MB that leaves is where the parent's own non-heap regions come from. Counting those instead
+of the parent's heap alone puts the full worst case at about **915 MB**, leaving roughly **109 MB**
+for the operating system and page cache. Read that as a bound rather than a forecast: it is what the
+configuration permits, and nothing has been observed getting near it.
+
+What it does in the ordinary case is smaller. With the measured 184 MB per child, a machine running
+two concurrent compilations sits near **743 MB** (375 + 368), and one that is idle sits at the
+parent's 375 MB.
+
+#### If the fit stops working
+
+Two levers, in the order worth trying.
+
+Drop to one compile slot. `COMPILE_SERVICE_MAX_CONCURRENT_COMPILATIONS = "1"` gives
+256 + 270 = **526 MB** on the bounds, or about 645 MB counting the parent's non-heap regions. The
+cost is that a second concurrent request gets a 503 instead of a compile, which the client already
+handles as backpressure.
+
+Or take a larger machine, remembering that this moves both terms: the parent's share is a
+percentage, so a 2 GB machine gives the parent 512 MB of heap and the ceiling becomes
+512 + 540 = 1052 MB against 2048. That buys room for more slots rather than more headroom per slot.
+
+Changing any of the child flags, or `MaxRAMPercentage` in the Dockerfile, means redoing the
+arithmetic above. The child flags live in
+`server/src/main/java/dev/jvmvisualizer/compileservice/compiler/ForkedCompiler.java`.
 
 ## Wiring the two together
 
@@ -151,15 +268,17 @@ Two consequences worth knowing:
 
 ## Placeholders to fill in
 
-| File                          | Placeholder                                                             | Replace with                                                                                                                                                                                           |
-| ----------------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `README.md`                   | _no demo link yet_                                                      | A `> Live demo: <url>` line under the screenshot, once there is a Vercel URL to point at. Worth doing first: the project is best judged by clicking it.                                                |
-| `README.md`                   | _no CI badges yet_                                                      | Workflow badges, once the repository has a GitHub owner and name: `[![web](https://github.com/<owner>/<repo>/actions/workflows/web.yml/badge.svg)](…)`, and the same for `server`, `e2e` and `codeql`. |
-| `web/index.html`              | `<meta property="og:image" content="docs/screenshots/app-ready.png" />` | An absolute `https://<domain>/…` URL. Link previews do not resolve relative paths, and the image has to be served by the deployment, so put a copy under `web/public/` and point at that.              |
-| `server/fly.toml`             | `app = "CHANGE-ME-compile-service"`                                     | The name reserved with `fly apps create`.                                                                                                                                                              |
-| `server/fly.toml`             | `primary_region = "fra"`                                                | The region nearest your users.                                                                                                                                                                         |
-| `server/fly.toml`             | `COMPILE_SERVICE_ALLOWED_ORIGIN = "https://CHANGE-ME.vercel.app"`       | The exact frontend origin, no trailing slash.                                                                                                                                                          |
-| Vercel project, env variables | `VITE_COMPILE_API_URL`                                                  | `https://<your-fly-app>.fly.dev`. Only needed for the editor; leave it out and everything else still works.                                                                                            |
+Nothing here is deployed yet, so these are the values a first deploy has to supply.
+
+| File                          | Placeholder                                                       | Replace with                                                                                                                                                                                                                                                                                         |
+| ----------------------------- | ----------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `README.md`                   | _no demo link yet_                                                | A `> Live demo: <url>` line under the first screenshot, once there is a Vercel URL to point at. This is the largest single gap in the project: everything else can be read, and this one is clicked.                                                                                                 |
+| `README.md`                   | _no CI badges yet_                                                | Workflow badges, once the repository has a GitHub owner and name: `[![web](https://github.com/<owner>/<repo>/actions/workflows/web.yml/badge.svg)](…)`, and the same for `server`, `e2e`, `docs` and `codeql`. The repository has no git remote yet, so there is no owner or name to write.          |
+| `web/index.html`              | `<meta property="og:image" content="/og-image.jpg" />`            | An absolute `https://<domain>/og-image.jpg`. The asset itself is done: `web/public/og-image.jpg` is a 1200x750 JPEG of about 135 KB, served from the deployment root and inside a budget the size check enforces. Only the domain is missing, and link previews do not resolve a root-relative path. |
+| `server/fly.toml`             | `app = "CHANGE-ME-compile-service"`                               | The name reserved with `fly apps create`.                                                                                                                                                                                                                                                            |
+| `server/fly.toml`             | `primary_region = "fra"`                                          | The region nearest your users.                                                                                                                                                                                                                                                                       |
+| `server/fly.toml`             | `COMPILE_SERVICE_ALLOWED_ORIGIN = "https://CHANGE-ME.vercel.app"` | The exact frontend origin, no trailing slash.                                                                                                                                                                                                                                                        |
+| Vercel project, env variables | `VITE_COMPILE_API_URL`                                            | `https://<your-fly-app>.fly.dev`. Only needed for the editor; leave it out and everything else still works.                                                                                                                                                                                          |
 
 ## Running the container locally
 

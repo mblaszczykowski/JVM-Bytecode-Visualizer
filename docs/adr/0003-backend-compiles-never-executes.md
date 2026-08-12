@@ -1,6 +1,7 @@
 # ADR-0003: The backend compiles, it never executes user code
 
-- **Status:** Accepted
+- **Status:** Accepted. The contract sketched here has since been built out on both sides; see
+  "What the contract became" below.
 - **Date:** 2026-07-16
 
 ## Context
@@ -38,7 +39,35 @@ The residual risks of `javac` itself are mitigated explicitly:
   process.
 - Source ≤ 64 KiB, refused before the request body is buffered; an empty user class path;
   `--release 21`.
-- Rate limiting (10 requests/minute/IP), CORS restricted to the frontend origin.
+- Rate limiting, 10 requests per minute per IP. This is the control that actually bounds abuse,
+  along with the concurrency cap and the size caps.
+- CORS restricted to the frontend origin. This one is worth stating precisely, because it is easy to
+  read as more than it is: CORS constrains browsers. It stops another page from driving this
+  compiler with a reader's network position; it does nothing about `curl`. The service is a public
+  endpoint and is bounded as one.
+
+## What the contract became
+
+This record was written before there was a client. Four things settled afterwards and belong with
+it.
+
+- The 503 has a reader. The `Retry-After` contract described above was defined here and honoured
+  by nothing. `compile-client.ts` now reads it: a 429 and a 503 both become a message naming how
+  long to wait, rather than a generic failure.
+- Infrastructure failure answers 503. When the child JVM could not be run at all, the service used
+  to answer 200 with `success: false` and a manufactured compile error, which told the reader their
+  Java was wrong when the compiler had not started. That is now a 503 with the code
+  `compiler-unavailable`, distinct from `compiler-busy`, which means every slot was taken. A
+  compile that hits the deadline stays a 200 with `success: false`, because there the source really
+  is what did not compile.
+- The parent talks to the child in JSON. The child used to receive raw source on stdin, which
+  left the type name to be inferred twice, once on each side. It now receives a
+  `{ typeName, source }` document and answers with a result document, so the protocol has one shape
+  in each direction and a place to add a field.
+- The responses are committed as fixtures. `server/src/test/resources/contract/` holds one file
+  per case: status, the headers that matter, and the body. The server's tests assert it produces
+  them; the web client's tests parse them. Both ends are checked against the same bytes, so a status
+  or a code cannot be changed on one side alone.
 
 ## Consequences
 
