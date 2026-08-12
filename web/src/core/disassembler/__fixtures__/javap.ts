@@ -2,6 +2,10 @@
 
 import { readFileSync } from 'node:fs';
 
+import { ConstantTag, type ClassFile, type ConstantPool } from '../../classfile';
+import { lookupOpcode } from '../opcodes';
+import type { Instruction } from '../types';
+
 export interface JavapSwitchCase {
   readonly match: number | undefined;
   readonly target: number;
@@ -32,7 +36,7 @@ interface MutableInstruction {
   switchCases: JavapSwitchCase[];
 }
 
-export function parseJavap(dump: string): readonly JavapMethod[] {
+function parseJavap(dump: string): readonly JavapMethod[] {
   const methods: { signature: string; instructions: MutableInstruction[] }[] = [];
   let openSwitch: MutableInstruction | undefined;
 
@@ -86,6 +90,105 @@ export function parseJavap(dump: string): readonly JavapMethod[] {
 
 export function readJavap(dump: URL): readonly JavapMethod[] {
   return parseJavap(readFileSync(dump, 'utf8'));
+}
+
+export function javapConstantComment(
+  classFile: ClassFile,
+  instruction: Instruction,
+): string | undefined {
+  const index = constantPoolIndexOf(instruction);
+  const pool = classFile.constantPool;
+  const entry = index === undefined ? undefined : (pool[index] ?? undefined);
+
+  switch (entry?.tag) {
+    case ConstantTag.Methodref:
+      return `Method ${memberText(classFile, entry.classIndex, entry.nameAndTypeIndex)}`;
+    case ConstantTag.Fieldref:
+      return `Field ${memberText(classFile, entry.classIndex, entry.nameAndTypeIndex)}`;
+    case ConstantTag.InterfaceMethodref:
+      return `InterfaceMethod ${memberText(classFile, entry.classIndex, entry.nameAndTypeIndex)}`;
+    case ConstantTag.Class:
+      return `class ${javapName(utf8At(pool, entry.nameIndex))}`;
+    case ConstantTag.String:
+      return `String ${utf8At(pool, entry.stringIndex)}`;
+    case ConstantTag.Integer:
+      return `int ${String(entry.value)}`;
+    case ConstantTag.Long:
+      return `long ${String(entry.value)}l`;
+    case ConstantTag.Float:
+      return `float ${javaFloat(entry.value)}f`;
+    case ConstantTag.Double:
+      return `double ${javaDecimal(String(entry.value))}d`;
+    case ConstantTag.InvokeDynamic:
+      return `InvokeDynamic #${String(entry.bootstrapMethodAttrIndex)}:${memberText(classFile, undefined, entry.nameAndTypeIndex)}`;
+    case ConstantTag.Utf8:
+    case ConstantTag.NameAndType:
+    case ConstantTag.MethodHandle:
+    case ConstantTag.MethodType:
+    case ConstantTag.Dynamic:
+    case ConstantTag.Module:
+    case ConstantTag.Package:
+    case undefined:
+      return undefined;
+  }
+}
+
+function constantPoolIndexOf(instruction: Instruction): number | undefined {
+  const specs = lookupOpcode(instruction.opcode)?.operands ?? [];
+  const position = specs.findIndex((spec) => spec.role === 'constant-pool-index');
+  return position === -1 ? undefined : instruction.operands[position];
+}
+
+function memberText(
+  classFile: ClassFile,
+  classIndex: number | undefined,
+  nameAndTypeIndex: number,
+): string {
+  const pool = classFile.constantPool;
+  const entry = pool[nameAndTypeIndex] ?? undefined;
+  if (entry?.tag !== ConstantTag.NameAndType) {
+    throw new Error(`constant pool entry #${String(nameAndTypeIndex)} is not a NameAndType`);
+  }
+
+  const member = `${javapName(utf8At(pool, entry.nameIndex))}:${utf8At(pool, entry.descriptorIndex)}`;
+  const owner = classIndex === undefined ? undefined : classNameAt(pool, classIndex);
+  return owner === undefined || owner === classFile.thisClassName ? member : `${owner}.${member}`;
+}
+
+function classNameAt(pool: ConstantPool, index: number): string {
+  const entry = pool[index] ?? undefined;
+  if (entry?.tag !== ConstantTag.Class) {
+    throw new Error(`constant pool entry #${String(index)} is not a Class`);
+  }
+  return utf8At(pool, entry.nameIndex);
+}
+
+function utf8At(pool: ConstantPool, index: number): string {
+  const entry = pool[index] ?? undefined;
+  if (entry?.tag !== ConstantTag.Utf8) {
+    throw new Error(`constant pool entry #${String(index)} is not a Utf8`);
+  }
+  return entry.value;
+}
+
+function javaFloat(value: number): string {
+  for (let digits = 1; digits < 9; digits += 1) {
+    const shortened = Number(value.toPrecision(digits));
+    if (Math.fround(shortened) === value) {
+      return javaDecimal(String(shortened));
+    }
+  }
+  return javaDecimal(String(value));
+}
+
+function javaDecimal(text: string): string {
+  return /[.eE]/.test(text) ? text : `${text}.0`;
+}
+
+const UNQUOTED_NAME = /^[A-Za-z_$][\w$]*(?:\/[A-Za-z_$][\w$]*)*$/;
+
+function javapName(name: string): string {
+  return UNQUOTED_NAME.test(name) ? name : `"${name}"`;
 }
 
 export function javapMethod(methods: readonly JavapMethod[], signature: string): JavapMethod {

@@ -1,9 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import { ConstantTag } from '../classfile';
-import { expectCompleted, expectVmError } from './__fixtures__/expect-execution';
+import { debugVmError, expectCompleted, expectVmError } from './__fixtures__/expect-execution';
 import { ConstantPoolBuilder, syntheticClass } from './__fixtures__/synthetic-class';
-import { formatVmError } from './errors';
 import { execute } from './interpreter';
 import type { ExecutionResult, Snapshot } from './types';
 
@@ -157,18 +156,22 @@ describe('execute: ldc', () => {
     ]);
   });
 
-  it('refuses a constant it has no value for, naming the entry', () => {
+  it.each([
+    { tagName: 'Float', entry: { tag: ConstantTag.Float, value: 1.5 } as const },
+    { tagName: 'Long', entry: { tag: ConstantTag.Long, value: 4_294_967_296n } as const },
+    { tagName: 'Double', entry: { tag: ConstantTag.Double, value: 0.5 } as const },
+  ])('refuses the $tagName the parser now reads, naming the entry', ({ tagName, entry }) => {
     const pool = new ConstantPoolBuilder();
-    const constant = pool.raw({ tag: ConstantTag.Float });
+    const constant = pool.raw(entry);
     const error = expectVmError(run({ pool, code: [0x12, constant, 0xb1] }));
 
     expect(error).toEqual({
       kind: 'unsupported-constant',
-      target: `the Float constant at #${String(constant)}`,
+      target: `the ${tagName} constant at #${String(constant)}`,
       offset: 0,
       methodName: 'main',
     });
-    expect(formatVmError(error)).toContain('ldc can push an int or a String constant');
+    expect(debugVmError(error)).toContain(`Unsupported constant: the ${tagName} constant at #`);
   });
 
   it('names an index that resolves to nothing', () => {
@@ -194,7 +197,7 @@ describe('execute: unrecognised members', () => {
       offset: 0,
       methodName: 'main',
     });
-    expect(formatVmError(error)).toContain('java/lang/System.in:Ljava/io/InputStream;');
+    expect(debugVmError(error)).toContain('java/lang/System.in:Ljava/io/InputStream;');
   });
 
   it('refuses a virtual call outside the table', () => {
@@ -243,7 +246,7 @@ describe('execute: unrecognised members', () => {
     const error = expectVmError(run({ pool, code: [0xb2, ...u2(method), 0xb1] }));
 
     expect(error).toMatchObject({ kind: 'invalid-state' });
-    expect(formatVmError(error)).toContain('is not a Fieldref');
+    expect(debugVmError(error)).toContain('is not a Fieldref');
   });
 });
 

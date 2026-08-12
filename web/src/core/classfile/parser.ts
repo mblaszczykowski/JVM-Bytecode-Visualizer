@@ -118,43 +118,52 @@ function readConstantEntry(
         classIndex: reader.readU2(field('class_index')),
         nameAndTypeIndex: reader.readU2(field('name_and_type_index')),
       };
+    case ConstantTag.InterfaceMethodref:
+      return {
+        tag: ConstantTag.InterfaceMethodref,
+        classIndex: reader.readU2(field('class_index')),
+        nameAndTypeIndex: reader.readU2(field('name_and_type_index')),
+      };
     case ConstantTag.NameAndType:
       return {
         tag: ConstantTag.NameAndType,
         nameIndex: reader.readU2(field('name_index')),
         descriptorIndex: reader.readU2(field('descriptor_index')),
       };
+    case ConstantTag.MethodHandle:
+      return {
+        tag: ConstantTag.MethodHandle,
+        referenceKind: reader.readU1(field('reference_kind')),
+        referenceIndex: reader.readU2(field('reference_index')),
+      };
+    case ConstantTag.MethodType:
+      return {
+        tag: ConstantTag.MethodType,
+        descriptorIndex: reader.readU2(field('descriptor_index')),
+      };
+    case ConstantTag.Dynamic:
+      return {
+        tag: ConstantTag.Dynamic,
+        bootstrapMethodAttrIndex: reader.readU2(field('bootstrap_method_attr_index')),
+        nameAndTypeIndex: reader.readU2(field('name_and_type_index')),
+      };
+    case ConstantTag.InvokeDynamic:
+      return {
+        tag: ConstantTag.InvokeDynamic,
+        bootstrapMethodAttrIndex: reader.readU2(field('bootstrap_method_attr_index')),
+        nameAndTypeIndex: reader.readU2(field('name_and_type_index')),
+      };
+    case ConstantTag.Module:
+      return { tag: ConstantTag.Module, nameIndex: reader.readU2(field('name_index')) };
+    case ConstantTag.Package:
+      return { tag: ConstantTag.Package, nameIndex: reader.readU2(field('name_index')) };
 
     case ConstantTag.Float:
-      reader.skip(4, field('bytes'));
-      return { tag: ConstantTag.Float };
+      return { tag: ConstantTag.Float, value: reader.readF4(field('bytes')) };
     case ConstantTag.Long:
-      reader.skip(8, field('bytes'));
-      return { tag: ConstantTag.Long };
+      return { tag: ConstantTag.Long, value: reader.readI8(field('bytes')) };
     case ConstantTag.Double:
-      reader.skip(8, field('bytes'));
-      return { tag: ConstantTag.Double };
-    case ConstantTag.InterfaceMethodref:
-      reader.skip(4, field('class_index/name_and_type_index'));
-      return { tag: ConstantTag.InterfaceMethodref };
-    case ConstantTag.MethodHandle:
-      reader.skip(3, field('reference_kind/reference_index'));
-      return { tag: ConstantTag.MethodHandle };
-    case ConstantTag.MethodType:
-      reader.skip(2, field('descriptor_index'));
-      return { tag: ConstantTag.MethodType };
-    case ConstantTag.Dynamic:
-      reader.skip(4, field('bootstrap_method_attr_index/name_and_type_index'));
-      return { tag: ConstantTag.Dynamic };
-    case ConstantTag.InvokeDynamic:
-      reader.skip(4, field('bootstrap_method_attr_index/name_and_type_index'));
-      return { tag: ConstantTag.InvokeDynamic };
-    case ConstantTag.Module:
-      reader.skip(2, field('name_index'));
-      return { tag: ConstantTag.Module };
-    case ConstantTag.Package:
-      reader.skip(2, field('name_index'));
-      return { tag: ConstantTag.Package };
+      return { tag: ConstantTag.Double, value: reader.readF8(field('bytes')) };
 
     default:
       throw new ClassFileError({
@@ -188,6 +197,13 @@ function decodeModifiedUtf8(bytes: Uint8Array, constantPoolIndex: number, bytesA
       reason,
     });
 
+  const overlong = (position: number, width: number, value: number): ClassFileError =>
+    fail(
+      position,
+      `the ${String(width)}-byte sequence encodes U+${value.toString(16).toUpperCase().padStart(4, '0')}, ` +
+        'which JVMS §4.4.7 encodes in fewer bytes',
+    );
+
   const continuation = (position: number): number => {
     const value = byteAt(position);
     if ((value & 0b1100_0000) !== 0b1000_0000) {
@@ -207,14 +223,21 @@ function decodeModifiedUtf8(bytes: Uint8Array, constantPoolIndex: number, bytesA
       result += String.fromCharCode(lead);
       position += 1;
     } else if ((lead & 0b1110_0000) === 0b1100_0000) {
-      result += String.fromCharCode(((lead & 0b0001_1111) << 6) | continuation(position + 1));
+      const value = ((lead & 0b0001_1111) << 6) | continuation(position + 1);
+      if (value < 0x80 && value !== 0) {
+        throw overlong(position, 2, value);
+      }
+      result += String.fromCharCode(value);
       position += 2;
     } else if ((lead & 0b1111_0000) === 0b1110_0000) {
-      result += String.fromCharCode(
+      const value =
         ((lead & 0b0000_1111) << 12) |
-          (continuation(position + 1) << 6) |
-          continuation(position + 2),
-      );
+        (continuation(position + 1) << 6) |
+        continuation(position + 2);
+      if (value < 0x800) {
+        throw overlong(position, 3, value);
+      }
+      result += String.fromCharCode(value);
       position += 3;
     } else {
       throw fail(position, `invalid lead byte 0x${lead.toString(16)}`);

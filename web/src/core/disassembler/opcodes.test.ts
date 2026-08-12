@@ -7,6 +7,7 @@ import {
   operandWidth,
   OPCODES,
   T_INT,
+  WIDENED_FORMS,
   type OpcodeInfo,
   type OperandType,
 } from './opcodes';
@@ -343,5 +344,50 @@ describe('operandWidth', () => {
     expect(operandWidth('i1')).toBe(1);
     expect(operandWidth('u2')).toBe(2);
     expect(operandWidth('i2')).toBe(2);
+    expect(operandWidth('i4')).toBe(4);
+  });
+});
+
+describe('WIDENED_FORMS', () => {
+  it('holds exactly the instructions wide may prefix (JVMS §6.5, wide)', () => {
+    expect([...WIDENED_FORMS.values()].map((form) => form.mnemonic).sort()).toEqual([
+      'aload_w',
+      'astore_w',
+      'dload_w',
+      'dstore_w',
+      'fload_w',
+      'fstore_w',
+      'iinc_w',
+      'iload_w',
+      'istore_w',
+      'lload_w',
+      'lstore_w',
+      'ret_w',
+    ]);
+  });
+
+  it('widens the local index to two bytes and keeps the iinc constant signed', () => {
+    expect(WIDENED_FORMS.get(0x15)).toEqual({
+      opcode: 0x15,
+      mnemonic: 'iload_w',
+      operands: [{ type: 'u2', role: 'local-index' }],
+      operandBytes: 2,
+      unsupported: false,
+    });
+    expect(WIDENED_FORMS.get(0x84)).toEqual({
+      opcode: 0x84,
+      mnemonic: 'iinc_w',
+      operands: [
+        { type: 'u2', role: 'local-index' },
+        { type: 'i2', role: 'immediate' },
+      ],
+      operandBytes: 4,
+      unsupported: false,
+    });
+  });
+
+  it('carries the support of the instruction it widens', () => {
+    expect(WIDENED_FORMS.get(0x16)?.unsupported).toBe(true);
+    expect(WIDENED_FORMS.get(0xa9)?.unsupported).toBe(true);
   });
 });

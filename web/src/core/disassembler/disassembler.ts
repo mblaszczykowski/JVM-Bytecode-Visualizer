@@ -15,12 +15,12 @@ export function disassemble(code: Uint8Array): DisassembledCode {
   const instructions: Instruction[] = [];
   const indexByOffset = new Map<number, number>();
   let offset = 0;
-  let truncatedAtOffset: number | undefined;
+  let undecodedFromOffset: number | undefined;
 
   while (offset < code.byteLength) {
     const step = decodeAt(view, offset);
     if (step.kind === 'stop') {
-      truncatedAtOffset = offset;
+      undecodedFromOffset = offset;
       break;
     }
     indexByOffset.set(offset, instructions.length);
@@ -31,7 +31,7 @@ export function disassemble(code: Uint8Array): DisassembledCode {
   return {
     instructions,
     indexByOffset,
-    ...(truncatedAtOffset === undefined ? {} : { truncatedAtOffset }),
+    ...(undecodedFromOffset === undefined ? {} : { undecodedFromOffset }),
   };
 }
 
@@ -50,18 +50,14 @@ function decodeAt(view: DataView, offset: number): DecodeStep {
 
   switch (info.kind) {
     case 'supported':
-    case 'unsupported': {
-      const { operandBytes } = info;
-      return operandBytes === undefined
+      return info.operandBytes === undefined
         ? decodeSwitch(view, offset, info)
-        : decodeFixed(view, offset, info, operandBytes);
-    }
+        : decodeFixed(view, offset, info, info.operandBytes);
+    case 'unsupported':
+      return decodeFixed(view, offset, info, info.operandBytes);
     case 'variable-length':
       return decodeWide(view, offset);
     case 'reserved':
-      return STOP;
-    default:
-      info satisfies never;
       return STOP;
   }
 }
@@ -137,11 +133,7 @@ function instructionOf(
   };
 }
 
-function decodeSwitch(
-  view: DataView,
-  offset: number,
-  info: SupportedOpcode | UnsupportedOpcode,
-): DecodeStep {
+function decodeSwitch(view: DataView, offset: number, info: SupportedOpcode): DecodeStep {
   let cursor = offset + 1 + ((4 - ((offset + 1) % 4)) % 4);
   const isLookup = info.opcode === LOOKUPSWITCH;
   if (cursor + (isLookup ? 8 : 12) > view.byteLength) {
@@ -186,7 +178,7 @@ function decodeSwitch(
       info.opcode,
       info.mnemonic,
       { operands: [], branchTarget: undefined },
-      { unsupported: info.kind === 'unsupported', switchTargets: Object.freeze(cases) },
+      { unsupported: false, switchTargets: Object.freeze(cases) },
     ),
     nextOffset: cursor,
   };
@@ -231,8 +223,5 @@ function readOperand(view: DataView, offset: number, operandType: OperandType): 
       return view.getInt16(offset);
     case 'i4':
       return view.getInt32(offset);
-    default:
-      operandType satisfies never;
-      return 0;
   }
 }

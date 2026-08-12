@@ -64,6 +64,18 @@ export class ByteReader {
     return this.view.getInt16(this.claim(2, context));
   }
 
+  readI8(context = 'i8'): bigint {
+    return this.view.getBigInt64(this.claim(8, context));
+  }
+
+  readF4(context = 'f4'): number {
+    return this.view.getFloat32(this.claim(4, context));
+  }
+
+  readF8(context = 'f8'): number {
+    return this.view.getFloat64(this.claim(8, context));
+  }
+
   readBytes(count: number, context = 'bytes'): Uint8Array {
     const start = this.claim(count, context);
     return this.bytes.slice(start, start + count);

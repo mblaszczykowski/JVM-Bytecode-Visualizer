@@ -227,8 +227,8 @@ function flowOf(
   disassembled: DisassembledCode,
   codeLength: number,
 ): ReadonlyMap<number, FetchedInstruction> {
-  const { instructions, truncatedAtOffset } = disassembled;
-  const endOffset = truncatedAtOffset ?? codeLength;
+  const { instructions, undecodedFromOffset } = disassembled;
+  const endOffset = undecodedFromOffset ?? codeLength;
 
   const flow = new Map<number, FetchedInstruction>();
   for (const [index, instruction] of instructions.entries()) {

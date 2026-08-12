@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import { expectCompleted, expectVmError } from './__fixtures__/expect-execution';
 import { ConstantPoolBuilder, syntheticClass } from './__fixtures__/synthetic-class';
-import { MAX_HEAP_ELEMENTS, MAX_RECORDED_ELEMENTS } from './heap';
+import { MAX_RECORDED_ELEMENTS } from './budget';
+import { MAX_HEAP_ELEMENTS } from './heap';
 import { execute } from './interpreter';
 import type { ExecutionResult, HeapObject, Snapshot, ValueKind } from './types';
 

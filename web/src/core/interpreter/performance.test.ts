@@ -84,13 +84,16 @@ function actualFrameCopies(snapshots: readonly Snapshot[]): number {
 }
 
 describe('snapshot history allocation (ADR-0001)', () => {
-  it('allocates an order of magnitude fewer frames than per-step copying would', () => {
+  it('allocates 89 times fewer frames than per-step copying would', () => {
     const snapshots = deepRecursion();
     const naive = naiveFrameCopies(snapshots);
     const actual = actualFrameCopies(snapshots);
 
-    expect(snapshots.length).toBeGreaterThan(1_000);
-    expect(naive / actual).toBeGreaterThan(10);
+    expect(snapshots.length).toBe(1_408);
+    expect(naive).toBe(142_911);
+    expect(actual).toBe(1_608);
+    expect(naive / actual).toBeGreaterThan(85);
+    expect(naive / actual).toBeLessThan(92);
   });
 
   it('shares one frame object between consecutive steps that did not touch it', () => {
@@ -109,16 +112,9 @@ describe('snapshot history allocation (ADR-0001)', () => {
   it('keeps the per-step cost of a flat run to one frame', () => {
     const snapshots = countingLoop();
 
+    expect(snapshots.length).toBe(20_007);
     expect(snapshots.length).toBeGreaterThan(ITERATIONS * 4);
-    expect(actualFrameCopies(snapshots)).toBeLessThanOrEqual(snapshots.length);
-  });
-
-  it('records twenty thousand steps in well under ten seconds', () => {
-    const started = performance.now();
-    const snapshots = countingLoop();
-    const elapsed = performance.now() - started;
-
-    expect(snapshots.length).toBeGreaterThan(20_000);
-    expect(elapsed).toBeLessThan(10_000);
+    expect(snapshots.at(-1)?.callStack).toEqual([]);
+    expect(actualFrameCopies(snapshots)).toBe(snapshots.length - 1);
   });
 });

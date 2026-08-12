@@ -20,18 +20,6 @@ export const ConstantTag = {
 
 export type ConstantTag = (typeof ConstantTag)[keyof typeof ConstantTag];
 
-export type UninterpretedConstantTag =
-  | typeof ConstantTag.Float
-  | typeof ConstantTag.Long
-  | typeof ConstantTag.Double
-  | typeof ConstantTag.InterfaceMethodref
-  | typeof ConstantTag.MethodHandle
-  | typeof ConstantTag.MethodType
-  | typeof ConstantTag.Dynamic
-  | typeof ConstantTag.InvokeDynamic
-  | typeof ConstantTag.Module
-  | typeof ConstantTag.Package;
-
 export interface Utf8Constant {
   readonly tag: typeof ConstantTag.Utf8;
   readonly value: string;
@@ -39,6 +27,21 @@ export interface Utf8Constant {
 
 export interface IntegerConstant {
   readonly tag: typeof ConstantTag.Integer;
+  readonly value: number;
+}
+
+export interface FloatConstant {
+  readonly tag: typeof ConstantTag.Float;
+  readonly value: number;
+}
+
+export interface LongConstant {
+  readonly tag: typeof ConstantTag.Long;
+  readonly value: bigint;
+}
+
+export interface DoubleConstant {
+  readonly tag: typeof ConstantTag.Double;
   readonly value: number;
 }
 
@@ -64,25 +67,69 @@ export interface MethodrefConstant {
   readonly nameAndTypeIndex: number;
 }
 
+export interface InterfaceMethodrefConstant {
+  readonly tag: typeof ConstantTag.InterfaceMethodref;
+  readonly classIndex: number;
+  readonly nameAndTypeIndex: number;
+}
+
 export interface NameAndTypeConstant {
   readonly tag: typeof ConstantTag.NameAndType;
   readonly nameIndex: number;
   readonly descriptorIndex: number;
 }
 
-export interface UninterpretedConstant {
-  readonly tag: UninterpretedConstantTag;
+export interface MethodHandleConstant {
+  readonly tag: typeof ConstantTag.MethodHandle;
+  readonly referenceKind: number;
+  readonly referenceIndex: number;
+}
+
+export interface MethodTypeConstant {
+  readonly tag: typeof ConstantTag.MethodType;
+  readonly descriptorIndex: number;
+}
+
+export interface DynamicConstant {
+  readonly tag: typeof ConstantTag.Dynamic;
+  readonly bootstrapMethodAttrIndex: number;
+  readonly nameAndTypeIndex: number;
+}
+
+export interface InvokeDynamicConstant {
+  readonly tag: typeof ConstantTag.InvokeDynamic;
+  readonly bootstrapMethodAttrIndex: number;
+  readonly nameAndTypeIndex: number;
+}
+
+export interface ModuleConstant {
+  readonly tag: typeof ConstantTag.Module;
+  readonly nameIndex: number;
+}
+
+export interface PackageConstant {
+  readonly tag: typeof ConstantTag.Package;
+  readonly nameIndex: number;
 }
 
 export type ConstantPoolEntry =
   | Utf8Constant
   | IntegerConstant
+  | FloatConstant
+  | LongConstant
+  | DoubleConstant
   | ClassConstant
   | StringConstant
   | FieldrefConstant
   | MethodrefConstant
+  | InterfaceMethodrefConstant
   | NameAndTypeConstant
-  | UninterpretedConstant;
+  | MethodHandleConstant
+  | MethodTypeConstant
+  | DynamicConstant
+  | InvokeDynamicConstant
+  | ModuleConstant
+  | PackageConstant;
 
 export type ConstantPool = readonly (ConstantPoolEntry | null)[];
 
@@ -154,4 +201,55 @@ export const AccessFlag = {
 
 export function isStatic(accessFlags: number): boolean {
   return (accessFlags & AccessFlag.Static) !== 0;
+}
+
+export interface AccessFlagBit {
+  readonly bit: number;
+  readonly name: string;
+}
+
+export const CLASS_ACCESS_FLAGS: readonly AccessFlagBit[] = [
+  { bit: 0x0001, name: 'public' },
+  { bit: 0x0010, name: 'final' },
+  { bit: 0x0020, name: 'super' },
+  { bit: 0x0200, name: 'interface' },
+  { bit: 0x0400, name: 'abstract' },
+  { bit: 0x1000, name: 'synthetic' },
+  { bit: 0x2000, name: 'annotation' },
+  { bit: 0x4000, name: 'enum' },
+  { bit: 0x8000, name: 'module' },
+];
+
+export const FIELD_ACCESS_FLAGS: readonly AccessFlagBit[] = [
+  { bit: 0x0001, name: 'public' },
+  { bit: 0x0002, name: 'private' },
+  { bit: 0x0004, name: 'protected' },
+  { bit: 0x0008, name: 'static' },
+  { bit: 0x0010, name: 'final' },
+  { bit: 0x0040, name: 'volatile' },
+  { bit: 0x0080, name: 'transient' },
+  { bit: 0x1000, name: 'synthetic' },
+  { bit: 0x4000, name: 'enum' },
+];
+
+export const METHOD_ACCESS_FLAGS: readonly AccessFlagBit[] = [
+  { bit: 0x0001, name: 'public' },
+  { bit: 0x0002, name: 'private' },
+  { bit: 0x0004, name: 'protected' },
+  { bit: 0x0008, name: 'static' },
+  { bit: 0x0010, name: 'final' },
+  { bit: 0x0020, name: 'synchronized' },
+  { bit: 0x0040, name: 'bridge' },
+  { bit: 0x0080, name: 'varargs' },
+  { bit: 0x0100, name: 'native' },
+  { bit: 0x0400, name: 'abstract' },
+  { bit: 0x0800, name: 'strict' },
+  { bit: 0x1000, name: 'synthetic' },
+];
+
+export function accessFlagNames(
+  accessFlags: number,
+  table: readonly AccessFlagBit[],
+): readonly string[] {
+  return table.filter((flag) => (accessFlags & flag.bit) !== 0).map((flag) => flag.name);
 }

@@ -101,6 +101,53 @@ describe('the exception table', () => {
   });
 });
 
+describe('the objects a machine-raised exception leaves behind', () => {
+  it('interns one object per exception class, whatever the index that raised it', () => {
+    const result = execute(
+      syntheticClass({
+        methods: [
+          {
+            name: 'main',
+            descriptor: '()I',
+            code: [
+              ...[0x04, 0xbc, T_INT, 0x4c],
+              ...[0x2b, 0x10, 5, 0x2e, 0x57, 0x4d],
+              ...[0x2b, 0x10, 6, 0x2e, 0x57, 0x4d],
+              ...[0x06, 0xac],
+            ],
+            maxLocals: 3,
+            exceptionTable: [
+              handler(4, 10, 10, 'java/lang/ArrayIndexOutOfBoundsException'),
+              handler(10, 16, 16, 'java/lang/ArrayIndexOutOfBoundsException'),
+            ],
+          },
+        ],
+      }),
+    );
+    const completed = expectCompleted(result);
+
+    expect(completed.returnValue).toBe(3);
+    expect(completed.snapshots.at(-1)?.externals).toEqual([
+      {
+        className: 'java/lang/ArrayIndexOutOfBoundsException',
+        label: 'ArrayIndexOutOfBoundsException',
+        detail: 'ArrayIndexOutOfBoundsException: index 5 out of bounds for length 1',
+      },
+    ]);
+  });
+
+  it('interns nothing while no handler is found', () => {
+    const result = execute(
+      syntheticClass({
+        methods: [{ name: 'main', descriptor: '()I', code: DIVIDE_BY_ZERO }],
+      }),
+    );
+
+    expect(expectVmError(result).kind).toBe('division-by-zero');
+    expect(result.snapshots.at(-1)?.externals).toEqual([]);
+  });
+});
+
 describe('an exception nothing catches', () => {
   function uncaughtAcrossTwoFrames(): ReturnType<typeof execute> {
     const pool = new ConstantPoolBuilder();

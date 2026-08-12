@@ -5,6 +5,7 @@ import {
   type ConstantPool,
   type ConstantPoolEntry,
   type ExceptionTableEntry,
+  type FieldInfo,
   type LineNumberEntry,
   type LocalVariableEntry,
   type MethodInfo,
@@ -79,12 +80,14 @@ export interface SyntheticMethod {
 export interface SyntheticClass {
   readonly className?: string;
   readonly pool?: ConstantPoolBuilder;
+  readonly fields?: readonly FieldInfo[];
   readonly methods: readonly SyntheticMethod[];
 }
 
 export function syntheticClass({
   className = SYNTHETIC_CLASS_NAME,
   pool = new ConstantPoolBuilder(),
+  fields = [],
   methods,
 }: SyntheticClass): ClassFile {
   return {
@@ -95,7 +98,7 @@ export function syntheticClass({
     thisClassName: className,
     superClassName: 'java/lang/Object',
     interfaceNames: [],
-    fields: [],
+    fields,
     methods: methods.map(toMethodInfo),
   };
 }

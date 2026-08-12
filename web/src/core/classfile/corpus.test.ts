@@ -3,26 +3,34 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 
 import { disassemble, OPCODES } from '../disassembler';
-import { EXECUTABLE_OPCODES } from '../interpreter';
-import { findEntryMethod } from '../interpreter/interpreter';
+import { EXECUTABLE_OPCODES, findEntryMethod } from '../interpreter';
 
 import { ClassFileError } from './errors';
 import { parseClassFile } from './parser';
 import type { ClassFile } from './types';
 
-const CACHE = join(dirname(fileURLToPath(import.meta.url)), '../../../corpus/.cache');
+const CORPUS = join(dirname(fileURLToPath(import.meta.url)), '../../../corpus');
+const CACHE = join(CORPUS, '.cache');
 const CLASSES = join(CACHE, 'classes');
-const hasCorpus = existsSync(CLASSES);
+const COMMITTED_SCAN = join(CORPUS, 'scan.json');
+const GENERATED_SCAN = join(CACHE, 'scan.json');
 
 function corpusFiles(): readonly string[] {
+  if (!existsSync(CLASSES)) {
+    return [];
+  }
   return execFileSync('find', [CLASSES, '-name', '*.class'], { maxBuffer: 64 * 1024 * 1024 })
     .toString()
     .split('\n')
     .filter(Boolean);
 }
+
+const files = corpusFiles();
+const hasCorpus = files.length > 0;
+const onCi = process.env.CI !== undefined && process.env.CI !== '';
 
 function bytesOf(path: string): ArrayBuffer {
   const buffer = readFileSync(path);
@@ -85,7 +93,7 @@ function scanCorpus(files: readonly string[]): Scan {
       methods += 1;
       try {
         const decoded = disassemble(code.code);
-        if (decoded.truncatedAtOffset !== undefined) {
+        if (decoded.undecodedFromOffset !== undefined) {
           truncated += 1;
         }
         let whole = decoded.instructions.length > 0;
@@ -133,12 +141,53 @@ const NO_SCAN: Scan = {
   fullyExecutableMethods: 0,
 };
 
-describe.skipIf(!hasCorpus)('the parser and disassembler against a real-world corpus', () => {
-  const scan = hasCorpus ? scanCorpus(corpusFiles()) : NO_SCAN;
+function summaryOf(scan: Scan): unknown {
+  const executable = [...scan.opcodeCounts]
+    .filter(([opcode]) => EXECUTABLE_OPCODES.has(opcode))
+    .reduce((total, [, count]) => total + count, 0);
 
-  it('has enough files, from enough compilers, to be worth running', () => {
-    expect(scan.files).toBeGreaterThan(5_000);
-    expect(scan.majorVersions.size).toBeGreaterThan(3);
+  return {
+    files: scan.files,
+    methodsWithCode: scan.methods,
+    instructions: scan.instructions,
+    classFileMajorVersions: [...scan.majorVersions.keys()].sort((a, b) => a - b),
+    classesWithRunnableEntry: scan.withRunnableEntry,
+    fullyExecutableMethods: scan.fullyExecutableMethods,
+    fullyExecutableMethodPercent:
+      Math.round((scan.fullyExecutableMethods / scan.methods) * 1000) / 10,
+    distinctOpcodesSeen: scan.opcodeCounts.size,
+    distinctOpcodesExecutable: [...scan.opcodeCounts.keys()].filter((opcode) =>
+      EXECUTABLE_OPCODES.has(opcode),
+    ).length,
+    instructionsExecutable: executable,
+    instructionCoveragePercent: Math.round((executable / scan.instructions) * 1000) / 10,
+    mostCommon: [...scan.opcodeCounts]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 15)
+      .map(([opcode, count]) => ({
+        mnemonic: OPCODES.get(opcode)?.mnemonic ?? `0x${opcode.toString(16)}`,
+        count,
+        executable: EXECUTABLE_OPCODES.has(opcode),
+      })),
+  };
+}
+
+it.skipIf(!onCi)(
+  'is unpacked before the suite runs, so a green job cannot mean an empty scan',
+  () => {
+    expect(files.length).toBeGreaterThan(5_000);
+  },
+);
+
+describe.skipIf(!hasCorpus)('the parser and disassembler against a real-world corpus', () => {
+  const scan = hasCorpus ? scanCorpus(files) : NO_SCAN;
+  const generated = `${JSON.stringify(summaryOf(scan), null, 2)}\n`;
+
+  beforeAll(() => {
+    writeFileSync(GENERATED_SCAN, generated);
+    if (process.env.CORPUS_UPDATE === '1') {
+      writeFileSync(COMMITTED_SCAN, generated);
+    }
   });
 
   it('parses and disassembles every class file without throwing', () => {
@@ -150,43 +199,7 @@ describe.skipIf(!hasCorpus)('the parser and disassembler against a real-world co
     expect(scan.truncated).toBe(0);
   });
 
-  it('records what the executable subset covers', () => {
-    const executable = [...scan.opcodeCounts]
-      .filter(([opcode]) => EXECUTABLE_OPCODES.has(opcode))
-      .reduce((total, [, count]) => total + count, 0);
-
-    const distinctSeen = scan.opcodeCounts.size;
-    const distinctExecutable = [...scan.opcodeCounts.keys()].filter((opcode) =>
-      EXECUTABLE_OPCODES.has(opcode),
-    ).length;
-
-    const top = [...scan.opcodeCounts]
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 15)
-      .map(([opcode, count]) => ({
-        mnemonic: OPCODES.get(opcode)?.mnemonic ?? `0x${opcode.toString(16)}`,
-        count,
-        executable: EXECUTABLE_OPCODES.has(opcode),
-      }));
-
-    const summary = {
-      files: scan.files,
-      methodsWithCode: scan.methods,
-      instructions: scan.instructions,
-      classFileMajorVersions: [...scan.majorVersions.keys()].sort((a, b) => a - b),
-      classesWithRunnableEntry: scan.withRunnableEntry,
-      fullyExecutableMethods: scan.fullyExecutableMethods,
-      fullyExecutableMethodPercent:
-        Math.round((scan.fullyExecutableMethods / scan.methods) * 1000) / 10,
-      distinctOpcodesSeen: distinctSeen,
-      distinctOpcodesExecutable: distinctExecutable,
-      instructionsExecutable: executable,
-      instructionCoveragePercent: Math.round((executable / scan.instructions) * 1000) / 10,
-      mostCommon: top,
-    };
-    writeFileSync(join(CACHE, 'scan.json'), `${JSON.stringify(summary, null, 2)}\n`);
-
-    expect(summary.instructionCoveragePercent).toBeGreaterThan(30);
-    expect(scan.instructions).toBeGreaterThan(1_000_000);
+  it('scans exactly what the committed figures say it scans', () => {
+    expect(JSON.parse(generated)).toEqual(JSON.parse(readFileSync(COMMITTED_SCAN, 'utf8')));
   });
 });

@@ -57,9 +57,6 @@ export function operandWidth(operandType: OperandType): number {
       return 2;
     case 'i4':
       return 4;
-    default:
-      operandType satisfies never;
-      return 0;
   }
 }
 
@@ -476,34 +473,29 @@ export interface WidenedForm {
   readonly unsupported: boolean;
 }
 
-const WIDENABLE: readonly (readonly [opcode: number, operands: readonly OperandSpec[]])[] = [
-  [0x15, WIDE_LOCAL_INDEX],
-  [0x16, WIDE_LOCAL_INDEX],
-  [0x17, WIDE_LOCAL_INDEX],
-  [0x18, WIDE_LOCAL_INDEX],
-  [0x19, WIDE_LOCAL_INDEX],
-  [0x36, WIDE_LOCAL_INDEX],
-  [0x37, WIDE_LOCAL_INDEX],
-  [0x38, WIDE_LOCAL_INDEX],
-  [0x39, WIDE_LOCAL_INDEX],
-  [0x3a, WIDE_LOCAL_INDEX],
-  [0xa9, WIDE_LOCAL_INDEX],
-  [0x84, WIDE_IINC_OPERANDS],
-];
+const IINC = 0x84;
+
+function widenedOperands(info: OpcodeInfo): readonly OperandSpec[] | undefined {
+  if (info.opcode === IINC) {
+    return WIDE_IINC_OPERANDS;
+  }
+  return info.operands[0]?.role === 'local-index' ? WIDE_LOCAL_INDEX : undefined;
+}
+
+function widenedForm(info: OpcodeInfo, operands: readonly OperandSpec[]): WidenedForm {
+  return {
+    opcode: info.opcode,
+    mnemonic: `${info.mnemonic}_w`,
+    operands,
+    operandBytes: operands.reduce((total, spec) => total + operandWidth(spec.type), 0),
+    unsupported: info.kind !== 'supported',
+  };
+}
 
 export const WIDENED_FORMS: ReadonlyMap<number, WidenedForm> = new Map(
-  WIDENABLE.map(([opcode, operands]) => {
-    const info = OPCODES.get(opcode);
-    return [
-      opcode,
-      {
-        opcode,
-        mnemonic: `${info?.mnemonic ?? ''}_w`,
-        operands,
-        operandBytes: operands.reduce((total, spec) => total + operandWidth(spec.type), 0),
-        unsupported: info?.kind !== 'supported',
-      },
-    ];
+  [...OPCODES.values()].flatMap((info) => {
+    const operands = widenedOperands(info);
+    return operands === undefined ? [] : [[info.opcode, widenedForm(info, operands)] as const];
   }),
 );
 

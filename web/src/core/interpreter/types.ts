@@ -1,4 +1,6 @@
-import type { Instruction } from '../disassembler/types';
+import type { Instruction } from '../disassembler';
+
+export const NO_SNAPSHOTS: readonly Snapshot[] = Object.freeze([]);
 
 export type ValueKind = 'int' | 'ref' | 'external';
 
@@ -6,6 +8,7 @@ export interface ExternalValue {
   readonly className: string;
   readonly label: string;
   readonly text?: string;
+  readonly detail?: string;
 }
 
 export interface ArrayObject {
@@ -52,90 +55,48 @@ export interface Snapshot {
   readonly externals?: readonly ExternalValue[];
 }
 
-export type VmError =
-  | {
-      readonly kind: 'unsupported-opcode';
-      readonly mnemonic: string;
-      readonly offset: number;
-      readonly methodName: string;
-    }
-  | { readonly kind: 'division-by-zero'; readonly offset: number; readonly methodName: string }
-  | {
-      readonly kind: 'unsupported-call';
-      readonly target: string;
-      readonly offset: number;
-      readonly methodName: string;
-    }
-  | {
-      readonly kind: 'invalid-state';
-      readonly message: string;
-      readonly offset: number;
-      readonly methodName: string;
-    }
-  | {
-      readonly kind: 'stack-overflow';
-      readonly limit: number;
-      readonly offset: number;
-      readonly methodName: string;
-    }
-  | {
-      readonly kind: 'bad-branch-target';
-      readonly mnemonic: string;
-      readonly target: number;
-      readonly offset: number;
-      readonly methodName: string;
-    }
-  | {
-      readonly kind: 'array-index-out-of-bounds';
-      readonly index: number;
-      readonly length: number;
-      readonly offset: number;
-      readonly methodName: string;
-    }
-  | {
-      readonly kind: 'negative-array-size';
-      readonly size: number;
-      readonly offset: number;
-      readonly methodName: string;
-    }
-  | {
-      readonly kind: 'null-reference';
-      readonly offset: number;
-      readonly methodName: string;
-    }
-  | {
-      readonly kind: 'unsupported-array-type';
-      readonly typeName: string;
-      readonly offset: number;
-      readonly methodName: string;
-    }
+export type VmFaultDetail =
+  | { readonly kind: 'unsupported-opcode'; readonly mnemonic: string }
+  | { readonly kind: 'division-by-zero' }
+  | { readonly kind: 'unsupported-call'; readonly target: string }
+  | { readonly kind: 'invalid-state'; readonly message: string }
+  | { readonly kind: 'stack-overflow'; readonly limit: number }
+  | { readonly kind: 'bad-branch-target'; readonly mnemonic: string; readonly target: number }
+  | { readonly kind: 'array-index-out-of-bounds'; readonly index: number; readonly length: number }
+  | { readonly kind: 'negative-array-size'; readonly size: number }
+  | { readonly kind: 'null-reference' }
+  | { readonly kind: 'unsupported-array-type'; readonly typeName: string }
   | {
       readonly kind: 'out-of-memory';
       readonly resource: 'heap' | 'history';
       readonly requested: number;
       readonly limit: number;
-      readonly offset: number;
-      readonly methodName: string;
     }
+  | { readonly kind: 'unsupported-field'; readonly target: string }
+  | { readonly kind: 'unsupported-constant'; readonly target: string }
   | {
-      readonly kind: 'unsupported-field';
-      readonly target: string;
-      readonly offset: number;
-      readonly methodName: string;
-    }
-  | {
-      readonly kind: 'uncaught-exception';
+      readonly kind: 'thrown';
+      readonly handle: number;
       readonly className: string;
       readonly label: string;
-      readonly offset: number;
-      readonly methodName: string;
-    }
-  | {
-      readonly kind: 'unsupported-constant';
-      readonly target: string;
-      readonly offset: number;
-      readonly methodName: string;
     };
+
+export interface FaultLocation {
+  readonly offset: number;
+  readonly methodName: string;
+}
+
+export interface UncaughtException {
+  readonly kind: 'uncaught-exception';
+  readonly className: string;
+  readonly label: string;
+}
+
+type Located<T> = T extends unknown ? T & FaultLocation : never;
+
+export type VmError = Located<
+  Exclude<VmFaultDetail, { readonly kind: 'thrown' }> | UncaughtException
+>;
 
 export type ExecutionResult =
   | {

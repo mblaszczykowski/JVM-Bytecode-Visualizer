@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 import { parseClassFile, type ClassFile, type MethodInfo } from '../classfile';
 import {
+  javapConstantComment,
   javapMethod,
   readJavap,
   type JavapInstruction,
@@ -25,8 +26,12 @@ function parseFixture(classFile: URL): ClassFile {
   return parseClassFile(new Uint8Array(readFileSync(classFile)).buffer);
 }
 
-function codeIn(classFile: URL, methodName: string): Uint8Array {
-  const method: MethodInfo | undefined = parseFixture(classFile).methods.find(
+const FACTORIAL = parseFixture(FACTORIAL_CLASS);
+const OPCODE_ZOO = parseFixture(OPCODE_ZOO_CLASS);
+const WIDE_OPS = parseFixture(WIDE_OPS_CLASS);
+
+function codeIn(classFile: ClassFile, methodName: string): Uint8Array {
+  const method: MethodInfo | undefined = classFile.methods.find(
     (candidate) => candidate.name === methodName,
   );
   if (method?.code === undefined) {
@@ -36,7 +41,7 @@ function codeIn(classFile: URL, methodName: string): Uint8Array {
 }
 
 function codeOf(methodName: string): Uint8Array {
-  return codeIn(FACTORIAL_CLASS, methodName);
+  return codeIn(FACTORIAL, methodName);
 }
 
 function renderDecoded(instruction: Instruction): string {
@@ -68,16 +73,45 @@ function defaultFirst(cases: readonly JavapSwitchCase[]): readonly JavapSwitchCa
   ];
 }
 
-function expectJavapParity(code: Uint8Array, method: JavapMethod): void {
-  const result = disassemble(code);
+function expectJavapParity(classFile: ClassFile, methodName: string, method: JavapMethod): void {
+  const result = disassemble(codeIn(classFile, methodName));
 
   expect(result.instructions.map(renderDecoded)).toEqual(method.instructions.map(renderJavap));
-  expect(result.truncatedAtOffset).toBeUndefined();
+  expect(result.undecodedFromOffset).toBeUndefined();
 
   for (const [index, decoded] of result.instructions.entries()) {
-    const cases = method.instructions[index]?.switchCases ?? [];
-    expect(decoded.switchTargets ?? []).toEqual(defaultFirst(cases));
+    const javap = method.instructions[index];
+    expect(decoded.switchTargets ?? []).toEqual(defaultFirst(javap?.switchCases ?? []));
+
+    const resolved = javapConstantComment(classFile, decoded);
+    if (resolved !== undefined) {
+      expect(`${String(decoded.offset)}: ${resolved}`).toBe(
+        `${String(decoded.offset)}: ${javap?.comment ?? ''}`,
+      );
+    }
   }
+}
+
+function unresolvedComments(
+  classFile: ClassFile,
+  dump: readonly JavapMethod[],
+  methods: readonly (readonly [string, string])[],
+): readonly string[] {
+  const unresolved: string[] = [];
+
+  for (const [methodName, signature] of methods) {
+    const printed = javapMethod(dump, signature).instructions;
+    for (const [index, decoded] of disassemble(
+      codeIn(classFile, methodName),
+    ).instructions.entries()) {
+      const comment = printed[index]?.comment ?? '';
+      if (comment !== '' && javapConstantComment(classFile, decoded) === undefined) {
+        unresolved.push(`${decoded.mnemonic}: ${comment}`);
+      }
+    }
+  }
+
+  return unresolved;
 }
 
 function bytes(...values: number[]): Uint8Array {
@@ -91,12 +125,18 @@ function mnemonicsOf(code: Uint8Array): readonly string[] {
 describe('disassemble: javap parity on Factorial.class', () => {
   const dump = readJavap(FACTORIAL_JAVAP);
 
-  it.each([
+  const METHODS: readonly (readonly [string, string])[] = [
     ['factorial', 'static int factorial(int)'],
     ['main', 'public static void main(java.lang.String[])'],
     ['<init>', 'public Factorial()'],
-  ])('reproduces the javap listing of %s', (methodName, signature) => {
-    expectJavapParity(codeOf(methodName), javapMethod(dump, signature));
+  ];
+
+  it.each(METHODS)('reproduces the javap listing of %s', (methodName, signature) => {
+    expectJavapParity(FACTORIAL, methodName, javapMethod(dump, signature));
+  });
+
+  it('resolves every comment javap prints beside an instruction', () => {
+    expect(unresolvedComments(FACTORIAL, dump, METHODS)).toEqual([]);
   });
 
   it('leaves no instruction of a default constructor outside the subset', () => {
@@ -149,6 +189,8 @@ describe('disassemble: javap parity on OpcodeZoo.class', () => {
     ['array', 'static int array(int)'],
     ['wide', 'static int wide(int)'],
     ['half', 'static double half()'],
+    ['scale', 'static float scale()'],
+    ['offset', 'static long offset()'],
     ['grid', 'static java.lang.String[][] grid()'],
     ['names', 'static java.lang.Object[] names()'],
     ['print', 'static void print(java.lang.String)'],
@@ -158,33 +200,40 @@ describe('disassemble: javap parity on OpcodeZoo.class', () => {
   ];
 
   it.each(METHODS)('reproduces the javap listing of %s', (methodName, signature) => {
-    expectJavapParity(codeIn(OPCODE_ZOO_CLASS, methodName), javapMethod(dump, signature));
+    expectJavapParity(OPCODE_ZOO, methodName, javapMethod(dump, signature));
+  });
+
+  it('leaves a comment unresolved only where javap annotates a jump table', () => {
+    expect(unresolvedComments(OPCODE_ZOO, dump, METHODS)).toEqual([
+      'tableswitch: 0 to 2',
+      'lookupswitch: 3',
+    ]);
   });
 
   it('decodes the operands of every instruction, in or out of the executable subset', () => {
     const withOperands = new Map<string, readonly number[]>();
 
     for (const [methodName] of METHODS) {
-      for (const instruction of disassemble(codeIn(OPCODE_ZOO_CLASS, methodName)).instructions) {
+      for (const instruction of disassemble(codeIn(OPCODE_ZOO, methodName)).instructions) {
         if (instruction.operands.length > 0) {
           withOperands.set(instruction.mnemonic, instruction.operands);
         }
       }
     }
 
-    expect(withOperands.get('invokespecial')).toEqual([32]);
-    expect(withOperands.get('ldc2_w')).toEqual([8]);
-    expect(withOperands.get('anewarray')).toEqual([12]);
-    expect(withOperands.get('checkcast')).toEqual([12]);
-    expect(withOperands.get('instanceof')).toEqual([12]);
-    expect(withOperands.get('multianewarray')).toEqual([10, 2]);
-    expect(withOperands.get('invokeinterface')).toEqual([39, 1, 0]);
-    expect(withOperands.get('invokedynamic')).toEqual([43, 0, 0]);
+    expect(withOperands.get('invokespecial')).toEqual([35]);
+    expect(withOperands.get('ldc2_w')).toEqual([11]);
+    expect(withOperands.get('anewarray')).toEqual([15]);
+    expect(withOperands.get('checkcast')).toEqual([15]);
+    expect(withOperands.get('instanceof')).toEqual([15]);
+    expect(withOperands.get('multianewarray')).toEqual([13, 2]);
+    expect(withOperands.get('invokeinterface')).toEqual([42, 1, 0]);
+    expect(withOperands.get('invokedynamic')).toEqual([46, 0, 0]);
   });
 
   it('decodes both switches with all their arms', () => {
-    const table = disassemble(codeIn(OPCODE_ZOO_CLASS, 'table'));
-    const lookup = disassemble(codeIn(OPCODE_ZOO_CLASS, 'lookup'));
+    const table = disassemble(codeIn(OPCODE_ZOO, 'table'));
+    const lookup = disassemble(codeIn(OPCODE_ZOO, 'lookup'));
 
     expect(table.instructions[1]?.switchTargets).toEqual([
       { match: undefined, target: 37 },
@@ -198,8 +247,8 @@ describe('disassemble: javap parity on OpcodeZoo.class', () => {
       { match: 500, target: 38 },
       { match: 100_000, target: 40 },
     ]);
-    expect(table.truncatedAtOffset).toBeUndefined();
-    expect(lookup.truncatedAtOffset).toBeUndefined();
+    expect(table.undecodedFromOffset).toBeUndefined();
+    expect(lookup.undecodedFromOffset).toBeUndefined();
   });
 
   it('marks only the instructions the interpreter can run as supported', () => {
@@ -207,7 +256,7 @@ describe('disassemble: javap parity on OpcodeZoo.class', () => {
     const unsupported = new Set<string>();
 
     for (const [methodName] of METHODS) {
-      for (const instruction of disassemble(codeIn(OPCODE_ZOO_CLASS, methodName)).instructions) {
+      for (const instruction of disassemble(codeIn(OPCODE_ZOO, methodName)).instructions) {
         (instruction.unsupported === undefined ? supported : unsupported).add(instruction.mnemonic);
       }
     }
@@ -247,10 +296,12 @@ describe('disassemble: javap parity on OpcodeZoo.class', () => {
       'anewarray',
       'checkcast',
       'dreturn',
+      'freturn',
       'instanceof',
       'invokedynamic',
       'invokeinterface',
       'ldc2_w',
+      'lreturn',
       'multianewarray',
     ]);
   });
@@ -259,15 +310,21 @@ describe('disassemble: javap parity on OpcodeZoo.class', () => {
 describe('disassemble: javap parity on WideOps.class', () => {
   const dump = readJavap(WIDE_OPS_JAVAP);
 
-  it.each([
+  const METHODS: readonly (readonly [string, string])[] = [
     ['far', 'static int far(int)'],
     ['main', 'public static void main(java.lang.String[])'],
-  ])('reproduces the javap listing of %s', (methodName, signature) => {
-    expectJavapParity(codeIn(WIDE_OPS_CLASS, methodName), javapMethod(dump, signature));
+  ];
+
+  it.each(METHODS)('reproduces the javap listing of %s', (methodName, signature) => {
+    expectJavapParity(WIDE_OPS, methodName, javapMethod(dump, signature));
+  });
+
+  it('resolves every comment javap prints beside an instruction', () => {
+    expect(unresolvedComments(WIDE_OPS, dump, METHODS)).toEqual([]);
   });
 
   it('folds the wide prefix into the instruction it widens, as javap does', () => {
-    const instructions = disassemble(codeIn(WIDE_OPS_CLASS, 'far')).instructions;
+    const instructions = disassemble(codeIn(WIDE_OPS, 'far')).instructions;
 
     expect(instructions.slice(3)).toEqual([
       { offset: 3, opcode: 0x36, mnemonic: 'istore_w', operands: [257] },
@@ -383,7 +440,7 @@ describe('disassemble: instructions outside the executable subset', () => {
       { offset: 4, opcode: 0xc0, mnemonic: 'checkcast', operands: [7], unsupported: true },
       { offset: 7, opcode: 0x60, mnemonic: 'iadd', operands: [] },
     ]);
-    expect(result.truncatedAtOffset).toBeUndefined();
+    expect(result.undecodedFromOffset).toBeUndefined();
   });
 
   it('uses the real JVM mnemonic so errors can name the instruction', () => {
@@ -426,28 +483,28 @@ describe('disassemble: the variable-length instructions', () => {
       { match: 1, target: offset + 20 },
       { match: 2, target: offset + 30 },
     ]);
-    expect(result.truncatedAtOffset).toBeUndefined();
+    expect(result.undecodedFromOffset).toBeUndefined();
   });
 
   it('decodes a lookupswitch with no arms at all', () => {
     const result = disassemble(bytes(0xab, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 0));
 
     expect(result.instructions[0]?.switchTargets).toEqual([{ match: undefined, target: 9 }]);
-    expect(result.truncatedAtOffset).toBeUndefined();
+    expect(result.undecodedFromOffset).toBeUndefined();
   });
 
   it('stops at a switch whose table does not fit in code[]', () => {
     expect(
-      disassemble(bytes(0xaa, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 1, 0, 0, 3, 0xe8)).truncatedAtOffset,
+      disassemble(bytes(0xaa, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 1, 0, 0, 3, 0xe8)).undecodedFromOffset,
     ).toBe(0);
     expect(
-      disassemble(bytes(0xaa, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 1)).truncatedAtOffset,
+      disassemble(bytes(0xaa, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 1)).undecodedFromOffset,
     ).toBe(0);
     expect(
-      disassemble(bytes(0xab, 0, 0, 0, 0, 0, 0, 4, 0xff, 0xff, 0xff, 0xff)).truncatedAtOffset,
+      disassemble(bytes(0xab, 0, 0, 0, 0, 0, 0, 4, 0xff, 0xff, 0xff, 0xff)).undecodedFromOffset,
     ).toBe(0);
-    expect(disassemble(bytes(0x00, 0xaa, 0x00, 0x00)).truncatedAtOffset).toBe(1);
-    expect(disassemble(bytes(0xaa, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0)).truncatedAtOffset).toBe(0);
+    expect(disassemble(bytes(0x00, 0xaa, 0x00, 0x00)).undecodedFromOffset).toBe(1);
+    expect(disassemble(bytes(0xaa, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0)).undecodedFromOffset).toBe(0);
   });
 
   function widened(opcode: number, ...operands: number[]): readonly number[] {
@@ -470,14 +527,14 @@ describe('disassemble: the variable-length instructions', () => {
       { offset: 8, opcode: 0x84, mnemonic: 'iinc_w', operands: [300, -1] },
       { offset: 14, opcode: 0xa9, mnemonic: 'ret_w', operands: [4], unsupported: true },
     ]);
-    expect(result.truncatedAtOffset).toBeUndefined();
+    expect(result.undecodedFromOffset).toBeUndefined();
   });
 
   it('stops at a wide prefix on an instruction it cannot widen', () => {
-    expect(disassemble(bytes(0x00, ...widened(0x60), 0x00)).truncatedAtOffset).toBe(1);
-    expect(disassemble(bytes(0x00, 0xc4)).truncatedAtOffset).toBe(1);
-    expect(disassemble(bytes(...widened(0x15, 0x01))).truncatedAtOffset).toBe(0);
-    expect(disassemble(bytes(...widened(0x84, 0x01, 0x2c, 0xff))).truncatedAtOffset).toBe(0);
+    expect(disassemble(bytes(0x00, ...widened(0x60), 0x00)).undecodedFromOffset).toBe(1);
+    expect(disassemble(bytes(0x00, 0xc4)).undecodedFromOffset).toBe(1);
+    expect(disassemble(bytes(...widened(0x15, 0x01))).undecodedFromOffset).toBe(0);
+    expect(disassemble(bytes(...widened(0x84, 0x01, 0x2c, 0xff))).undecodedFromOffset).toBe(0);
   });
 });
 
@@ -487,7 +544,7 @@ describe('disassemble: stopping conditions', () => {
       const result = disassemble(bytes(0x00, reserved, 0x00));
 
       expect(result.instructions).toHaveLength(1);
-      expect(result.truncatedAtOffset).toBe(1);
+      expect(result.undecodedFromOffset).toBe(1);
     }
   });
 
@@ -495,20 +552,20 @@ describe('disassemble: stopping conditions', () => {
     const result = disassemble(bytes(0x00, 0xcb, 0x00));
 
     expect(result.instructions).toHaveLength(1);
-    expect(result.truncatedAtOffset).toBe(1);
+    expect(result.undecodedFromOffset).toBe(1);
   });
 
   it('stops cleanly when an operand runs past the end of code[]', () => {
     expect(disassemble(bytes(0x10))).toEqual({
       instructions: [],
       indexByOffset: new Map(),
-      truncatedAtOffset: 0,
+      undecodedFromOffset: 0,
     });
-    expect(disassemble(bytes(0x04, 0x11, 0x00)).truncatedAtOffset).toBe(1);
-    expect(disassemble(bytes(0x04, 0x84, 0x01)).truncatedAtOffset).toBe(1);
+    expect(disassemble(bytes(0x04, 0x11, 0x00)).undecodedFromOffset).toBe(1);
+    expect(disassemble(bytes(0x04, 0x84, 0x01)).undecodedFromOffset).toBe(1);
     expect(disassemble(bytes(0xa7, 0x00)).instructions).toEqual([]);
-    expect(disassemble(bytes(0x60, 0xb7, 0x00)).truncatedAtOffset).toBe(1);
-    expect(disassemble(bytes(0xc8, 0x00, 0x00, 0x01)).truncatedAtOffset).toBe(0);
+    expect(disassemble(bytes(0x60, 0xb7, 0x00)).undecodedFromOffset).toBe(1);
+    expect(disassemble(bytes(0xc8, 0x00, 0x00, 0x01)).undecodedFromOffset).toBe(0);
   });
 
   it('returns an empty, untruncated listing for empty code[]', () => {
@@ -516,7 +573,7 @@ describe('disassemble: stopping conditions', () => {
 
     expect(result.instructions).toEqual([]);
     expect(result.indexByOffset.size).toBe(0);
-    expect(result.truncatedAtOffset).toBeUndefined();
+    expect(result.undecodedFromOffset).toBeUndefined();
   });
 
   it('decodes a view into a larger buffer without reading past its window', () => {
@@ -552,7 +609,7 @@ describe('disassemble: properties on arbitrary input', () => {
     fc.assert(
       fc.property(codeArbitrary, (code) => {
         const result = disassemble(code);
-        const end = result.truncatedAtOffset ?? code.length;
+        const end = result.undecodedFromOffset ?? code.length;
 
         let previousOffset = -1;
         for (const instruction of result.instructions) {
@@ -631,7 +688,7 @@ describe('disassemble: properties on arbitrary input', () => {
       fc.property(programArbitrary, ({ code, mnemonics }) => {
         const result = disassemble(code);
 
-        expect(result.truncatedAtOffset).toBeUndefined();
+        expect(result.undecodedFromOffset).toBeUndefined();
         expect(result.instructions.map((instruction) => instruction.mnemonic)).toEqual(mnemonics);
         expect(
           result.instructions.every((instruction) => instruction.unsupported === undefined),

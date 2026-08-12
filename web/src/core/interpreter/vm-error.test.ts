@@ -1,14 +1,18 @@
 import { describe, expect, it } from 'vitest';
 
 import { ConstantTag, type ClassFile } from '../classfile';
-import { expectCompleted, expectStepLimit, expectVmError } from './__fixtures__/expect-execution';
+import {
+  debugVmError,
+  expectCompleted,
+  expectStepLimit,
+  expectVmError,
+} from './__fixtures__/expect-execution';
 import {
   ConstantPoolBuilder,
   syntheticClass,
   SYNTHETIC_CLASS_NAME,
   type SyntheticMethod,
 } from './__fixtures__/synthetic-class';
-import { formatVmError } from './errors';
 import { execute } from './interpreter';
 import {
   DEFAULT_MAX_CALL_DEPTH,
@@ -39,7 +43,7 @@ describe('execute: arithmetic faults', () => {
     expect(error).toEqual({ kind: 'division-by-zero', offset: 2, methodName: 'main' });
     expect(result.snapshots).toHaveLength(3);
     expect(result.snapshots.at(-1)?.callStack[0]?.operandStack).toEqual([5, 0]);
-    expect(formatVmError(error)).toBe('ArithmeticException: / by zero (offset 2 in main()).');
+    expect(debugVmError(error)).toBe('ArithmeticException: / by zero (offset 2 in main()).');
   });
 });
 
@@ -113,7 +117,7 @@ describe('execute: call depth', () => {
     });
     expect(result.snapshots).toHaveLength(20);
     expect(result.snapshots.at(-1)?.callStack).toHaveLength(20);
-    expect(formatVmError(error)).toBe(
+    expect(debugVmError(error)).toBe(
       'StackOverflowError: the call stack reached its limit of 20 frames (offset 0 in main()).',
     );
   });
@@ -183,7 +187,7 @@ describe('execute: branch targets', () => {
     const error = expectVmError(run([0x03, 0x57, 0xb1, 0xa7, 0x00, 0x40]));
 
     expect(error).toMatchObject({ kind: 'bad-branch-target', target: 67, offset: 3 });
-    expect(formatVmError(error)).toBe(
+    expect(debugVmError(error)).toBe(
       'Invalid branch target: goto jumps to offset 67, which is not the start of an instruction (offset 3 in main()).',
     );
   });
@@ -254,7 +258,7 @@ describe('execute: unsupported instructions', () => {
     const error = expectVmError(run([0x00]));
 
     expect(error).toMatchObject({ kind: 'invalid-state', offset: 1, methodName: 'main' });
-    expect(formatVmError(error)).toBe('execution ran past the end of main() (offset 1 in main()).');
+    expect(debugVmError(error)).toBe('execution ran past the end of main() (offset 1 in main()).');
   });
 });
 
@@ -330,7 +334,7 @@ describe('execute: array faults', () => {
   it('names the index and the length the way the JVM exception does', () => {
     const error = expectVmError(run([0x06, 0xbc, T_INT, 0x08, 0x2e, 0xb1]));
 
-    expect(formatVmError(error)).toBe(
+    expect(debugVmError(error)).toBe(
       'ArrayIndexOutOfBoundsException: index 5 out of bounds for length 3 (offset 4 in main()).',
     );
   });
@@ -342,7 +346,7 @@ describe('execute: array faults', () => {
     const error = expectVmError(run(code));
 
     expect(error).toMatchObject({ kind: 'negative-array-size', size, methodName: 'main' });
-    expect(formatVmError(error)).toContain(`NegativeArraySizeException: ${String(size)}`);
+    expect(debugVmError(error)).toContain(`NegativeArraySizeException: ${String(size)}`);
   });
 
   it.each([
@@ -353,7 +357,7 @@ describe('execute: array faults', () => {
     const error = expectVmError(run(code));
 
     expect(error).toEqual({ kind: 'null-reference', offset, methodName: 'main' });
-    expect(formatVmError(error)).toBe(
+    expect(debugVmError(error)).toBe(
       `NullPointerException: the reference is null (offset ${String(offset)} in main()).`,
     );
   });
@@ -372,9 +376,7 @@ describe('execute: array faults', () => {
       offset: 1,
       methodName: 'main',
     });
-    expect(formatVmError(error)).toBe(
-      `Unsupported array type: ${typeName}; only int arrays can be allocated (offset 1 in main()).`,
-    );
+    expect(debugVmError(error)).toBe(`Unsupported array type: ${typeName} (offset 1 in main()).`);
   });
 
   it('leaves the count on the stack when the element type is the problem', () => {
@@ -468,7 +470,7 @@ describe('execute: invokestatic restrictions', () => {
       offset: 0,
       methodName: 'main',
     });
-    expect(formatVmError(error)).toContain('java/lang/Math.sqrt(D)D');
+    expect(debugVmError(error)).toContain('java/lang/Math.sqrt(D)D');
   });
 
   it.each([

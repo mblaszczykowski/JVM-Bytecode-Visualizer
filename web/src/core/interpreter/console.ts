@@ -1,11 +1,18 @@
+import type { RecordingBudget } from './budget';
+
 const EMPTY_OUTPUT: readonly string[] = Object.freeze([]);
 
 export class ConsoleOutput {
+  private readonly budget: RecordingBudget;
   private readonly completed: string[] = [];
   private open: string | undefined;
   private revision = 0;
   private frozenRevision = 0;
   private frozen: readonly string[] = EMPTY_OUTPUT;
+
+  constructor(budget: RecordingBudget) {
+    this.budget = budget;
+  }
 
   write(text: string): void {
     const parts = text.split('\n');
@@ -32,9 +39,9 @@ export class ConsoleOutput {
     if (this.revision === this.frozenRevision) {
       return this.frozen;
     }
-    this.frozen = Object.freeze(
-      this.open === undefined ? [...this.completed] : [...this.completed, this.open],
-    );
+    const lines = this.open === undefined ? [...this.completed] : [...this.completed, this.open];
+    this.budget.charge(lines.length);
+    this.frozen = Object.freeze(lines);
     this.frozenRevision = this.revision;
     return this.frozen;
   }

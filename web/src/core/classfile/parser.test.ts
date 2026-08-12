@@ -8,6 +8,7 @@ import { parseClassFile } from './parser';
 import { ConstantTag, isStatic, type ClassFile, type MethodInfo } from './types';
 
 const FACTORIAL_CLASS = new URL('./__fixtures__/Factorial.class', import.meta.url);
+const OPCODE_ZOO_CLASS = new URL('../disassembler/__fixtures__/OpcodeZoo.class', import.meta.url);
 
 function factorialBytes(): Uint8Array<ArrayBuffer> {
   return new Uint8Array(readFileSync(FACTORIAL_CLASS));
@@ -202,20 +203,36 @@ function buildClassFile(spec: SyntheticClass): ArrayBuffer {
   ]).buffer;
 }
 
-describe('parseClassFile: Long/Double entries and uninterpreted tags', () => {
+describe('parseClassFile: the value constants javac wrote into OpcodeZoo', () => {
+  const { constantPool } = parseClassFile(new Uint8Array(readFileSync(OPCODE_ZOO_CLASS)).buffer);
+
+  it('reads the float, long and double the class loads through ldc and ldc2_w', () => {
+    expect(constantPool[10]).toEqual({ tag: ConstantTag.Float, value: 1.5 });
+    expect(constantPool[11]).toEqual({ tag: ConstantTag.Long, value: 4_294_967_296n });
+    expect(constantPool[8]).toEqual({ tag: ConstantTag.Double, value: 0.5 });
+  });
+
+  it('leaves the second slot of each eight-byte constant empty (JVMS §4.4.5)', () => {
+    expect(constantPool[9]).toBeNull();
+    expect(constantPool[12]).toBeNull();
+    expect(constantPool[13]).toEqual({ tag: ConstantTag.Class, nameIndex: 14 });
+  });
+});
+
+describe('parseClassFile: Long/Double entries and the reference tags around them', () => {
   const kitchenSink = buildClassFile({
     constantPoolCount: 24,
     constantPool: [
-      filler(ConstantTag.Long, 8),
-      filler(ConstantTag.Double, 8),
-      filler(ConstantTag.Float, 4),
-      filler(ConstantTag.MethodHandle, 3),
-      filler(ConstantTag.MethodType, 2),
-      filler(ConstantTag.InvokeDynamic, 4),
-      filler(ConstantTag.Dynamic, 4),
-      filler(ConstantTag.Module, 2),
-      filler(ConstantTag.Package, 2),
-      filler(ConstantTag.InterfaceMethodref, 4),
+      [ConstantTag.Long, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00],
+      [ConstantTag.Double, 0x3f, 0xe0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+      [ConstantTag.Float, 0x3f, 0xc0, 0x00, 0x00],
+      [ConstantTag.MethodHandle, 6, ...u2(23)],
+      [ConstantTag.MethodType, ...u2(20)],
+      [ConstantTag.InvokeDynamic, ...u2(0), ...u2(21)],
+      [ConstantTag.Dynamic, ...u2(1), ...u2(21)],
+      [ConstantTag.Module, ...u2(13)],
+      [ConstantTag.Package, ...u2(13)],
+      [ConstantTag.InterfaceMethodref, ...u2(16), ...u2(21)],
       utf8Entry('Synthetic'),
       classEntry(13),
       utf8Entry('java/lang/Object'),
@@ -236,14 +253,32 @@ describe('parseClassFile: Long/Double entries and uninterpreted tags', () => {
     const { constantPool } = parseClassFile(kitchenSink);
 
     expect(constantPool).toHaveLength(24);
-    expect(constantPool[1]).toEqual({ tag: ConstantTag.Long });
+    expect(constantPool[1]).toEqual({ tag: ConstantTag.Long, value: 4_294_967_296n });
     expect(constantPool[2]).toBeNull();
-    expect(constantPool[3]).toEqual({ tag: ConstantTag.Double });
+    expect(constantPool[3]).toEqual({ tag: ConstantTag.Double, value: 0.5 });
     expect(constantPool[4]).toBeNull();
-    expect(constantPool[5]).toEqual({ tag: ConstantTag.Float });
+    expect(constantPool[5]).toEqual({ tag: ConstantTag.Float, value: 1.5 });
   });
 
-  it('skips tags of known length and lands on the following entries', () => {
+  it('reads a long that a double could not hold exactly', () => {
+    const buffer = buildClassFile({
+      constantPoolCount: 5,
+      constantPool: [
+        [ConstantTag.Long, 0x7f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff],
+        utf8Entry('Synth'),
+        classEntry(3),
+      ],
+      thisClass: 4,
+      superClass: 0,
+    });
+
+    expect(parseClassFile(buffer).constantPool[1]).toEqual({
+      tag: ConstantTag.Long,
+      value: 9_223_372_036_854_775_807n,
+    });
+  });
+
+  it('reads every tag of known length and lands on the following entries', () => {
     const { constantPool, thisClassName, superClassName } = parseClassFile(kitchenSink);
 
     expect(constantPool[13]).toEqual({ tag: ConstantTag.Utf8, value: 'Synthetic' });
@@ -255,6 +290,34 @@ describe('parseClassFile: Long/Double entries and uninterpreted tags', () => {
     });
     expect(thisClassName).toBe('Synthetic');
     expect(superClassName).toBe('java/lang/Object');
+  });
+
+  it('keeps the indices of the tags the interpreter never executes', () => {
+    const { constantPool } = parseClassFile(kitchenSink);
+
+    expect(constantPool[6]).toEqual({
+      tag: ConstantTag.MethodHandle,
+      referenceKind: 6,
+      referenceIndex: 23,
+    });
+    expect(constantPool[7]).toEqual({ tag: ConstantTag.MethodType, descriptorIndex: 20 });
+    expect(constantPool[8]).toEqual({
+      tag: ConstantTag.InvokeDynamic,
+      bootstrapMethodAttrIndex: 0,
+      nameAndTypeIndex: 21,
+    });
+    expect(constantPool[9]).toEqual({
+      tag: ConstantTag.Dynamic,
+      bootstrapMethodAttrIndex: 1,
+      nameAndTypeIndex: 21,
+    });
+    expect(constantPool[10]).toEqual({ tag: ConstantTag.Module, nameIndex: 13 });
+    expect(constantPool[11]).toEqual({ tag: ConstantTag.Package, nameIndex: 13 });
+    expect(constantPool[12]).toEqual({
+      tag: ConstantTag.InterfaceMethodref,
+      classIndex: 16,
+      nameAndTypeIndex: 21,
+    });
   });
 });
 
@@ -640,6 +703,27 @@ describe('parseClassFile: modified UTF-8 decoding (JVMS §4.4.7)', () => {
       kind: 'malformed-utf8',
       offset: 14,
     });
+  });
+
+  it.each([
+    [[0xc0, 0x81], 'the 2-byte sequence encodes U+0001'],
+    [[0xe0, 0x80, 0x81], 'the 3-byte sequence encodes U+0001'],
+    [[0xe0, 0x81, 0x80], 'the 3-byte sequence encodes U+0040'],
+    [[0xe0, 0x80, 0x80], 'the 3-byte sequence encodes U+0000'],
+  ])('rejects the overlong sequence %j, as a class loader does', (nameBytes, reason) => {
+    expect(expectClassFileError(() => parseClassFile(classWithName(nameBytes)))).toMatchObject({
+      kind: 'malformed-utf8',
+      offset: 13,
+      reason: `${reason}, which JVMS §4.4.7 encodes in fewer bytes`,
+    });
+  });
+
+  it('keeps the two-byte form of U+0000, which is the shortest one it has', () => {
+    expect(parseClassFile(classWithName([0xc0, 0x80])).thisClassName).toBe(' ');
+  });
+
+  it('accepts a lone surrogate, which a class loader also accepts', () => {
+    expect(parseClassFile(classWithName([0xed, 0xa0, 0xbd])).thisClassName).toBe('\ud83d');
   });
 });
 

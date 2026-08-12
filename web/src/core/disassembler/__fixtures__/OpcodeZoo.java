@@ -66,6 +66,16 @@ public class OpcodeZoo {
         return 0.5d;
     }
 
+    /** ldc reaching a float constant, which the pool stores as IEEE 754 bytes. */
+    static float scale() {
+        return 1.5f;
+    }
+
+    /** ldc2_w again, for a long too wide for any int the pool could hold. */
+    static long offset() {
+        return 4294967296L;
+    }
+
     /** multianewarray, with its two-byte class index and one-byte dimension count. */
     static String[][] grid() {
         return new String[2][3];

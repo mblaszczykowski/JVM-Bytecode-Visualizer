@@ -77,64 +77,74 @@ public class OpcodeZoo {
          0: ldc2_w        #8                  // double 0.5d
          3: dreturn
 
+  static float scale();
+    Code:
+         0: ldc           #10                 // float 1.5f
+         2: freturn
+
+  static long offset();
+    Code:
+         0: ldc2_w        #11                 // long 4294967296l
+         3: lreturn
+
   static java.lang.String[][] grid();
     Code:
          0: iconst_2
          1: iconst_3
-         2: multianewarray #10,  2            // class "[[Ljava/lang/String;"
+         2: multianewarray #13,  2            // class "[[Ljava/lang/String;"
          6: areturn
 
   static java.lang.Object[] names();
     Code:
          0: iconst_2
-         1: anewarray     #12                 // class java/lang/String
+         1: anewarray     #15                 // class java/lang/String
          4: dup
          5: iconst_0
-         6: ldc           #14                 // String a
+         6: ldc           #17                 // String a
          8: aastore
          9: dup
         10: iconst_1
-        11: ldc           #16                 // String b
+        11: ldc           #19                 // String b
         13: aastore
         14: areturn
 
   static void print(java.lang.String);
     Code:
-         0: getstatic     #18                 // Field java/lang/System.out:Ljava/io/PrintStream;
+         0: getstatic     #21                 // Field java/lang/System.out:Ljava/io/PrintStream;
          3: aload_0
-         4: invokevirtual #24                 // Method java/io/PrintStream.println:(Ljava/lang/String;)V
+         4: invokevirtual #27                 // Method java/io/PrintStream.println:(Ljava/lang/String;)V
          7: return
 
   static int size(java.lang.String);
     Code:
-         0: new           #30                 // class java/util/ArrayList
+         0: new           #33                 // class java/util/ArrayList
          3: dup
-         4: invokespecial #32                 // Method java/util/ArrayList."<init>":()V
+         4: invokespecial #35                 // Method java/util/ArrayList."<init>":()V
          7: astore_1
          8: aload_1
          9: aload_0
-        10: invokeinterface #33,  2           // InterfaceMethod java/util/List.add:(Ljava/lang/Object;)Z
+        10: invokeinterface #36,  2           // InterfaceMethod java/util/List.add:(Ljava/lang/Object;)Z
         15: pop
         16: aload_1
-        17: invokeinterface #39,  1           // InterfaceMethod java/util/List.size:()I
+        17: invokeinterface #42,  1           // InterfaceMethod java/util/List.size:()I
         22: ireturn
 
   static java.lang.String greet(int);
     Code:
          0: iload_0
-         1: invokedynamic #43,  0             // InvokeDynamic #0:makeConcatWithConstants:(I)Ljava/lang/String;
+         1: invokedynamic #46,  0             // InvokeDynamic #0:makeConcatWithConstants:(I)Ljava/lang/String;
          6: areturn
 
   static boolean empty(java.lang.Object);
     Code:
          0: aload_0
-         1: instanceof    #12                 // class java/lang/String
+         1: instanceof    #15                 // class java/lang/String
          4: ifeq          17
          7: aload_0
-         8: checkcast     #12                 // class java/lang/String
+         8: checkcast     #15                 // class java/lang/String
         11: astore_1
         12: aload_1
-        13: invokevirtual #47                 // Method java/lang/String.isEmpty:()Z
+        13: invokevirtual #50                 // Method java/lang/String.isEmpty:()Z
         16: ireturn
         17: iconst_0
         18: ireturn

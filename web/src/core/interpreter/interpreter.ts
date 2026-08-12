@@ -13,14 +13,16 @@ import {
   type MethodInfo,
 } from '../classfile';
 import { arrayTypeName, lookupOpcode, T_INT, type Instruction } from '../disassembler';
+import { RecordingBudget } from './budget';
 import { ConsoleOutput } from './console';
-import { isVmFault, thrownBy, toVmError, VmFault, type VmFaultDetail } from './errors';
+import { isVmFault, thrownBy, toVmError, VmFault } from './errors';
 import {
   EXTERNAL_FIELDS,
   EXTERNAL_METHODS,
   ExternalPool,
   memberKey,
   stringConstant,
+  throwableObject,
   type ExternalArgument,
   type ExternalMethod,
 } from './externals';
@@ -75,6 +77,7 @@ import {
   type ExternalValue,
   type Snapshot,
   type ValueKind,
+  type VmFaultDetail,
 } from './types';
 
 export function execute(classFile: ClassFile, options: ExecuteOptions = {}): ExecutionResult {
@@ -107,15 +110,18 @@ export function execute(classFile: ClassFile, options: ExecuteOptions = {}): Exe
     return failedRun(error, snapshots, 0, entry.method.name);
   }
 
+  const budget = new RecordingBudget();
   const machine: Machine = {
     classFile,
     prepared,
+    calls: new Map(),
+    instanceFields: undefined,
     maxCallDepth: atLeastOne(options.maxCallDepth, DEFAULT_MAX_CALL_DEPTH),
     callStack: [entryFrame],
     clock,
-    heap: new Heap(),
-    console: new ConsoleOutput(),
-    externals: new ExternalPool(),
+    heap: new Heap(budget),
+    console: new ConsoleOutput(budget),
+    externals: new ExternalPool(budget),
     returnValue: undefined,
   };
 
@@ -171,8 +177,6 @@ function dispatchThrow(machine: Machine, detail: VmFaultDetail): boolean {
   if (thrown === undefined) {
     return false;
   }
-  const handle =
-    thrown.handle ?? machine.externals.intern({ className: thrown.className, label: thrown.label });
 
   for (
     let frame = machine.callStack.at(-1);
@@ -181,6 +185,9 @@ function dispatchThrow(machine: Machine, detail: VmFaultDetail): boolean {
   ) {
     const handler = handlerFor(frame, thrown.className);
     if (handler !== undefined) {
+      const handle =
+        thrown.handle ??
+        machine.externals.intern(throwableObject(thrown.className, thrown.message));
       clearOperandStack(frame);
       push(frame, handle, 'external');
       setPc(frame, handler.handlerPc);
@@ -331,6 +338,8 @@ function isExecutable(opcode: number): opcode is Op {
 interface Machine extends MachineState {
   readonly classFile: ClassFile;
   readonly prepared: Map<MethodInfo, PreparedMethod>;
+  readonly calls: Map<number, ResolvedCall>;
+  instanceFields: readonly InstanceField[] | undefined;
   readonly maxCallDepth: number;
   readonly callStack: Frame[];
   readonly clock: RunClock;
@@ -338,6 +347,18 @@ interface Machine extends MachineState {
   readonly console: ConsoleOutput;
   readonly externals: ExternalPool;
   returnValue: number | undefined;
+}
+
+interface ResolvedCall {
+  readonly method: MethodInfo;
+  readonly code: CodeAttribute;
+  readonly parameters: readonly ValueKind[];
+  readonly isStatic: boolean;
+}
+
+interface InstanceField {
+  readonly name: string;
+  readonly descriptor: string;
 }
 
 function fetchAt(frame: Frame): { readonly instruction: Instruction; readonly nextOffset: number } {
@@ -775,7 +796,12 @@ function throwFromStack(machine: Machine, frame: Frame): void {
       message: `athrow needs a throwable on the operand stack, found ${value?.label ?? 'an unknown object'}`,
     });
   }
-  throw new VmFault({ kind: 'thrown', handle, className: value.className, label: value.label });
+  throw new VmFault({
+    kind: 'thrown',
+    handle,
+    className: value.className,
+    label: value.detail ?? value.label,
+  });
 }
 
 function returnFromFrame(machine: Machine, returned: StackValue | undefined): void {
@@ -843,10 +869,10 @@ function allocateInstance(machine: Machine, frame: Frame, poolIndex: number): vo
   if (className !== machine.classFile.thisClassName) {
     throw new VmFault({ kind: 'unsupported-call', target: `new ${className}` });
   }
-  const fields = machine.classFile.fields
+  machine.instanceFields ??= machine.classFile.fields
     .filter((field) => !isStatic(field.accessFlags))
     .map((field) => ({ name: field.name, descriptor: field.descriptor }));
-  push(frame, machine.heap.allocateInstance(className, fields), 'ref');
+  push(frame, machine.heap.allocateInstance(className, machine.instanceFields), 'ref');
 }
 
 function readField(machine: Machine, frame: Frame, poolIndex: number): void {
@@ -887,7 +913,7 @@ function invokeSpecial(machine: Machine, frame: Frame, poolIndex: number): void 
   if (reference.className !== machine.classFile.thisClassName) {
     throw new VmFault({ kind: 'unsupported-call', target: callTarget(reference) });
   }
-  callWithin(machine, frame, reference, 'instance');
+  callWithin(machine, frame, poolIndex, reference, 'instance');
 }
 
 const CONSTRUCTOR = '<init>';
@@ -896,7 +922,7 @@ function invokeVirtual(machine: Machine, frame: Frame, poolIndex: number): void 
   const reference = resolveMethodref(machine.classFile.constantPool, poolIndex);
 
   if (reference.className === machine.classFile.thisClassName) {
-    callWithin(machine, frame, reference, 'instance');
+    callWithin(machine, frame, poolIndex, reference, 'instance');
     return;
   }
 
@@ -954,13 +980,12 @@ function popArguments(
 
 function invokeStatic(machine: Machine, frame: Frame, poolIndex: number): void {
   const reference = resolveMethodref(machine.classFile.constantPool, poolIndex);
-  const target = callTarget(reference);
   if (reference.className !== machine.classFile.thisClassName) {
     const method = EXTERNAL_METHODS.get(
       memberKey(reference.className, reference.name, reference.descriptor),
     );
     if (method?.dispatch !== 'static') {
-      throw new VmFault({ kind: 'unsupported-call', target });
+      throw new VmFault({ kind: 'unsupported-call', target: callTarget(reference) });
     }
     applyExternal(
       machine,
@@ -972,43 +997,74 @@ function invokeStatic(machine: Machine, frame: Frame, poolIndex: number): void {
     return;
   }
 
-  callWithin(machine, frame, reference, 'static');
+  callWithin(machine, frame, poolIndex, reference, 'static');
 }
 
 function callWithin(
   machine: Machine,
   frame: Frame,
+  poolIndex: number,
   reference: MethodReference,
   shape: 'static' | 'instance',
 ): void {
-  const target = callTarget(reference);
-  const parameters = parameterKinds(reference.descriptor);
-  const method = findMethod(machine.classFile, reference.name, reference.descriptor);
-  const code = method?.code;
-  if (
-    parameters === undefined ||
-    method === undefined ||
-    code === undefined ||
-    isStatic(method.accessFlags) !== (shape === 'static')
-  ) {
-    throw new VmFault({ kind: 'unsupported-call', target });
+  const call = resolveCall(machine, poolIndex, reference, shape);
+  if (call === undefined) {
+    throw new VmFault({ kind: 'unsupported-call', target: callTarget(reference) });
   }
   if (machine.callStack.length >= machine.maxCallDepth) {
     throw new VmFault({ kind: 'stack-overflow', limit: machine.maxCallDepth });
   }
 
-  const slots = new Array<StackValue>(parameters.length);
+  const { parameters } = call;
+  const receiverSlots = shape === 'instance' ? 1 : 0;
+  const slots = new Array<StackValue>(parameters.length + receiverSlots);
   for (let index = parameters.length - 1; index >= 0; index -= 1) {
-    const kind = parameters[index];
-    slots[index] = kind === 'int' ? { value: pop(frame, 'int'), kind: 'int' } : popReference(frame);
+    slots[index + receiverSlots] =
+      parameters[index] === 'int' ? { value: pop(frame, 'int'), kind: 'int' } : popReference(frame);
   }
   if (shape === 'instance') {
-    slots.unshift(popReference(frame));
+    const receiver = popReference(frame);
+    if (receiver.value === NULL_REFERENCE) {
+      throw new VmFault({ kind: 'null-reference' });
+    }
+    slots[0] = receiver;
   }
 
   machine.callStack.push(
-    createFrame(prepare(machine.prepared, method, code), slots, machine.clock),
+    createFrame(prepare(machine.prepared, call.method, call.code), slots, machine.clock),
   );
+}
+
+function resolveCall(
+  machine: Machine,
+  poolIndex: number,
+  reference: MethodReference,
+  shape: 'static' | 'instance',
+): ResolvedCall | undefined {
+  const call = machine.calls.get(poolIndex) ?? cacheCall(machine, poolIndex, reference);
+  return call?.isStatic === (shape === 'static') ? call : undefined;
+}
+
+function cacheCall(
+  machine: Machine,
+  poolIndex: number,
+  reference: MethodReference,
+): ResolvedCall | undefined {
+  const method = findMethod(machine.classFile, reference.name, reference.descriptor);
+  const code = method?.code;
+  const parameters = parameterKinds(reference.descriptor);
+  if (method === undefined || code === undefined || parameters === undefined) {
+    return undefined;
+  }
+
+  const resolved: ResolvedCall = {
+    method,
+    code,
+    parameters,
+    isStatic: isStatic(method.accessFlags),
+  };
+  machine.calls.set(poolIndex, resolved);
+  return resolved;
 }
 
 function prepare(

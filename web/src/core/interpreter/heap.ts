@@ -1,11 +1,10 @@
+import type { RecordingBudget } from './budget';
 import { VmFault } from './errors';
 import type { HeapObject, ValueKind } from './types';
 
 export const NULL_REFERENCE = -1;
 
 export const MAX_HEAP_ELEMENTS = 8_000_000;
-
-export const MAX_RECORDED_ELEMENTS = 24_000_000;
 
 interface FieldCell {
   readonly name: string;
@@ -14,14 +13,20 @@ interface FieldCell {
   kind: ValueKind;
 }
 
-type HeapCell =
-  | { readonly sort: 'array'; readonly elements: number[]; version: number }
-  | {
-      readonly sort: 'instance';
-      readonly className: string;
-      readonly fields: FieldCell[];
-      version: number;
-    };
+interface InstanceCell {
+  readonly sort: 'instance';
+  readonly className: string;
+  readonly fields: FieldCell[];
+  version: number;
+}
+
+interface ArrayCell {
+  readonly sort: 'array';
+  readonly elements: number[];
+  version: number;
+}
+
+type HeapCell = ArrayCell | InstanceCell;
 
 interface FrozenCell {
   readonly version: number;
@@ -37,13 +42,17 @@ function defaultFor(descriptor: string): { value: number; kind: ValueKind } {
 }
 
 export class Heap {
+  private readonly budget: RecordingBudget;
   private readonly cells: HeapCell[] = [];
   private revision = 0;
   private liveElements = 0;
-  private recordedElements = 0;
   private readonly frozenCells: FrozenCell[] = [];
   private frozenRevision = 0;
   private frozenHeap: readonly HeapObject[] = EMPTY_HEAP;
+
+  constructor(budget: RecordingBudget) {
+    this.budget = budget;
+  }
 
   allocateInstance(
     className: string,
@@ -51,7 +60,7 @@ export class Heap {
   ): number {
     const held = this.liveElements + Math.max(fields.length, 1);
     if (held > MAX_HEAP_ELEMENTS) {
-      throw outOfMemory('heap', held, MAX_HEAP_ELEMENTS);
+      throw outOfMemory(held, MAX_HEAP_ELEMENTS);
     }
     this.cells.push({
       sort: 'instance',
@@ -69,32 +78,31 @@ export class Heap {
   }
 
   loadField(reference: number, name: string): { value: number; kind: ValueKind } {
-    const cell = this.fieldCellAt(reference, name);
-    return { value: cell.value, kind: cell.kind };
+    const field = this.fieldIn(this.instanceCellAt(reference, name), name);
+    return { value: field.value, kind: field.kind };
   }
 
   storeField(reference: number, name: string, value: number, kind: ValueKind): void {
-    const object = this.cellAt(reference);
-    const cell = this.fieldCellAt(reference, name);
-    cell.value = value;
-    cell.kind = kind;
-    object.version += 1;
+    const cell = this.instanceCellAt(reference, name);
+    const field = this.fieldIn(cell, name);
+    field.value = value;
+    field.kind = kind;
+    cell.version += 1;
     this.revision += 1;
   }
 
-  classNameOf(reference: number): string | undefined {
-    const cell = this.cellAt(reference);
-    return cell.sort === 'instance' ? cell.className : undefined;
-  }
-
-  private fieldCellAt(reference: number, name: string): FieldCell {
+  private instanceCellAt(reference: number, name: string): InstanceCell {
     const cell = this.cellAt(reference);
     if (cell.sort !== 'instance') {
       throw new VmFault({
         kind: 'invalid-state',
-        message: `field ${name} was read through a reference to an array`,
+        message: `field ${name} was reached through a reference to an array`,
       });
     }
+    return cell;
+  }
+
+  private fieldIn(cell: InstanceCell, name: string): FieldCell {
     const field = cell.fields.find((candidate) => candidate.name === name);
     if (field === undefined) {
       throw new VmFault({
@@ -111,7 +119,7 @@ export class Heap {
     }
     const held = this.liveElements + length;
     if (held > MAX_HEAP_ELEMENTS) {
-      throw outOfMemory('heap', held, MAX_HEAP_ELEMENTS);
+      throw outOfMemory(held, MAX_HEAP_ELEMENTS);
     }
     this.cells.push({ sort: 'array', elements: new Array<number>(length).fill(0), version: 0 });
     this.liveElements = held;
@@ -142,7 +150,7 @@ export class Heap {
     this.revision += 1;
   }
 
-  private arrayCellAt(reference: number): Extract<HeapCell, { sort: 'array' }> {
+  private arrayCellAt(reference: number): ArrayCell {
     const cell = this.cellAt(reference);
     if (cell.sort !== 'array') {
       throw new VmFault({
@@ -157,6 +165,7 @@ export class Heap {
     if (this.revision === this.frozenRevision) {
       return this.frozenHeap;
     }
+    this.budget.charge(this.cells.length);
     this.frozenHeap = Object.freeze(
       this.cells.map((cell, handle) => this.freezeCell(handle, cell)),
     );
@@ -169,13 +178,7 @@ export class Heap {
     if (previous?.version === cell.version) {
       return previous.object;
     }
-
-    const size = cell.sort === 'array' ? cell.elements.length : cell.fields.length;
-    const recorded = this.recordedElements + size;
-    if (recorded > MAX_RECORDED_ELEMENTS) {
-      throw outOfMemory('history', recorded, MAX_RECORDED_ELEMENTS);
-    }
-    this.recordedElements = recorded;
+    this.budget.charge(cell.sort === 'array' ? cell.elements.length : cell.fields.length);
 
     const object: HeapObject =
       cell.sort === 'array'
@@ -215,6 +218,6 @@ function outOfBounds(index: number, length: number): VmFault {
   return new VmFault({ kind: 'array-index-out-of-bounds', index, length });
 }
 
-function outOfMemory(resource: 'heap' | 'history', requested: number, limit: number): VmFault {
-  return new VmFault({ kind: 'out-of-memory', resource, requested, limit });
+function outOfMemory(requested: number, limit: number): VmFault {
+  return new VmFault({ kind: 'out-of-memory', resource: 'heap', requested, limit });
 }

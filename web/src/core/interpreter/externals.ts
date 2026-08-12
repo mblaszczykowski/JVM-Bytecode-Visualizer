@@ -1,4 +1,5 @@
 import { parseMethodDescriptor, type JvmType } from '../classfile';
+import type { RecordingBudget } from './budget';
 import type { ConsoleOutput } from './console';
 import { VmFault } from './errors';
 import { iabs, ifloorDiv, ifloorMod } from './int32';
@@ -24,10 +25,15 @@ export interface ExternalMethod {
 const EMPTY_POOL: readonly ExternalValue[] = Object.freeze([]);
 
 export class ExternalPool {
+  private readonly budget: RecordingBudget;
   private readonly values: ExternalValue[] = [];
   private readonly handles = new Map<string, number>();
   private frozen: readonly ExternalValue[] = EMPTY_POOL;
   private frozenSize = 0;
+
+  constructor(budget: RecordingBudget) {
+    this.budget = budget;
+  }
 
   intern(value: ExternalValue): number {
     const key = `${value.className}|${value.label}`;
@@ -46,6 +52,7 @@ export class ExternalPool {
 
   freeze(): readonly ExternalValue[] {
     if (this.frozenSize !== this.values.length) {
+      this.budget.charge(this.values.length);
       this.frozen = Object.freeze([...this.values]);
       this.frozenSize = this.values.length;
     }
@@ -71,6 +78,14 @@ export const EXTERNAL_FIELDS: ReadonlyMap<string, ExternalValue> = new Map([
 
 export function stringConstant(text: string): ExternalValue {
   return Object.freeze({ className: STRING_CLASS, label: `"${text}"`, text });
+}
+
+export function throwableObject(className: string, detail: string): ExternalValue {
+  return Object.freeze({
+    className,
+    label: className.slice(className.lastIndexOf('/') + 1),
+    detail,
+  });
 }
 
 const PRINTED_AS: ReadonlyMap<string, (arg: ExternalArgument | undefined) => string> = new Map([

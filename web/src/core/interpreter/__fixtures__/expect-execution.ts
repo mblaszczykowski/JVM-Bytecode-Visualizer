@@ -1,3 +1,4 @@
+import { describeFault } from '../errors';
 import type { ExecutionResult, Snapshot, StackFrame, VmError } from '../types';
 
 type CompletedRun = Extract<ExecutionResult, { kind: 'completed' }>;
@@ -22,6 +23,11 @@ export function expectStepLimit(result: ExecutionResult): StepLimitRun {
     throw new Error(`expected a step-limit, got ${describe(result)}`);
   }
   return result;
+}
+
+export function debugVmError(error: VmError): string {
+  const described = error.kind === 'uncaught-exception' ? error.label : describeFault(error);
+  return `${described} (offset ${String(error.offset)} in ${error.methodName}()).`;
 }
 
 export function lastFrameOf(snapshots: readonly Snapshot[], methodName: string): StackFrame {

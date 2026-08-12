@@ -40,6 +40,30 @@ describe('ByteReader: signed reads', () => {
     expect(readerOf(0x80, 0x00).readI2()).toBe(-32_768);
     expect(readerOf(0x7f, 0xff).readI2()).toBe(32_767);
   });
+
+  it('reads i8 as a bigint, which keeps the values a double would round', () => {
+    expect(readerOf(0, 0, 0, 1, 0, 0, 0, 0).readI8()).toBe(4_294_967_296n);
+    expect(readerOf(0x7f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff).readI8()).toBe(
+      9_223_372_036_854_775_807n,
+    );
+    expect(readerOf(0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff).readI8()).toBe(-1n);
+  });
+});
+
+describe('ByteReader: IEEE 754 reads', () => {
+  it('reads f4 as a single and f8 as a double (JVMS §4.4.4, §4.4.5)', () => {
+    expect(readerOf(0x3f, 0xc0, 0x00, 0x00).readF4()).toBe(1.5);
+    expect(readerOf(0x3f, 0xe0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00).readF8()).toBe(0.5);
+  });
+
+  it('widens a single to the double nearest to it', () => {
+    expect(readerOf(0x3d, 0xcc, 0xcc, 0xcd).readF4()).toBe(0.10000000149011612);
+  });
+
+  it('reads the bit patterns that are not numbers', () => {
+    expect(readerOf(0x7f, 0x80, 0x00, 0x00).readF4()).toBe(Number.POSITIVE_INFINITY);
+    expect(readerOf(0x7f, 0xc0, 0x00, 0x00).readF4()).toBeNaN();
+  });
 });
 
 describe('ByteReader: cursor', () => {

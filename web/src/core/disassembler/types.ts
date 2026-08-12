@@ -16,5 +16,5 @@ export interface Instruction {
 export interface DisassembledCode {
   readonly instructions: readonly Instruction[];
   readonly indexByOffset: ReadonlyMap<number, number>;
-  readonly truncatedAtOffset?: number;
+  readonly undecodedFromOffset?: number;
 }
