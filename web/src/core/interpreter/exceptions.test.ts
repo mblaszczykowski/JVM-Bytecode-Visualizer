@@ -102,7 +102,7 @@ describe('the exception table', () => {
 });
 
 describe('the objects a machine-raised exception leaves behind', () => {
-  it('interns one object per exception class, whatever the index that raised it', () => {
+  it('gives each caught exception the detail that raised it', () => {
     const result = execute(
       syntheticClass({
         methods: [
@@ -132,6 +132,11 @@ describe('the objects a machine-raised exception leaves behind', () => {
         className: 'java/lang/ArrayIndexOutOfBoundsException',
         label: 'ArrayIndexOutOfBoundsException',
         detail: 'ArrayIndexOutOfBoundsException: index 5 out of bounds for length 1',
+      },
+      {
+        className: 'java/lang/ArrayIndexOutOfBoundsException',
+        label: 'ArrayIndexOutOfBoundsException',
+        detail: 'ArrayIndexOutOfBoundsException: index 6 out of bounds for length 1',
       },
     ]);
   });
@@ -221,6 +226,35 @@ describe('athrow', () => {
       className: 'java/lang/ArithmeticException',
       label: 'ArithmeticException: / by zero',
       offset: 6,
+    });
+  });
+
+  it('rethrows the exception that was caught, not an earlier one of the same class', () => {
+    const result = execute(
+      syntheticClass({
+        methods: [
+          {
+            name: 'main',
+            descriptor: '()I',
+            code: [
+              0x04, 0xbc, 0x0a, 0x4c, 0x2b, 0x10, 0x05, 0x2e, 0xac, 0x4d, 0x2b, 0x10, 0x09, 0x2e,
+              0xac, 0x4d, 0x2c, 0xbf,
+            ],
+            maxLocals: 3,
+            exceptionTable: [
+              handler(4, 8, 9, 'java/lang/ArrayIndexOutOfBoundsException'),
+              handler(10, 14, 15, 'java/lang/ArrayIndexOutOfBoundsException'),
+            ],
+          },
+        ],
+      }),
+    );
+
+    expect(expectVmError(result)).toMatchObject({
+      kind: 'uncaught-exception',
+      className: 'java/lang/ArrayIndexOutOfBoundsException',
+      label: 'ArrayIndexOutOfBoundsException: index 9 out of bounds for length 1',
+      offset: 17,
     });
   });
 

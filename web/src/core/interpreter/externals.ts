@@ -36,7 +36,7 @@ export class ExternalPool {
   }
 
   intern(value: ExternalValue): number {
-    const key = `${value.className}|${value.label}`;
+    const key = `${value.className}|${value.label}|${value.detail ?? ''}`;
     const existing = this.handles.get(key);
     if (existing !== undefined) {
       return existing;
