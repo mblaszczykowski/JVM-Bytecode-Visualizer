@@ -64,7 +64,6 @@ export function TourStrip({
         </span>
       </div>
 
-      {}
       <p aria-live="polite" className="mt-1.5 text-body text-fg-2">
         {stop.body}
       </p>

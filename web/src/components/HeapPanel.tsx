@@ -105,7 +105,6 @@ export function HeapArrayRow({ array, handle, focus, pulses }: HeapArrayRowProps
                   isFocused ? 'now-row text-accent-text' : 'bg-raised text-fg-2'
                 }`}
               >
-                {}
                 {pulse === 0 ? null : (
                   <motion.span
                     key={pulse}

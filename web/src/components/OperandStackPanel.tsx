@@ -62,9 +62,7 @@ export function OperandStackPanel({
       variant="state"
       className="grow"
     >
-      {}
       <ol className="flex flex-col gap-0.5 px-2">
-        {}
         <AnimatePresence initial={false} mode="popLayout">
           {operandStack
             .map((value, index) => ({ value, index }))
@@ -119,7 +117,6 @@ export function OperandStackPanel({
                         }}
                         className={ORIGIN_BUTTON}
                       >
-                        {}
                         {`from ${String(origin + 1)}`}
                       </button>
                     )}

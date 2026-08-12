@@ -121,7 +121,6 @@ export function DepthTrack({
 
   return (
     <div className={`focus-ring-within relative h-11 grow rounded-md md:h-[34px] ${className}`}>
-      {}
       {hasMarks ? (
         <div
           aria-hidden="true"
@@ -137,7 +136,6 @@ export function DepthTrack({
         </div>
       ) : null}
 
-      {}
       <div
         aria-hidden="true"
         className={`absolute inset-x-0 bottom-px flex items-end gap-px ${
@@ -171,7 +169,6 @@ export function DepthTrack({
 
       <div aria-hidden="true" className="absolute inset-x-0 bottom-0 h-px bg-line" />
 
-      {}
       <span
         aria-hidden="true"
         data-testid="scrubber-playhead"

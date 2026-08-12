@@ -65,7 +65,6 @@ export function MethodPicker({ methods, selected, onSelect, onRun, entry }: Meth
                   {count === 1 ? '1 instruction' : `${String(count)} instructions`}
                 </span>
               )}
-              {}
               {reason === undefined ? null : (
                 <span className="sr-only">Listing only: {describeNotRunnable(reason)}</span>
               )}

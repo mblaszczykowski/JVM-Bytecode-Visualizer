@@ -10,7 +10,6 @@ interface AppShellProps {
 export function AppShell({ toolbar, children, footer, isDropTarget = false }: AppShellProps) {
   return (
     <div data-testid="app-shell" className="relative flex h-dvh min-h-0 flex-col bg-app">
-      {}
       {isDropTarget ? (
         <div
           data-testid="drop-overlay"
@@ -25,7 +24,6 @@ export function AppShell({ toolbar, children, footer, isDropTarget = false }: Ap
 
       {toolbar}
 
-      {}
       <main className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,1fr)] gap-2.5 px-2.5 pt-2.5 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] md:grid-rows-[minmax(0,1fr)_minmax(0,34%)] lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_296px] lg:grid-rows-1 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_340px]">
         {children}
       </main>

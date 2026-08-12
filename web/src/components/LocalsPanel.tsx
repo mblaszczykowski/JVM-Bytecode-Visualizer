@@ -117,7 +117,6 @@ export function LocalsPanel({
                   isInitialised ? 'bg-raised' : 'shadow-row-outline'
                 }`}
               >
-                {}
                 {pulse === 0 ? null : (
                   <motion.span
                     key={pulse}
@@ -130,14 +129,12 @@ export function LocalsPanel({
                 )}
                 <span className="w-3 shrink-0 font-mono text-micro text-fg-3">{slot}</span>
                 <span className={isInitialised ? 'text-fg-2' : 'text-fg-3'}>{name}</span>
-                {}
                 {isInitialised ? (
                   <span className="font-mono text-meta text-fg-3">
                     {isReference ? ': int[]' : ': I'}
                   </span>
                 ) : null}
                 <span className="grow" />
-                {}
                 {origin === undefined ||
                 originPosition === undefined ||
                 onSeekToStep === undefined ? null : (
@@ -157,7 +154,6 @@ export function LocalsPanel({
                     }}
                     className={ORIGIN_BUTTON}
                   >
-                    {}
                     {`from ${String(origin + 1)}`}
                   </button>
                 )}

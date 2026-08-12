@@ -115,7 +115,6 @@ export function TransportControls({
         >
           <StepBackIcon />
         </Segment>
-        {}
         <Segment
           label={isPlaying ? 'Pause' : 'Play'}
           title="Play / pause (space)"
@@ -159,7 +158,6 @@ export function TransportControls({
         </Segment>
       </SegmentedControl>
 
-      {}
       <button
         type="button"
         aria-label={`Playback speed ${String(speed)}×`}
@@ -181,7 +179,6 @@ export function TransportControls({
           label="Execution history position"
         />
 
-        {}
         <output
           data-testid="step-counter"
           aria-live={isPlaying ? 'off' : 'polite'}

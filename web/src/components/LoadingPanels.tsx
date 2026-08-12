@@ -20,7 +20,6 @@ function SkeletonPanel({ seed, raised = false, className = '', children }: Skele
       } ${className}`}
     >
       {children}
-      {}
       <div aria-hidden="true" className="fade-y-end flex min-h-0 flex-1 flex-col gap-1.5">
         {Array.from({ length: FILL_ROWS }, (_, index) => (
           <div
@@ -68,7 +67,6 @@ export function LoadingPanels({ label, steps, onCancel }: LoadingPanelsProps) {
           )}
         </div>
       </SkeletonPanel>
-      {}
       <SkeletonPanel seed={5} className="hidden md:flex" />
       <SkeletonPanel seed={11} raised className="hidden md:col-span-2 md:flex lg:col-span-1" />
     </>

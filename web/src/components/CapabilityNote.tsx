@@ -16,7 +16,6 @@ export function CapabilityNote() {
           real-world <code className="font-mono text-fg-2">.class</code> files stop on an
           instruction this machine does not implement.
         </span>
-        {}
         <span aria-hidden="true" className="shrink-0 text-meta text-fg-3 group-open:hidden">
           What runs
         </span>

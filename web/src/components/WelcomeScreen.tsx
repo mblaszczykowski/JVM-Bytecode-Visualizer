@@ -61,9 +61,7 @@ export function WelcomeScreen({
       data-testid="welcome-screen"
       className="scroll-slim fade-y col-span-full row-span-full flex min-h-0 flex-col overflow-auto"
     >
-      {}
       <div className="m-auto flex w-full max-w-[1080px] flex-col gap-4 py-4">
-        {}
         <div className="max-w-[820px]">
           <h2 className="text-display font-semibold tracking-[-0.028em] text-fg">
             Watch a Java program run,
@@ -129,7 +127,6 @@ export function WelcomeScreen({
           </ul>
         </section>
 
-        {}
         {notice === undefined ? null : (
           <ErrorBanner
             severity={notice.severity}

@@ -219,7 +219,6 @@ export function BytecodePanel({
           hoveredIndex={activeIndex}
         />
 
-        {}
         <ol className="isolate pl-6">
           {instructions.map((instruction, index) => {
             const isCurrent = index === currentIndex;
@@ -305,7 +304,6 @@ export function BytecodePanel({
                   </span>
                 )}
                 {isUnsupported ? <Pill tone="error">unsupported</Pill> : null}
-                {}
                 {constantPool === undefined ? null : (
                   <StackEffectCell
                     effect={stackEffectOf(instruction, constantPool)}

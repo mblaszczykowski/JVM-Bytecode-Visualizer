@@ -52,7 +52,6 @@ export function CompletionCard({ summary, heap = NO_HEAP }: CompletionCardProps)
         {heap.length === 0 ? null : (
           <div className="mt-2.5 rounded-row bg-raised px-3 py-2.5">
             <p className="pb-2 text-meta text-fg-3">Heap as the run left it</p>
-            {}
             <ol className="scroll-slim flex max-h-[150px] flex-col gap-3 overflow-y-auto">
               {heap.map((object, handle) =>
                 object.kind === 'int-array' ? (

@@ -67,13 +67,11 @@ export function Toolbar({
 }: ToolbarProps) {
   return (
     <header className="shrink-0 border-b border-line px-3.5 py-2">
-      {}
       <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 gap-y-2 md:grid-cols-[auto_minmax(0,1fr)_auto]">
         <h1 className="text-brand col-start-1 col-end-2 row-start-1 min-w-0 truncate font-semibold tracking-[-0.02em] text-fg">
           {appName}
         </h1>
 
-        {}
         <div
           className={`row-start-2 flex min-w-0 md:col-start-2 md:col-end-3 md:row-start-1 ${
             panelSwitch === undefined ? 'col-start-1 col-end-3' : 'col-start-1 col-end-2'
@@ -135,7 +133,6 @@ export function Toolbar({
         </div>
       </div>
 
-      {}
       <GlossaryDialog />
     </header>
   );

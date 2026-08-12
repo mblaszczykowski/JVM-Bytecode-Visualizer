@@ -67,7 +67,6 @@ export function CallStackPanel({ frames }: CallStackPanelProps) {
         />
       ) : (
         <ol data-testid="call-frame-list" className="flex flex-col-reverse gap-0.5 px-2">
-          {}
           <AnimatePresence initial={false} mode="popLayout">
             {rows.map((row) => {
               if (row.kind === 'collapsed') {

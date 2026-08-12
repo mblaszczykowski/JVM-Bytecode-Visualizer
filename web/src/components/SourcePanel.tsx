@@ -66,7 +66,6 @@ export function SourcePanel({
       bodyClassName="fade-right"
       className={className}
     >
-      {}
       <ol
         className="isolate px-2.5"
         onMouseLeave={() => {
@@ -104,7 +103,6 @@ export function SourcePanel({
               >
                 {lineNumber}
               </span>
-              {}
               <span className="grow whitespace-pre [tab-size:4]">
                 {(highlighted[index] ?? []).map((token, tokenIndex) => (
                   <span
