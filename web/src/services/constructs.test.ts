@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
-import { parseClassFile, type ClassFile } from '../core/classfile';
-import { disassemble } from '../core/disassembler';
-import type { Instruction } from '../core/disassembler/types';
+import { ConstantTag, parseClassFile, type ClassFile } from '../core/classfile';
+import { disassemble, type Instruction } from '../core/disassembler';
+import { ConstantPoolBuilder } from '../core/interpreter/__fixtures__/synthetic-class';
 
 import { readExampleBytes } from './__fixtures__/example-files';
 import { constructsFor } from './constructs';
@@ -54,6 +54,26 @@ describe('loops', () => {
 describe('the array literal in the sort', () => {
   it('names the allocation that a written-out array compiles to', () => {
     expect(labelsIn('BubbleSort.class', 'sortedMinimum')).toContain('array literal');
+  });
+});
+
+describe('string concatenation', () => {
+  it('reads the call site javac hides behind invokedynamic', () => {
+    const pool = new ConstantPoolBuilder();
+    const concat = pool.raw({
+      tag: ConstantTag.InvokeDynamic,
+      bootstrapMethodAttrIndex: 0,
+      nameAndTypeIndex: pool.raw({
+        tag: ConstantTag.NameAndType,
+        nameIndex: pool.utf8('makeConcatWithConstants'),
+        descriptorIndex: pool.utf8('(I)Ljava/lang/String;'),
+      }),
+    });
+    const { instructions } = disassemble(Uint8Array.from([0xba, 0x00, concat, 0x00, 0x00]));
+
+    const found = constructsFor(instructions, pool.build(), 'main');
+
+    expect([...found.values()].map((construct) => construct.label)).toEqual(['concat']);
   });
 });
 

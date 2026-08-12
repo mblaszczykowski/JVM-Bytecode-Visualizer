@@ -1,4 +1,4 @@
-import type { Snapshot } from '../core/interpreter/types';
+import type { Snapshot } from '../core/interpreter';
 
 export interface TourStop {
   readonly method: string;

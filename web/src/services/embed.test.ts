@@ -10,6 +10,13 @@ describe('isEmbedded', () => {
   it.each(['', '?', '?theme=dark', '?embedded=1'])('does not recognise %o', (search) => {
     expect(isEmbedded(search)).toBe(false);
   });
+
+  it.each(['?embed=false', '?embed=FALSE', '?embed=0', '?embed=no', '?embed=off'])(
+    'takes %o at its word and stays the full application',
+    (search) => {
+      expect(isEmbedded(search)).toBe(false);
+    },
+  );
 });
 
 describe('fullAppUrl', () => {
@@ -33,5 +40,9 @@ describe('fullAppUrl', () => {
 
   it('leaves a URL that was never an embed unchanged', () => {
     expect(fullAppUrl('https://host/#/factorial/13')).toBe('https://host/#/factorial/13');
+  });
+
+  it('drops a flag that was switched off, which is the same page either way', () => {
+    expect(fullAppUrl('https://host/?embed=false#/factorial')).toBe('https://host/#/factorial');
   });
 });

@@ -8,7 +8,6 @@
 public final class InfiniteLoop {
 
     private InfiniteLoop() {
-        // Utility class — never instantiated.
     }
 
     public static void main(String[] args) {

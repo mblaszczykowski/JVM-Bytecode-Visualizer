@@ -11,6 +11,10 @@ interface Beacon {
 
 let sent: Beacon[] = [];
 
+function fieldsOf(beacon: Beacon): Record<string, unknown> {
+  return (JSON.parse(beacon.body) as { report: Record<string, unknown> }).report;
+}
+
 function stubBeacon(): void {
   Object.defineProperty(navigator, 'sendBeacon', {
     configurable: true,
@@ -73,14 +77,28 @@ describe('report', () => {
     vi.stubEnv('VITE_TELEMETRY_URL', URL);
     const program: ProgramContext = { origin: 'upload', methods: 12 };
 
-    report({ kind: 'run-failed', reason: 'unsupported-opcode', steps: 91 }, program);
+    report({ kind: 'panel-crash', errorName: 'TypeError', step: 91, totalSteps: 400 }, program);
 
     const body = sent[0]?.body ?? '';
-    expect(body).toContain('unsupported-opcode');
     for (const secret of ['Secret.class', 'com/acme', 'cafebabe', 'password']) {
       expect(body).not.toContain(secret);
     }
-    expect(JSON.parse(body)).toMatchObject({ program: { origin: 'upload', methods: 12 } });
+    expect(JSON.parse(body)).toMatchObject({
+      report: { kind: 'panel-crash', errorName: 'TypeError' },
+      program: { origin: 'upload', methods: 12 },
+    });
+  });
+
+  it('sends the counted fields of a report and no others', () => {
+    vi.stubEnv('VITE_TELEMETRY_URL', URL);
+
+    report({ kind: 'panel-crash', errorName: 'TypeError', step: 1, totalSteps: 2 });
+    report({ kind: 'unhandled', errorName: 'RangeError', fromPromise: true });
+
+    expect(sent.map((beacon) => Object.keys(fieldsOf(beacon)))).toEqual([
+      ['kind', 'errorName', 'step', 'totalSteps'],
+      ['kind', 'errorName', 'fromPromise'],
+    ]);
   });
 
   it('answers false rather than throwing when the beacon refuses', () => {

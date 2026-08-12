@@ -1,7 +1,5 @@
 import {
-  isClassFileError,
   isStatic,
-  parseMethodDescriptor,
   type ClassFile,
   type LineNumberEntry,
   type LocalVariableEntry,
@@ -17,12 +15,13 @@ import {
   type Snapshot,
   type StackFrame,
   type VmError,
+  NO_SNAPSHOTS,
 } from '../core/interpreter';
 
 import type { ExampleEntry } from './manifest';
 import type { LoadContext } from './program-runner';
 
-export type NotRunnableReason = 'no-code' | 'instance-method' | 'needs-arguments' | 'descriptor';
+export type NotRunnableReason = 'no-code' | 'instance-method' | 'descriptor';
 
 export function describeNotRunnable(reason: NotRunnableReason): string {
   switch (reason) {
@@ -30,8 +29,6 @@ export function describeNotRunnable(reason: NotRunnableReason): string {
       return 'no Code attribute: abstract, native, or declared by an interface';
     case 'instance-method':
       return 'an instance method; a run needs a static entry point';
-    case 'needs-arguments':
-      return 'takes arguments, and a run cannot be given values for them yet';
     case 'descriptor':
       return 'its descriptor is outside the int-only subset this machine executes';
   }
@@ -44,7 +41,8 @@ export interface MethodListing {
   readonly maxStack: number;
   readonly maxLocals: number;
   readonly instructions: readonly Instruction[];
-  readonly truncatedAtOffset: number | undefined;
+  readonly indexByOffset: ReadonlyMap<number, number>;
+  readonly undecodedFromOffset: number | undefined;
   readonly lineNumbers: readonly LineNumberEntry[];
   readonly localVariables: readonly LocalVariableEntry[];
   readonly executedOffsets: ReadonlySet<number>;
@@ -124,7 +122,8 @@ export function buildProgram({
       maxStack: code?.maxStack ?? 0,
       maxLocals: code?.maxLocals ?? 0,
       instructions: decoded?.instructions ?? NO_INSTRUCTIONS,
-      truncatedAtOffset: decoded?.truncatedAtOffset,
+      indexByOffset: decoded?.indexByOffset ?? NO_INDEX_BY_OFFSET,
+      undecodedFromOffset: decoded?.undecodedFromOffset,
       lineNumbers: code?.lineNumberTable ?? [],
       localVariables: code?.localVariableTable ?? [],
       executedOffsets: executed.get(methodKey(method.name, method.descriptor)) ?? EMPTY_OFFSETS,
@@ -172,10 +171,8 @@ export async function runProgram(
 
 const EMPTY_OFFSETS: ReadonlySet<number> = new Set<number>();
 const NO_INSTRUCTIONS: readonly Instruction[] = [];
-const NO_SNAPSHOTS: readonly Snapshot[] = Object.freeze([]);
+const NO_INDEX_BY_OFFSET: ReadonlyMap<number, number> = new Map();
 const NO_ENTRY_POINT: ExecutionOutcome = { kind: 'no-entry-point' };
-
-const MAIN_DESCRIPTOR = '([Ljava/lang/String;)V';
 
 function notRunnableReasonOf(method: MethodInfo): NotRunnableReason | undefined {
   if (method.code === undefined) {
@@ -184,24 +181,7 @@ function notRunnableReasonOf(method: MethodInfo): NotRunnableReason | undefined 
   if (!isStatic(method.accessFlags)) {
     return 'instance-method';
   }
-  if (!isEntryMethod(method)) {
-    return 'descriptor';
-  }
-  return takesArguments(method.descriptor) ? 'needs-arguments' : undefined;
-}
-
-function takesArguments(descriptor: string): boolean {
-  if (descriptor === MAIN_DESCRIPTOR) {
-    return false;
-  }
-  try {
-    return parseMethodDescriptor(descriptor).params.length > 0;
-  } catch (error) {
-    if (!isClassFileError(error)) {
-      throw error;
-    }
-    return true;
-  }
+  return isEntryMethod(method) ? undefined : 'descriptor';
 }
 
 function chooseEntry(classFile: ClassFile, requested: string | undefined): MethodInfo | undefined {
@@ -268,13 +248,7 @@ export function isCurrentListing(
 }
 
 export function consoleLinesOf(snapshot: Snapshot | undefined): readonly string[] {
-  const printing: PrintingSnapshot | undefined = snapshot;
-  return printing?.consoleOutput ?? NO_CONSOLE_OUTPUT;
-}
-
-interface PrintingSnapshot {
-  readonly step: number;
-  readonly consoleOutput?: readonly string[];
+  return snapshot?.consoleOutput ?? NO_CONSOLE_OUTPUT;
 }
 
 export function runPrintedOutput(snapshots: readonly Snapshot[]): boolean {

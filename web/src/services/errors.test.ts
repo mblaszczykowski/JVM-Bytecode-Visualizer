@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { ClassFileError } from '../core/classfile';
 import type { VmError } from '../core/interpreter';
 
+import { COMPILER_BUSY } from './compile-client';
 import {
   describeAppError,
   describeCompileFailure,
@@ -217,10 +218,11 @@ const CASES: readonly {
     },
     severity: 'error',
     message:
-      'OutOfMemoryError (pc 31, method sort). Recording the arrays this run writes to would ' +
-      'have cost 24,010,000 copied elements, and the budget is 24,000,000. Every step that ' +
-      'writes to an array keeps its own copy, so a large array written in a loop costs far ' +
-      'more than the array itself. The history up to this point is still playable.',
+      'OutOfMemoryError (pc 31, method sort). Recording this run would have cost 24,010,000 ' +
+      'copied values, and the budget is 24,000,000. Every step keeps its own copy of the heap, ' +
+      'the console lines and the standard-library objects the run has interned, so a large ' +
+      'array written in a loop, or a loop that prints, costs far more than the values ' +
+      'themselves. The history up to this point is still playable.',
   },
   {
     name: 'an exception nothing on the call stack caught',
@@ -336,29 +338,30 @@ describe('error messages', () => {
   });
 
   it('names the offending instruction and method for every VM error kind', () => {
-    const kinds: readonly VmError['kind'][] = [
-      'unsupported-opcode',
-      'unsupported-call',
-      'division-by-zero',
-      'invalid-state',
-      'stack-overflow',
-      'bad-branch-target',
-      'array-index-out-of-bounds',
-      'negative-array-size',
-      'null-reference',
-      'unsupported-array-type',
-      'out-of-memory',
-      'uncaught-exception',
-      'unsupported-field',
-      'unsupported-constant',
-    ];
     const covered = CASES.filter((testCase) => testCase.error.kind === 'vm').map(
       (testCase) => (testCase.error as { error: VmError }).error.kind,
     );
 
-    expect(new Set(covered)).toEqual(new Set(kinds));
+    expect(new Set(covered)).toEqual(new Set(Object.keys(VM_ERROR_KINDS)));
   });
 });
+
+const VM_ERROR_KINDS: Readonly<Record<VmError['kind'], true>> = {
+  'unsupported-opcode': true,
+  'unsupported-call': true,
+  'division-by-zero': true,
+  'invalid-state': true,
+  'stack-overflow': true,
+  'bad-branch-target': true,
+  'array-index-out-of-bounds': true,
+  'negative-array-size': true,
+  'null-reference': true,
+  'unsupported-array-type': true,
+  'out-of-memory': true,
+  'uncaught-exception': true,
+  'unsupported-field': true,
+  'unsupported-constant': true,
+};
 
 describe('toAppError', () => {
   it('keeps the typed detail of a class file error', () => {
@@ -380,11 +383,96 @@ describe('toAppError', () => {
 });
 
 describe('describeCompileFailure', () => {
-  it('asks for patience rather than blaming the source when the limit is hit', () => {
+  it('repeats the limit the service named and the wait it asked for', () => {
+    expect(
+      describeCompileFailure({
+        kind: 'rate-limited',
+        service: {
+          code: 'rate-limit-exceeded',
+          message: 'at most 30 requests per minute are allowed',
+          retryAfterSeconds: 60,
+        },
+      }),
+    ).toEqual({
+      severity: 'warning',
+      message:
+        'The compile service is limiting how often this browser may compile: at most 30 ' +
+        'requests per minute are allowed. Try again in 60 s. The examples and .class uploads ' +
+        'still work.',
+    });
+  });
+
+  it('asks for patience rather than blaming the source when the service sent no document', () => {
     expect(describeCompileFailure({ kind: 'rate-limited' })).toEqual({
       severity: 'warning',
-      message: 'The compiler is busy (rate limit). Try again in a minute.',
+      message:
+        'The compile service is limiting how often this browser may compile. Try again in a ' +
+        'minute. The examples and .class uploads still work.',
     });
+  });
+
+  it('treats a compiler at capacity as a wait, not as a broken service', () => {
+    expect(
+      describeCompileFailure({
+        kind: 'unavailable',
+        reason: {
+          kind: 'http',
+          status: 503,
+          service: {
+            code: COMPILER_BUSY,
+            message: 'the compile service is at capacity, retry in a moment',
+            retryAfterSeconds: 5,
+          },
+        },
+      }),
+    ).toEqual({
+      severity: 'warning',
+      message:
+        'The compile service is at capacity and did not start another compilation. Try again ' +
+        'in 5 s. Nothing is wrong with the source. The examples and .class uploads still work.',
+    });
+  });
+
+  it('reports a compiler that could not run at all as the failure it is', () => {
+    expect(
+      describeCompileFailure({
+        kind: 'unavailable',
+        reason: {
+          kind: 'http',
+          status: 503,
+          service: {
+            code: 'compiler-unavailable',
+            message: 'the compiler could not be run; retry in a moment',
+            retryAfterSeconds: 5,
+          },
+        },
+      }),
+    ).toEqual({
+      severity: 'error',
+      message:
+        'The compile service answered 503 (compiler-unavailable): the compiler could not be ' +
+        'run; retry in a moment. Try again in 5 s. The examples and .class uploads still work.',
+    });
+  });
+
+  it('passes on a coded failure that carries no wait', () => {
+    expect(
+      describeCompileFailure({
+        kind: 'unavailable',
+        reason: {
+          kind: 'http',
+          status: 500,
+          service: {
+            code: 'internal-error',
+            message: 'the service failed to handle this request',
+            retryAfterSeconds: undefined,
+          },
+        },
+      }).message,
+    ).toBe(
+      'The compile service answered 500 (internal-error): the service failed to handle this ' +
+        'request. The examples and .class uploads still work.',
+    );
   });
 
   it('says the rest of the application still works when the service is gone', () => {

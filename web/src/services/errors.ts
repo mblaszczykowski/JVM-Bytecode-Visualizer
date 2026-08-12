@@ -5,7 +5,12 @@ import {
 } from '../core/classfile';
 import type { VmError } from '../core/interpreter';
 
-import type { CompileResult, UnavailableReason } from './compile-client';
+import {
+  COMPILER_BUSY,
+  type CompileResult,
+  type ServiceFailure,
+  type UnavailableReason,
+} from './compile-client';
 import { formatExampleLoadError, isExampleLoadError, type ExampleLoadDetail } from './examples';
 
 export type AppError =
@@ -78,26 +83,67 @@ export function describeCompileFailure(failure: CompileFailure): ErrorPresentati
     case 'rate-limited':
       return {
         severity: 'warning',
-        message: 'The compiler is busy (rate limit). Try again in a minute.',
+        message:
+          `The compile service is limiting how often this browser may compile${detailOf(failure.service)}. ` +
+          `${retryAdvice(failure.service, 'a minute')}${STILL_WORKS}`,
       };
     case 'unavailable':
-      return { severity: 'error', message: describeUnavailable(failure.reason) };
+      return describeUnavailable(failure.reason);
   }
 }
 
-function describeUnavailable(reason: UnavailableReason): string {
-  const stillWorks = 'The examples and .class uploads still work.';
+const STILL_WORKS = 'The examples and .class uploads still work.';
 
+function describeUnavailable(reason: UnavailableReason): ErrorPresentation {
   switch (reason.kind) {
     case 'network':
-      return `Could not reach the compile service: ${reason.reason}. ${stillWorks}`;
+      return failed(`Could not reach the compile service: ${reason.reason}. ${STILL_WORKS}`);
     case 'timeout':
-      return `The compile service did not answer within ${String(reason.ms / 1000)} s. ${stillWorks}`;
+      return failed(
+        `The compile service did not answer within ${String(reason.ms / 1000)} s. ${STILL_WORKS}`,
+      );
     case 'http':
-      return `The compile service answered ${String(reason.status)}. ${stillWorks}`;
+      return describeServiceFailure(reason.status, reason.service);
     case 'invalid-response':
-      return `The compile service sent an answer this build cannot read: ${reason.reason}.`;
+      return failed(`The compile service sent an answer this build cannot read: ${reason.reason}.`);
   }
+}
+
+function describeServiceFailure(
+  status: number,
+  service: ServiceFailure | undefined,
+): ErrorPresentation {
+  if (service === undefined) {
+    return failed(`The compile service answered ${String(status)}. ${STILL_WORKS}`);
+  }
+  if (service.code === COMPILER_BUSY) {
+    return {
+      severity: 'warning',
+      message:
+        'The compile service is at capacity and did not start another compilation. ' +
+        `${retryAdvice(service, 'a moment')}Nothing is wrong with the source. ${STILL_WORKS}`,
+    };
+  }
+  return failed(
+    `The compile service answered ${String(status)} (${service.code}): ${service.message}. ` +
+      `${retryAdvice(service, undefined)}${STILL_WORKS}`,
+  );
+}
+
+function detailOf(service: ServiceFailure | undefined): string {
+  return service === undefined ? '' : `: ${service.message}`;
+}
+
+function retryAdvice(service: ServiceFailure | undefined, fallback: string | undefined): string {
+  const seconds = service?.retryAfterSeconds;
+  if (seconds !== undefined) {
+    return `Try again in ${String(seconds)} s. `;
+  }
+  return fallback === undefined ? '' : `Try again in ${fallback}. `;
+}
+
+function failed(message: string): ErrorPresentation {
+  return { severity: 'error', message };
 }
 
 function describeVmError(error: VmError): string {
@@ -140,7 +186,7 @@ function describeVmError(error: VmError): string {
         `OutOfMemoryError ${at}. ` +
         (error.resource === 'heap'
           ? `The program asked for ${error.requested.toLocaleString('en-US')} array elements at once, and this machine holds at most ${error.limit.toLocaleString('en-US')}.`
-          : `Recording the arrays this run writes to would have cost ${error.requested.toLocaleString('en-US')} copied elements, and the budget is ${error.limit.toLocaleString('en-US')}. Every step that writes to an array keeps its own copy, so a large array written in a loop costs far more than the array itself.`) +
+          : `Recording this run would have cost ${error.requested.toLocaleString('en-US')} copied values, and the budget is ${error.limit.toLocaleString('en-US')}. Every step keeps its own copy of the heap, the console lines and the standard-library objects the run has interned, so a large array written in a loop, or a loop that prints, costs far more than the values themselves.`) +
         ` ${historyStands}`
       );
     case 'unsupported-field':

@@ -1,6 +1,12 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { formatDeepLink, formatTourLink, parseDeepLink } from './deep-link';
+import {
+  formatDeepLink,
+  formatTourLink,
+  parseDeepLink,
+  writeDeepLink,
+  writeTourLink,
+} from './deep-link';
 
 describe('parseDeepLink', () => {
   it('reads an example on its own', () => {
@@ -106,5 +112,70 @@ describe('tour links', () => {
 
   it('tolerates a trailing slash', () => {
     expect(parseDeepLink('#/factorial/')).toEqual({ exampleId: 'factorial' });
+  });
+});
+
+describe('writing the address bar', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    window.history.replaceState(null, '', window.location.pathname);
+  });
+
+  function watchHistory() {
+    return vi.spyOn(window.history, 'replaceState');
+  }
+
+  it('puts the step the reader is on in the address bar', () => {
+    const replaceState = watchHistory();
+
+    writeDeepLink('bubble-sort', 247);
+
+    expect(window.location.hash).toBe('#/bubble-sort/248');
+    expect(replaceState).toHaveBeenCalledTimes(1);
+  });
+
+  it('writes the example alone before anything has been executed', () => {
+    writeDeepLink('factorial');
+
+    expect(window.location.hash).toBe('#/factorial');
+  });
+
+  it('leaves no new entry in the browser history behind either link', () => {
+    const pushState = vi.spyOn(window.history, 'pushState');
+
+    writeDeepLink('factorial', 3);
+    writeTourLink('factorial', 'recursion', 2);
+
+    expect(pushState).not.toHaveBeenCalled();
+  });
+
+  it('says nothing when the address bar already reads that way', () => {
+    writeDeepLink('factorial', 3);
+    const replaceState = watchHistory();
+
+    writeDeepLink('factorial', 3);
+
+    expect(replaceState).not.toHaveBeenCalled();
+    expect(window.location.hash).toBe('#/factorial/4');
+  });
+
+  it('writes a tour stop, and stops writing when it does not move', () => {
+    writeTourLink('collatz', 'the-loop', 4);
+    const replaceState = watchHistory();
+
+    writeTourLink('collatz', 'the-loop', 4);
+    writeTourLink('collatz', 'the-loop', 5);
+
+    expect(window.location.hash).toBe('#/collatz/tour/the-loop/6');
+    expect(replaceState).toHaveBeenCalledTimes(1);
+  });
+
+  it('is read back by the parser as the place it was written from', () => {
+    writeTourLink('collatz', 'the-loop', 4);
+
+    expect(parseDeepLink(window.location.hash)).toEqual({
+      exampleId: 'collatz',
+      tour: { tourId: 'the-loop', stopIndex: 4 },
+    });
   });
 });

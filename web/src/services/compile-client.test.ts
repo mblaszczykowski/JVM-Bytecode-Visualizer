@@ -1,11 +1,18 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import {
+  contractRoute,
+  readContractResponses,
+  recordedResponse,
+  type ContractResponse,
+} from './__fixtures__/contract-responses';
 import { jsonResponse, okResponse, statusResponse, stubFetch } from './__fixtures__/fake-fetch';
 import {
   checkHealth,
   compile,
   COMPILE_TIMEOUT_MS,
   compileApiBaseUrl,
+  COMPILER_BUSY,
   HEALTH_TIMEOUT_MS,
   type CompileResult,
 } from './compile-client';
@@ -13,8 +20,6 @@ import {
 const BASE = 'http://compile.test';
 const COMPILE_URL = `${BASE}/api/compile`;
 const HEALTH_URL = `${BASE}/actuator/health`;
-
-const CAFEBABE = 'yv66vg==';
 
 const SOURCE = 'public class Loop { }';
 
@@ -106,17 +111,14 @@ describe('health check', () => {
 });
 
 describe('compile', () => {
-  it('decodes the class file of a successful compilation', async () => {
+  it('sends the source as JSON and decodes the class file that comes back', async () => {
     const fetchMock = stubFetch({
-      [COMPILE_URL]: () =>
-        okResponse({
-          json: { success: true, className: 'Loop', classFileBase64: CAFEBABE, diagnostics: [] },
-        }),
+      [COMPILE_URL]: contractRoute(recordedResponse('compile-success')),
     });
 
     const result = await compile(BASE, SOURCE);
 
-    expect(result).toMatchObject({ kind: 'compiled', className: 'Loop' });
+    expect(result).toMatchObject({ kind: 'compiled', className: 'Adder' });
     if (result.kind !== 'compiled') {
       throw new Error('expected a compiled result');
     }
@@ -127,59 +129,27 @@ describe('compile', () => {
     );
   });
 
-  it('maps javac diagnostics onto their positions and kinds', async () => {
-    stubFetch({
-      [COMPILE_URL]: () =>
-        okResponse({
-          json: {
-            success: false,
-            className: null,
-            classFileBase64: null,
-            diagnostics: [
-              { line: 3, column: 12, kind: 'ERROR', message: "';' expected" },
-              { line: null, column: null, kind: 'MANDATORY_WARNING', message: 'unchecked call' },
-            ],
-          },
-        }),
-    });
-
-    const result = await compile(BASE, SOURCE);
-
-    expect(result).toEqual({
-      kind: 'diagnostics',
-      diagnostics: [
-        { line: 3, column: 12, kind: 'error', message: "';' expected" },
-        { line: undefined, column: undefined, kind: 'warning', message: 'unchecked call' },
-      ],
-    });
-  });
-
-  it('reads a rejected source as a diagnostic, not as an outage', async () => {
-    stubFetch({
-      [COMPILE_URL]: () =>
-        jsonResponse(400, {
-          error: 'no-public-class',
-          message: 'source must declare a public top-level class',
-        }),
-    });
-
-    expect(await compile(BASE, SOURCE)).toEqual({
-      kind: 'diagnostics',
-      diagnostics: [
-        {
-          line: undefined,
-          column: undefined,
-          kind: 'error',
-          message: 'source must declare a public top-level class',
-        },
-      ],
-    });
-  });
-
-  it('reports the rate limit as its own outcome', async () => {
+  it('reports the rate limit even when there is no error document to read', async () => {
     stubFetch({ [COMPILE_URL]: () => statusResponse(429) });
 
-    expect(await compile(BASE, SOURCE)).toEqual({ kind: 'rate-limited' });
+    expect(await compile(BASE, SOURCE)).toEqual({ kind: 'rate-limited', service: undefined });
+  });
+
+  it('ignores a Retry-After this build cannot read as a number of seconds', async () => {
+    stubFetch({
+      [COMPILE_URL]: () =>
+        jsonResponse(
+          503,
+          { error: COMPILER_BUSY, message: 'busy' },
+          {
+            'Retry-After': 'Wed, 21 Oct 2026 07:28:00 GMT',
+          },
+        ),
+    });
+
+    expect(await compile(BASE, SOURCE)).toMatchObject({
+      reason: { service: { code: COMPILER_BUSY, retryAfterSeconds: undefined } },
+    });
   });
 
   it('reports an unreachable service', async () => {
@@ -196,7 +166,16 @@ describe('compile', () => {
 
     expect(await compile(BASE, SOURCE)).toEqual({
       kind: 'unavailable',
-      reason: { kind: 'http', status: 502 },
+      reason: { kind: 'http', status: 502, service: undefined },
+    });
+  });
+
+  it('keeps the status when the service says nothing this build recognises', async () => {
+    stubFetch({ [COMPILE_URL]: () => jsonResponse(500, { detail: 'something went wrong' }) });
+
+    expect(await compile(BASE, SOURCE)).toEqual({
+      kind: 'unavailable',
+      reason: { kind: 'http', status: 500, service: undefined },
     });
   });
 
@@ -248,5 +227,99 @@ describe('compile', () => {
       kind: 'unavailable',
       reason: { kind: 'invalid-response', reason: 'classFileBase64 is not valid base64' },
     });
+  });
+});
+
+describe('the answers the service records for this client', () => {
+  function errorDocument(response: ContractResponse): { error: string; message: string } {
+    return response.body as { error: string; message: string };
+  }
+
+  function rejectedSource(response: ContractResponse): unknown {
+    return {
+      kind: 'diagnostics',
+      diagnostics: [
+        {
+          line: undefined,
+          column: undefined,
+          kind: 'error',
+          message: errorDocument(response).message,
+        },
+      ],
+    };
+  }
+
+  function serviceFailure(response: ContractResponse): unknown {
+    const retryAfter = response.headers['Retry-After'];
+    return {
+      code: errorDocument(response).error,
+      message: errorDocument(response).message,
+      retryAfterSeconds: retryAfter === undefined ? undefined : Number(retryAfter),
+    };
+  }
+
+  function outage(response: ContractResponse): unknown {
+    return {
+      kind: 'unavailable',
+      reason: { kind: 'http', status: response.status, service: serviceFailure(response) },
+    };
+  }
+
+  const expected: Readonly<Record<string, (response: ContractResponse) => unknown>> = {
+    'compile-success': () => ({
+      kind: 'compiled',
+      className: 'Adder',
+      classBytes: [0xca, 0xfe, 0xba, 0xbe],
+    }),
+    'compile-diagnostics': () => ({
+      kind: 'diagnostics',
+      diagnostics: [
+        { line: 3, column: 16, kind: 'error', message: "';' expected" },
+        {
+          line: undefined,
+          column: undefined,
+          kind: 'note',
+          message: 'some input files use unchecked or unsafe operations',
+        },
+      ],
+    }),
+    'no-public-class': rejectedSource,
+    'source-too-large': rejectedSource,
+    'source-field-too-long': rejectedSource,
+    'request-body-too-large': rejectedSource,
+    'invalid-request': rejectedSource,
+    'rate-limit-exceeded': (response) => ({
+      kind: 'rate-limited',
+      service: serviceFailure(response),
+    }),
+    'compiler-busy': outage,
+    'compiler-unavailable': outage,
+    'internal-error': outage,
+  };
+
+  function readable(result: CompileResult): unknown {
+    return result.kind === 'compiled'
+      ? { ...result, classBytes: [...new Uint8Array(result.classBytes)] }
+      : result;
+  }
+
+  it.each(readContractResponses())('reads the recorded $case answer', async (response) => {
+    const answer = expected[response.case];
+    if (answer === undefined) {
+      throw new Error(`the service records a ${response.case} answer this test says nothing about`);
+    }
+    stubFetch({ [COMPILE_URL]: contractRoute(response) });
+
+    expect(readable(await compile(BASE, SOURCE))).toEqual(answer(response));
+  });
+
+  it('reads every answer the service records, and claims no answer it does not', () => {
+    expect(readContractResponses().map((response) => response.case)).toEqual(
+      Object.keys(expected).sort(),
+    );
+  });
+
+  it('names the busy service by the code the recorded answer carries', () => {
+    expect(errorDocument(recordedResponse('compiler-busy')).error).toBe(COMPILER_BUSY);
   });
 });

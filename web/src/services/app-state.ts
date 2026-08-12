@@ -1,7 +1,12 @@
 import { parseClassFile } from '../core/classfile';
 import { DEFAULT_MAX_STEPS } from '../core/interpreter';
 
-import type { CompileDiagnostic, CompileResult } from './compile-client';
+import {
+  COMPILER_BUSY,
+  type CompileDiagnostic,
+  type CompileResult,
+  type UnavailableReason,
+} from './compile-client';
 import { toAppError, type AppError, type CompileFailure } from './errors';
 import { fetchExampleResources } from './examples';
 import type { ExampleEntry } from './manifest';
@@ -25,6 +30,8 @@ export type AppState =
     };
 
 export const MAX_UPLOAD_BYTES = 512 * 1024;
+
+export const MAX_UPLOAD_LABEL = `${String(MAX_UPLOAD_BYTES / 1024)} KiB`;
 
 export const MAX_STEP_LIMIT = 500_000;
 
@@ -54,8 +61,8 @@ function reportedDeviceMemory(): number | undefined {
 
 export const IDLE: AppState = { status: 'idle' };
 
-export function failedState(error: AppError): AppState {
-  return { status: 'error', error, program: undefined };
+export function failedState(error: AppError, program?: LoadedProgram): AppState {
+  return { status: 'error', error, program };
 }
 
 const INLINE_LOAD: LoadContext = { runner: inlineRunner };
@@ -101,14 +108,17 @@ export function stateFor(program: LoadedProgram): AppState {
   }
 }
 
-async function settled(build: () => Promise<LoadedProgram>): Promise<AppState> {
+async function settled(
+  build: () => Promise<LoadedProgram>,
+  loaded?: LoadedProgram,
+): Promise<AppState> {
   try {
     return stateFor(await build());
   } catch (error) {
     if (isRunCancelled(error)) {
       throw error;
     }
-    return failedState(toAppError(error));
+    return failedState(toAppError(error), loaded);
   }
 }
 
@@ -179,6 +189,17 @@ export function loadCompiledState(
   maxSteps: number = DEFAULT_MAX_STEPS,
   context: LoadContext = INLINE_LOAD,
 ): Promise<AppState> {
+  if (compiled.classBytes.byteLength > MAX_UPLOAD_BYTES) {
+    return Promise.resolve(
+      failedState({
+        kind: 'file-too-large',
+        fileName: `${compiled.className}.class`,
+        bytes: compiled.classBytes.byteLength,
+        limit: MAX_UPLOAD_BYTES,
+      }),
+    );
+  }
+
   return settled(() =>
     runProgram(
       {
@@ -214,17 +235,19 @@ function rebuiltState(
   entryMethod: string | undefined,
   context: LoadContext,
 ): Promise<AppState> {
-  return settled(() =>
-    runProgram(
-      {
-        origin: program.origin,
-        classFile: program.classFile,
-        source: sourceOf(program),
-        maxSteps,
-        entryMethod,
-      },
-      context,
-    ),
+  return settled(
+    () =>
+      runProgram(
+        {
+          origin: program.origin,
+          classFile: program.classFile,
+          source: sourceOf(program),
+          maxSteps,
+          entryMethod,
+        },
+        context,
+      ),
+    program,
   );
 }
 
@@ -259,7 +282,8 @@ export interface AppModel {
   readonly compiler: CompilerAvailability;
   readonly examples: ExamplesStatus;
   readonly compileFailure: CompileFailure | undefined;
-  readonly token: number;
+  readonly loadToken: number;
+  readonly compileToken: number;
 }
 
 export type AppAction =
@@ -287,7 +311,8 @@ export function initialAppModel(compilerConfigured: boolean): AppModel {
     compiler: compilerConfigured ? 'checking' : 'unconfigured',
     examples: { kind: 'loading' },
     compileFailure: undefined,
-    token: 0,
+    loadToken: 0,
+    compileToken: 0,
   };
 }
 
@@ -305,18 +330,19 @@ export function appReducer(model: AppModel, action: AppAction): AppModel {
         },
         editor: CLOSED_EDITOR,
         compileFailure: undefined,
-        token: action.token,
+        loadToken: action.token,
+        compileToken: action.token,
       };
     case 'load-progress':
-      return action.token === model.token && model.load.status === 'loading'
+      return action.token === model.loadToken && model.load.status === 'loading'
         ? { ...model, load: { ...model.load, steps: action.steps } }
         : model;
     case 'load-cancelled':
       return model.load.status === 'loading'
-        ? { ...model, load: model.load.resume, token: action.token }
+        ? { ...model, load: model.load.resume, loadToken: action.token }
         : model;
     case 'load-settled':
-      return action.token === model.token ? { ...model, load: action.state } : model;
+      return action.token === model.loadToken ? { ...model, load: action.state } : model;
     case 'examples-loaded':
       return { ...model, examples: { kind: 'ready', entries: action.entries } };
     case 'examples-failed':
@@ -326,16 +352,21 @@ export function appReducer(model: AppModel, action: AppAction): AppModel {
     case 'editor-opened':
       return { ...model, editor: EDITING, compileFailure: undefined };
     case 'editor-closed':
-      return { ...model, editor: CLOSED_EDITOR, compileFailure: undefined, token: action.token };
+      return {
+        ...model,
+        editor: CLOSED_EDITOR,
+        compileFailure: undefined,
+        compileToken: action.token,
+      };
     case 'compile-started':
       return {
         ...model,
         editor: { kind: 'compiling' },
         compileFailure: undefined,
-        token: action.token,
+        compileToken: action.token,
       };
     case 'compile-settled':
-      return action.token === model.token ? settleCompile(model, action.result) : model;
+      return action.token === model.compileToken ? settleCompile(model, action.result) : model;
   }
 }
 
@@ -362,7 +393,14 @@ function compilerAfter(current: CompilerAvailability, result: CompileResult): Co
   if (current !== 'online' && current !== 'degraded') {
     return current;
   }
-  return result.kind === 'unavailable' ? 'degraded' : 'online';
+  if (result.kind !== 'unavailable') {
+    return 'online';
+  }
+  return isAtCapacity(result.reason) ? 'online' : 'degraded';
+}
+
+function isAtCapacity(reason: UnavailableReason): boolean {
+  return reason.kind === 'http' && reason.service?.code === COMPILER_BUSY;
 }
 
 export function exampleEntriesOf(status: ExamplesStatus): readonly ExampleEntry[] {

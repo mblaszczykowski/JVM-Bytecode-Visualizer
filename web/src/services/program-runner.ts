@@ -50,6 +50,12 @@ const STEPS_PER_REPORT = 25_000;
 
 const WORKER_SILENCE_LIMIT_MS = 60_000;
 
+const TOO_LARGE_TO_RECORD = 'the program was probably too large for this browser to record';
+
+const SILENT_WORKER = `the run stopped answering and was abandoned; ${TOO_LARGE_TO_RECORD}`;
+
+const DEAD_WORKER = `the run failed part-way through and was abandoned; ${TOO_LARGE_TO_RECORD}`;
+
 export interface RunWorker {
   onmessage: ((event: MessageEvent<RunEvent>) => void) | null;
   onerror: ((event: ErrorEvent) => void) | null;
@@ -88,6 +94,7 @@ export function workerRunner(
       return new Promise<ExecutionResult>((resolve, reject) => {
         const snapshots: Snapshot[] = [];
         let reported = 0;
+        let answered = false;
 
         let watchdog: ReturnType<typeof setTimeout> | undefined;
 
@@ -111,12 +118,7 @@ export function workerRunner(
           watchdog = setTimeout(() => {
             usable = false;
             release();
-            reject(
-              new Error(
-                'the run stopped answering and was abandoned; the program was probably too ' +
-                  'large for this browser to record',
-              ),
-            );
+            reject(new Error(SILENT_WORKER));
           }, silenceLimitMs);
         };
 
@@ -126,6 +128,7 @@ export function workerRunner(
         }
 
         worker.onmessage = ({ data }): void => {
+          answered = true;
           armWatchdog();
           switch (data.kind) {
             case 'snapshots':
@@ -149,8 +152,12 @@ export function workerRunner(
         };
 
         worker.onerror = (): void => {
-          usable = false;
           release();
+          if (answered) {
+            reject(new Error(DEAD_WORKER));
+            return;
+          }
+          usable = false;
           fallback.run(command, options).then(resolve, reject);
         };
 

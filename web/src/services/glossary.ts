@@ -41,7 +41,7 @@ const ENTRIES: Readonly<Record<GlossaryTermId, GlossaryEntry>> = {
         'records it as `max_stack` in the Code attribute (JVMS §4.7.3), so the size is fixed ' +
         'before the method runs.',
     ],
-    primer: { section: 2, title: 'Two stacks, not one' },
+    primer: { section: 2, title: 'The JVM has two stacks' },
     related: ['call-stack', 'frame'],
   },
 
@@ -60,7 +60,7 @@ const ENTRIES: Readonly<Record<GlossaryTermId, GlossaryEntry>> = {
       'This is the stack that overflows into `StackOverflowError`. An operand stack cannot ' +
         'overflow at run time, because its maximum was computed at compile time.',
     ],
-    primer: { section: 2, title: 'Two stacks, not one' },
+    primer: { section: 2, title: 'The JVM has two stacks' },
     related: ['operand-stack', 'frame'],
   },
 

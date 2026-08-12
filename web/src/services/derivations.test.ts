@@ -1,8 +1,19 @@
 import { describe, expect, it } from 'vitest';
 
-import { parseClassFile } from '../core/classfile';
-import type { Snapshot } from '../core/interpreter';
-import { syntheticClass } from '../core/interpreter/__fixtures__/synthetic-class';
+import { ConstantTag, parseClassFile } from '../core/classfile';
+import { lookupOpcode, T_INT, type SupportedOpcode } from '../core/disassembler';
+import {
+  EXECUTABLE_OPCODES,
+  type ExternalValue,
+  type HeapObject,
+  type Snapshot,
+  type StackFrame,
+  type ValueKind,
+} from '../core/interpreter';
+import {
+  ConstantPoolBuilder,
+  syntheticClass,
+} from '../core/interpreter/__fixtures__/synthetic-class';
 
 import { readExampleBytes, readExampleText } from './__fixtures__/example-files';
 import {
@@ -10,7 +21,10 @@ import {
   constantPoolIndexOf,
   describeNextInstruction,
   describeOperandRoles,
+  describeValue,
   explainMnemonic,
+  OPCODE_NOTES,
+  OPERAND_ADDRESSING,
   resolveConstant,
   stackDeltaOf,
 } from './derivations';
@@ -284,10 +298,10 @@ describe('array instructions', () => {
     const program = arrayProgram();
 
     expect(summaryOf(program, 'aload_1').explanation).toBe(
-      'Pushes the reference in local 1 (slot 1 = int[3]) onto the operand stack.',
+      'Pushes the reference in local 1 (slot 1 = int[3]@0) onto the operand stack.',
     );
     expect(summaryOf(program, 'astore_1').explanation).toBe(
-      'Pops the reference to int[3] into local slot 1 (slot 1).',
+      'Pops the reference to int[3]@0 into local slot 1 (slot 1).',
     );
     expect(summaryOf(program, 'aload_1').effects).toEqual([{ label: 'push ref' }]);
   });
@@ -395,6 +409,128 @@ describe('constant pool', () => {
     );
   });
 
+  it('reads the entries a modern class file carries beyond the executable subset', () => {
+    const pool = new ConstantPoolBuilder();
+    const listClass = pool.classEntry('java/util/List');
+    const add = pool.raw({
+      tag: ConstantTag.NameAndType,
+      nameIndex: pool.utf8('add'),
+      descriptorIndex: pool.utf8('(Ljava/lang/Object;)Z'),
+    });
+    const interfaceMethod = pool.raw({
+      tag: ConstantTag.InterfaceMethodref,
+      classIndex: listClass,
+      nameAndTypeIndex: add,
+    });
+    const concat = pool.raw({
+      tag: ConstantTag.NameAndType,
+      nameIndex: pool.utf8('makeConcatWithConstants'),
+      descriptorIndex: pool.utf8('(I)Ljava/lang/String;'),
+    });
+    const invokeDynamic = pool.raw({
+      tag: ConstantTag.InvokeDynamic,
+      bootstrapMethodAttrIndex: 0,
+      nameAndTypeIndex: concat,
+    });
+    const dynamic = pool.raw({
+      tag: ConstantTag.Dynamic,
+      bootstrapMethodAttrIndex: 1,
+      nameAndTypeIndex: concat,
+    });
+    const factory = pool.methodref('java/lang/invoke/StringConcatFactory', 'makeConcat', '()V');
+    const handle = pool.raw({
+      tag: ConstantTag.MethodHandle,
+      referenceKind: 6,
+      referenceIndex: factory,
+    });
+    const methodType = pool.raw({
+      tag: ConstantTag.MethodType,
+      descriptorIndex: pool.utf8('(Ljava/lang/Object;)Z'),
+    });
+    const module = pool.raw({ tag: ConstantTag.Module, nameIndex: pool.utf8('java.base') });
+    const entries = pool.build();
+    const textOf = (index: number) => resolveConstant(entries, index)?.text;
+    const commentOf = (index: number) => resolveConstant(entries, index)?.comment;
+
+    expect(textOf(interfaceMethod)).toBe('java/util/List.add:(Ljava/lang/Object;)Z');
+    expect(commentOf(interfaceMethod)).toBe(
+      '// InterfaceMethod java/util/List.add:(Ljava/lang/Object;)Z',
+    );
+    expect(commentOf(invokeDynamic)).toBe(
+      '// InvokeDynamic #0:makeConcatWithConstants:(I)Ljava/lang/String;',
+    );
+    expect(commentOf(dynamic)).toBe('// Dynamic #1:makeConcatWithConstants:(I)Ljava/lang/String;');
+    expect(commentOf(handle)).toBe(
+      '// MethodHandle REF_invokeStatic java/lang/invoke/StringConcatFactory.makeConcat:()V',
+    );
+    expect(commentOf(methodType)).toBe('// MethodType (Ljava/lang/Object;)Z');
+    expect(commentOf(module)).toBe('// Module java.base');
+    expect(resolveConstant(entries, interfaceMethod)?.chain).toEqual([
+      `#${String(interfaceMethod)}`,
+      'InterfaceMethodref',
+      'java/util/List.add:(Ljava/lang/Object;)Z',
+    ]);
+  });
+
+  it('prints the wide numeric constants the way javap suffixes them', () => {
+    const pool = new ConstantPoolBuilder();
+    const long = pool.raw({ tag: ConstantTag.Long, value: 4_294_967_296n });
+    const float = pool.raw({ tag: ConstantTag.Float, value: 1.5 });
+    const double = pool.raw({ tag: ConstantTag.Double, value: 2 });
+    const entries = pool.build();
+
+    expect(resolveConstant(entries, long)?.text).toBe('4294967296l');
+    expect(resolveConstant(entries, long)?.comment).toBe('// long 4294967296l');
+    expect(resolveConstant(entries, float)?.comment).toBe('// float 1.5f');
+    expect(resolveConstant(entries, double)?.comment).toBe('// double 2.0d');
+  });
+
+  it('says nothing rather than something wrong about a reference kind outside JVMS 4.4.8', () => {
+    const pool = new ConstantPoolBuilder();
+    const factory = pool.methodref('java/lang/invoke/StringConcatFactory', 'makeConcat', '()V');
+    const handle = pool.raw({
+      tag: ConstantTag.MethodHandle,
+      referenceKind: 99,
+      referenceIndex: factory,
+    });
+
+    expect(resolveConstant(pool.build(), handle)).toBeUndefined();
+  });
+
+  it('comments an interface call the way javap does', () => {
+    const pool = new ConstantPoolBuilder();
+    const interfaceMethod = pool.raw({
+      tag: ConstantTag.InterfaceMethodref,
+      classIndex: pool.classEntry('java/util/List'),
+      nameAndTypeIndex: pool.raw({
+        tag: ConstantTag.NameAndType,
+        nameIndex: pool.utf8('add'),
+        descriptorIndex: pool.utf8('(Ljava/lang/Object;)Z'),
+      }),
+    });
+    const program = buildProgram({
+      origin: { kind: 'upload', fileName: 'Interfaces.class' },
+      classFile: syntheticClass({
+        pool,
+        methods: [
+          {
+            name: 'main',
+            descriptor: '([Ljava/lang/String;)V',
+            code: [0xb9, 0x00, interfaceMethod, 0x01, 0x00, 0xb1],
+          },
+        ],
+      }),
+    });
+    const listing = program.entry;
+    if (listing === undefined) {
+      throw new Error('the synthetic class has no entry point');
+    }
+
+    expect([...constantPoolComments(listing, program.classFile).values()]).toEqual([
+      '// InterfaceMethod java/util/List.add:(Ljava/lang/Object;)Z',
+    ]);
+  });
+
   it('has no pool entry for an instruction whose operand is not one', () => {
     expect(
       constantPoolIndexOf({ offset: 0, opcode: 0x15, mnemonic: 'iload', operands: [3] }),
@@ -407,16 +543,485 @@ describe('stack delta', () => {
     const program = buildProgram({
       origin: { kind: 'upload', fileName: 'Unsupported.class' },
       classFile: syntheticClass({
-        methods: [{ name: 'main', descriptor: '([Ljava/lang/String;)V', code: [0xb6, 0x00, 0x01] }],
+        methods: [{ name: 'main', descriptor: '([Ljava/lang/String;)V', code: [0xc2] }],
       }),
     });
     const instruction = program.entry?.instructions[0];
 
-    expect(instruction).toBeDefined();
+    expect(instruction?.mnemonic).toBe('monitorenter');
     expect(
       instruction === undefined
         ? undefined
         : stackDeltaOf(instruction, program.classFile.constantPool),
     ).toBeUndefined();
+  });
+
+  it('is unknown when the constant pool does not name the member the call needs', () => {
+    const program = buildProgram({
+      origin: { kind: 'upload', fileName: 'Broken.class' },
+      classFile: syntheticClass({
+        methods: [{ name: 'main', descriptor: '([Ljava/lang/String;)V', code: [0xb6, 0x00, 0x01] }],
+      }),
+    });
+    const instruction = program.entry?.instructions[0];
+
+    expect(instruction?.mnemonic).toBe('invokevirtual');
+    expect(
+      instruction === undefined
+        ? undefined
+        : stackDeltaOf(instruction, program.classFile.constantPool),
+    ).toBeUndefined();
+  });
+
+  it('counts a long as the two operand stack slots it occupies', () => {
+    const pool = new ConstantPoolBuilder();
+    const fieldref = pool.fieldref('Synthetic', 'total', 'J');
+    const methodref = pool.methodref('Synthetic', 'add', '(JI)J');
+    const classFile = syntheticClass({
+      pool,
+      methods: [
+        {
+          name: 'main',
+          descriptor: '([Ljava/lang/String;)V',
+          code: [0xb2, 0x00, fieldref, 0xb8, 0x00, methodref],
+        },
+      ],
+    });
+    const program = buildProgram({ origin: { kind: 'upload', fileName: 'Wide.class' }, classFile });
+    const [read, call] = program.entry?.instructions ?? [];
+
+    expect(read && stackDeltaOf(read, classFile.constantPool)).toEqual({ pops: 0, pushes: 2 });
+    expect(call && stackDeltaOf(call, classFile.constantPool)).toEqual({ pops: 3, pushes: 2 });
+  });
+
+  it('stays unknown while the field descriptor is out of reach', () => {
+    const program = buildProgram({
+      origin: { kind: 'upload', fileName: 'NoPool.class' },
+      classFile: syntheticClass({
+        methods: [{ name: 'main', descriptor: '([Ljava/lang/String;)V', code: [0xb2, 0x00, 0x02] }],
+      }),
+    });
+    const instruction = program.entry?.instructions[0];
+
+    expect(instruction?.mnemonic).toBe('getstatic');
+    expect(
+      instruction === undefined
+        ? undefined
+        : stackDeltaOf(instruction, program.classFile.constantPool),
+    ).toBeUndefined();
+  });
+
+  it('counts the receiver of an instance call alongside its arguments', () => {
+    const pool = new ConstantPoolBuilder();
+    const methodref = pool.methodref('Synthetic', 'add', '(II)I');
+    const classFile = syntheticClass({
+      pool,
+      methods: [
+        {
+          name: 'main',
+          descriptor: '([Ljava/lang/String;)V',
+          code: [0xb6, 0x00, methodref, 0xb8, 0x00, methodref],
+        },
+      ],
+    });
+    const program = buildProgram({
+      origin: { kind: 'upload', fileName: 'Calls.class' },
+      classFile,
+    });
+    const [virtual, staticCall] = program.entry?.instructions ?? [];
+
+    expect(virtual && stackDeltaOf(virtual, classFile.constantPool)).toEqual({
+      pops: 3,
+      pushes: 1,
+    });
+    expect(staticCall && stackDeltaOf(staticCall, classFile.constantPool)).toEqual({
+      pops: 2,
+      pushes: 1,
+    });
+  });
+});
+
+describe('reference instructions', () => {
+  function referenceProgram(code: readonly number[]): LoadedProgram {
+    return buildProgram({
+      origin: { kind: 'upload', fileName: 'References.class' },
+      classFile: syntheticClass({
+        methods: [{ name: 'main', descriptor: '([Ljava/lang/String;)V', code, maxLocals: 4 }],
+      }),
+    });
+  }
+
+  it('compares references against null rather than against an integer zero', () => {
+    const program = referenceProgram([0x01, 0xc6, 0x00, 0x03, 0xb1]);
+
+    expect(summaryOf(program, 'ifnull').effects).toEqual([{ label: 'pop 1' }]);
+    expect(summaryOf(program, 'ifnull').explanation).toBe(
+      'Pops the top reference (null) and compares it against null: true, so execution jumps to pc 4.',
+    );
+  });
+
+  it('reads a non-null test through the object the reference names', () => {
+    const program = referenceProgram([0x04, 0xbc, 0x0a, 0xc7, 0x00, 0x03, 0xb1]);
+
+    expect(summaryOf(program, 'ifnonnull').explanation).toBe(
+      'Pops the top reference (int[1]@0) and compares it against null: true, so execution jumps to pc 6.',
+    );
+  });
+
+  it('compares two references by identity, popping both', () => {
+    const program = referenceProgram([0x01, 0x01, 0xa5, 0x00, 0x03, 0xb1]);
+
+    expect(summaryOf(program, 'if_acmpeq').effects).toEqual([{ label: 'pop 2' }]);
+    expect(summaryOf(program, 'if_acmpeq').explanation).toBe(
+      'Pops both references and checks whether null and null are the same object: true, so ' +
+        'execution jumps to pc 5.',
+    );
+  });
+
+  it('labels the operands of a reference comparison', () => {
+    const program = referenceProgram([0x01, 0x01, 0xa5, 0x00, 0x03, 0xb1]);
+    const snapshot = firstSnapshotOf(program, 'if_acmpeq');
+
+    expect(
+      describeOperandRoles(snapshot, listingFor(program, snapshot), program.classFile),
+    ).toEqual(['→ left', '→ right']);
+  });
+});
+
+describe('printing to the console', () => {
+  function collatzProgram(): LoadedProgram {
+    return buildProgram({
+      origin: { kind: 'upload', fileName: 'Collatz.class' },
+      classFile: parseClassFile(readExampleBytes('Collatz.class')),
+      source: { fileName: 'Collatz.java', text: readExampleText('Collatz.java') },
+    });
+  }
+
+  it('says what getstatic pushes instead of calling it an int', () => {
+    const program = collatzProgram();
+
+    expect(summaryOf(program, 'getstatic').effects).toEqual([{ label: 'push ref' }]);
+    expect(summaryOf(program, 'getstatic').explanation).toBe(
+      'Pushes the value of the static field java/lang/System.out. This machine knows System.out ' +
+        'and no other static field.',
+    );
+  });
+
+  it('names the receiver and the argument the call is about to hand over', () => {
+    const program = collatzProgram();
+
+    expect(summaryOf(program, 'invokevirtual').effects).toEqual([{ label: 'pop 2' }]);
+    expect(summaryOf(program, 'invokevirtual').explanation).toBe(
+      'Pops 7 and the receiver System.out and calls java/io/PrintStream.println(I)V, one of the ' +
+        'few standard-library methods this machine runs directly, without opening a frame.',
+    );
+  });
+
+  it('labels the receiver and the argument on the operand stack', () => {
+    const program = collatzProgram();
+    const snapshot = firstSnapshotOf(program, 'invokevirtual');
+
+    expect(
+      describeOperandRoles(snapshot, listingFor(program, snapshot), program.classFile),
+    ).toEqual(['→ receiver', '→ arg 0']);
+  });
+
+  it('shows an interned standard-library object by its name in the locals', () => {
+    const program = collatzProgram();
+    const snapshot = firstSnapshotOf(program, 'invokevirtual');
+    const frame = snapshot.callStack.at(-1);
+
+    expect(
+      describeValue(
+        frame?.operandKinds?.at(-2),
+        frame?.operandStack.at(-2) ?? 0,
+        snapshot.heap ?? [],
+        snapshot.externals ?? [],
+      ),
+    ).toBe('System.out');
+  });
+});
+
+describe('value labels', () => {
+  const heap: readonly HeapObject[] = [
+    { kind: 'int-array', length: 3, elements: [0, 0, 0] },
+    { kind: 'instance', className: 'Counter', fields: [] },
+  ];
+  const externals: readonly ExternalValue[] = [
+    { className: 'java/io/PrintStream', label: 'System.out' },
+  ];
+
+  it('names a value by what it is rather than by the number in the cell', () => {
+    expect(describeValue('int', 3, heap, externals)).toBe('3');
+    expect(describeValue('ref', 0, heap, externals)).toBe('int[3]@0');
+    expect(describeValue('ref', 1, heap, externals)).toBe('Counter@1');
+    expect(describeValue('external', 0, heap, externals)).toBe('System.out');
+  });
+
+  it('has an answer for a reference that names nothing', () => {
+    expect(describeValue('ref', -1, heap, externals)).toBe('null');
+    expect(describeValue('external', 4, heap, externals)).toBe('an unknown object');
+  });
+
+  it('falls back to the number when a frame carries no kinds', () => {
+    expect(describeValue(undefined, 7, heap, externals)).toBe('7');
+  });
+});
+
+describe('object instructions', () => {
+  const pool = new ConstantPoolBuilder();
+  const fieldref = pool.fieldref('Synthetic', 'value', 'I');
+  const classIndex = pool.classEntry('Synthetic');
+  const ownConstructor = pool.methodref('Synthetic', '<init>', '(I)V');
+  const objectConstructor = pool.methodref('java/lang/Object', '<init>', '()V');
+  const mathMax = pool.methodref('java/lang/Math', 'max', '(II)I');
+  const classFile = syntheticClass({
+    pool,
+    methods: [{ name: 'main', descriptor: '()V', code: [0xb1] }],
+  });
+
+  const heap: readonly HeapObject[] = [
+    {
+      kind: 'instance',
+      className: 'Synthetic',
+      fields: [{ name: 'value', descriptor: 'I', value: 41, kind: 'int' }],
+    },
+  ];
+
+  function summaryAt(
+    opcode: number,
+    mnemonic: string,
+    operands: readonly number[],
+    operandStack: readonly number[],
+    operandKinds: readonly ValueKind[],
+  ) {
+    const snapshot: Snapshot = {
+      step: 0,
+      callStack: [
+        {
+          methodName: 'main',
+          methodDescriptor: '()V',
+          pc: 0,
+          operandStack,
+          operandKinds,
+          locals: [],
+          localNames: [],
+        },
+      ],
+      currentInstruction: { offset: 0, opcode, mnemonic, operands },
+      heap,
+      externals: [],
+    };
+    const summary = describeNextInstruction(snapshot, undefined, classFile);
+    if (summary === undefined) {
+      throw new Error(`no summary for ${mnemonic}`);
+    }
+    return summary;
+  }
+
+  it('says an allocation pushes a reference and leaves the constructor to follow', () => {
+    const summary = summaryAt(0xbb, 'new', [classIndex], [], []);
+
+    expect(summary.effects).toEqual([{ label: 'push ref' }]);
+    expect(summary.explanation).toBe(
+      'Allocates a Synthetic with every field at its default value and pushes the reference. ' +
+        'Its constructor has not run yet; that is the invokespecial that follows.',
+    );
+  });
+
+  it('reads a field through the object the reference names', () => {
+    const summary = summaryAt(0xb4, 'getfield', [fieldref], [0], ['ref']);
+
+    expect(summary.effects).toEqual([{ label: 'pop 1' }, { label: 'push int' }]);
+    expect(summary.explanation).toBe(
+      'Pops the reference to Synthetic@0 and pushes its field value, currently 41.',
+    );
+  });
+
+  it('names the value and the object a field write lands in', () => {
+    const summary = summaryAt(0xb5, 'putfield', [fieldref], [0, 7], ['ref', 'int']);
+
+    expect(summary.effects).toEqual([{ label: 'pop 2' }]);
+    expect(summary.explanation).toBe('Stores 7 in the field value of Synthetic@0.');
+  });
+
+  it('opens a frame for a constructor declared by the loaded class', () => {
+    const summary = summaryAt(0xb7, 'invokespecial', [ownConstructor], [0, 5], ['ref', 'int']);
+
+    expect(summary.effects).toEqual([{ label: 'pop 2' }, { label: 'push frame' }]);
+    expect(summary.explanation).toBe(
+      'Pops 5 and the receiver Synthetic@0 and calls <init>(I)V, opening a frame with the ' +
+        'receiver in slot 0. The callee starts at pc 0.',
+    );
+  });
+
+  it('says the superclass constructor does nothing rather than pretending to run it', () => {
+    const summary = summaryAt(0xb7, 'invokespecial', [objectConstructor], [0], ['ref']);
+
+    expect(summary.effects).toEqual([{ label: 'pop 1' }]);
+    expect(summary.explanation).toBe(
+      'Pops the reference to Synthetic@0 and calls java/lang/Object.<init>()V, the constructor ' +
+        'every chain of superclasses ends at; it does nothing, so the next instruction runs.',
+    );
+  });
+
+  it('does not promise a frame for a static call the machine answers itself', () => {
+    const summary = summaryAt(0xb8, 'invokestatic', [mathMax], [4, 9], ['int', 'int']);
+
+    expect(summary.effects).toEqual([{ label: 'pop 2' }, { label: 'push int' }]);
+    expect(summary.explanation).toBe(
+      'Pops 4 and 9 and calls java/lang/Math.max(II)I, one of the few standard-library methods ' +
+        'this machine runs directly, without opening a frame.',
+    );
+  });
+
+  it('labels the operands a field write is about to take', () => {
+    const snapshot: Snapshot = {
+      step: 0,
+      callStack: [
+        {
+          methodName: 'main',
+          methodDescriptor: '()V',
+          pc: 0,
+          operandStack: [0, 7],
+          operandKinds: ['ref', 'int'],
+          locals: [],
+          localNames: [],
+        },
+      ],
+      currentInstruction: { offset: 0, opcode: 0xb5, mnemonic: 'putfield', operands: [fieldref] },
+      heap,
+      externals: [],
+    };
+
+    expect(describeOperandRoles(snapshot, undefined, classFile)).toEqual(['→ object', '→ value']);
+  });
+});
+
+describe('the opcode table', () => {
+  const POOL_ROLES: Readonly<Record<string, 'method' | 'field' | 'class' | 'integer'>> = {
+    ldc: 'integer',
+    ldc_w: 'integer',
+    getstatic: 'field',
+    getfield: 'field',
+    putfield: 'field',
+    invokevirtual: 'method',
+    invokespecial: 'method',
+    invokestatic: 'method',
+    new: 'class',
+  };
+
+  const pool = new ConstantPoolBuilder();
+  const poolIndices = {
+    method: pool.methodref('Synthetic', 'run', '(I)I'),
+    field: pool.fieldref('Synthetic', 'value', 'I'),
+    class: pool.classEntry('Synthetic'),
+    integer: pool.integer(7),
+  };
+  const classFile = syntheticClass({
+    pool,
+    methods: [{ name: 'main', descriptor: '()V', code: [0xb1] }],
+  });
+
+  function probeOf(opcode: number, info: SupportedOpcode): Snapshot {
+    const poolIndex = poolIndices[POOL_ROLES[info.mnemonic] ?? 'integer'];
+    const operands = info.operands.map((spec) => {
+      if (spec.role === 'constant-pool-index') {
+        return poolIndex;
+      }
+      if (spec.role === 'array-type') {
+        return T_INT;
+      }
+      return spec.role === 'local-index' ? 0 : 1;
+    });
+    const branches = info.operands.some((spec) => spec.role === 'branch-offset');
+    const switches = info.mnemonic === 'tableswitch' || info.mnemonic === 'lookupswitch';
+    const frame: StackFrame = {
+      methodName: 'main',
+      methodDescriptor: '()V',
+      pc: 0,
+      operandStack: [3, 2, 1, 0],
+      operandKinds: ['int', 'int', 'int', 'int'],
+      locals: [0, 0, 0, 0],
+      localNames: [],
+    };
+    return {
+      step: 0,
+      callStack: [frame],
+      currentInstruction: {
+        offset: 0,
+        opcode,
+        mnemonic: info.mnemonic,
+        operands,
+        ...(branches ? { branchTarget: 8 } : {}),
+        ...(switches
+          ? {
+              switchTargets: [
+                { match: undefined, target: 8 },
+                { match: 1, target: 12 },
+              ],
+            }
+          : {}),
+      },
+      heap: [],
+      externals: [],
+    };
+  }
+
+  const PILL = /^(pop \d+|pop frame|push frame|push (int|ref)|push \d+ (int|ref)s)$/;
+
+  it('gives every executable instruction help, a stack delta and effect pills', () => {
+    for (const opcode of EXECUTABLE_OPCODES) {
+      const info = lookupOpcode(opcode);
+      if (info?.kind !== 'supported') {
+        throw new Error(
+          `opcode 0x${opcode.toString(16)} is executable but carries no stack effect`,
+        );
+      }
+      const { mnemonic } = info;
+      const snapshot = probeOf(opcode, info);
+      const instruction = snapshot.currentInstruction;
+      if (instruction === undefined) {
+        throw new Error(`no probe instruction for ${mnemonic}`);
+      }
+
+      expect(explainMnemonic(mnemonic), mnemonic).toBeDefined();
+
+      const delta = stackDeltaOf(instruction, classFile.constantPool);
+      expect(delta, mnemonic).toBeDefined();
+
+      const summary = describeNextInstruction(snapshot, undefined, classFile);
+      const explanation = summary?.explanation ?? '';
+      expect(explanation, mnemonic).toMatch(/\.$/);
+      expect(explanation, mnemonic).not.toContain('undefined');
+      expect(explanation, mnemonic).not.toContain('?');
+      expect(explanation, mnemonic).not.toMatch(/^Executes /);
+
+      const labels = summary?.effects.map((effect) => effect.label) ?? [];
+      for (const label of labels) {
+        expect(label, mnemonic).toMatch(PILL);
+      }
+      expect(
+        labels.some((label) => /^pop \d+$/.test(label)),
+        mnemonic,
+      ).toBe((delta?.pops ?? 0) > 0);
+      expect(labels.length === 0, mnemonic).toBe(
+        delta?.pops === 0 && delta.pushes === 0 && OPCODE_NOTES[mnemonic]?.frame === undefined,
+      );
+    }
+  });
+
+  it('keeps the operand roles and the heap addressing of an instruction in step', () => {
+    for (const [mnemonic, addressing] of Object.entries(OPERAND_ADDRESSING)) {
+      const { handleDepth, indexDepth } = addressing;
+      if (handleDepth === undefined) {
+        continue;
+      }
+      expect(addressing.roles.length, mnemonic).toBeGreaterThanOrEqual(handleDepth);
+      expect(addressing.roles[handleDepth - 1], mnemonic).toMatch(/array|object/);
+      if (indexDepth !== undefined) {
+        expect(addressing.roles[indexDepth - 1], mnemonic).toBe('→ index');
+      }
+    }
   });
 });

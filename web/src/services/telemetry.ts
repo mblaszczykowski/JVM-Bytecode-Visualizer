@@ -6,11 +6,6 @@ export type Report =
       readonly totalSteps: number;
     }
   | {
-      readonly kind: 'run-failed';
-      readonly reason: string;
-      readonly steps: number;
-    }
-  | {
       readonly kind: 'unhandled';
       readonly errorName: string;
       readonly fromPromise: boolean;

@@ -1,5 +1,5 @@
 import type { ConstantPool } from '../core/classfile';
-import type { Instruction } from '../core/disassembler/types';
+import type { Instruction } from '../core/disassembler';
 
 import { constantPoolIndexOf, resolveConstant } from './derivations';
 

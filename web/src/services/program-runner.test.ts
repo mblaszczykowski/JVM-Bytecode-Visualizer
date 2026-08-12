@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { parseClassFile, type ClassFile } from '../core/classfile';
 import { execute, type ExecutionResult, type Snapshot } from '../core/interpreter';
 import {
+  runAndStream,
   SNAPSHOTS_PER_MESSAGE,
   withHistory,
   type RunCommand,
@@ -45,6 +46,14 @@ class FakeWorker implements RunWorker {
     this.onmessage?.(new MessageEvent('message', { data: event }));
   }
 
+  run(): void {
+    for (const command of this.commands) {
+      runAndStream(command, (event) => {
+        this.emit(event);
+      });
+    }
+  }
+
   stream(result: ExecutionResult): void {
     for (let from = 0; from < result.snapshots.length; from += SNAPSHOTS_PER_MESSAGE) {
       this.emit({
@@ -82,17 +91,16 @@ describe('running on this thread', () => {
 });
 
 describe('running in a worker', () => {
-  it('reassembles the streamed batches into the history the interpreter produced', async () => {
+  it('reassembles the batches the worker streams into the history the interpreter produced', async () => {
     const classFile = gcd();
-    const expected = execute(classFile, { entryMethod: 'main', maxSteps: 20_000 });
     const worker = new FakeWorker();
     const runner = workerRunner(() => worker);
 
     const pending = runner.run(commandFor(classFile));
-    worker.stream(expected);
+    worker.run();
 
     expect(runner.cancellable).toBe(true);
-    expect(await pending).toEqual(expected);
+    expect(await pending).toEqual(execute(classFile, { entryMethod: 'main', maxSteps: 20_000 }));
     expect(worker.commands).toEqual([commandFor(classFile)]);
     expect(worker.terminations).toBe(1);
   });
@@ -169,6 +177,39 @@ describe('running in a worker', () => {
 
     await expect(pending).rejects.toThrow('the class file fell apart');
     expect(worker.terminations).toBe(1);
+  });
+});
+
+describe('a worker that dies with the run in it', () => {
+  it('says so instead of running the same program again on this thread', async () => {
+    const worker = new FakeWorker();
+    const runner = workerRunner(() => worker);
+
+    const pending = runner.run(commandFor(gcd()));
+    worker.emit({ kind: 'snapshots', snapshots: fakeHistory(10) });
+    worker.fail();
+
+    await expect(pending).rejects.toThrow('failed part-way through');
+    expect(worker.terminations).toBe(1);
+  });
+
+  it('keeps offering the next run a worker, because the mechanism still works', async () => {
+    const first = new FakeWorker();
+    const second = new FakeWorker();
+    let spawns = 0;
+    const runner = workerRunner(() => (spawns++ === 0 ? first : second));
+
+    const failed = runner.run(commandFor(gcd()));
+    first.emit({ kind: 'snapshots', snapshots: fakeHistory(10) });
+    first.fail();
+    await expect(failed).rejects.toThrow('failed part-way through');
+
+    const retried = runner.run(commandFor(gcd()));
+    second.run();
+
+    expect(runner.cancellable).toBe(true);
+    expect((await retried).snapshots.length).toBeGreaterThan(0);
+    expect(spawns).toBe(2);
   });
 });
 

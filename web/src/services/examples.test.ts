@@ -127,6 +127,28 @@ describe('fetchExampleManifest', () => {
   });
 });
 
+describe('the routes a test serves the examples over', () => {
+  it('serves the manifest it was given, and the files that manifest names', async () => {
+    const entry = factorialEntry();
+    const routes = exampleRoutes({ version: 1, examples: [entry] });
+    stubFetch(routes);
+
+    const manifest = await fetchExampleManifest();
+
+    expect(manifest.examples).toEqual([entry]);
+    expect(Object.keys(routes)).toEqual([
+      MANIFEST_URL,
+      exampleUrl(entry.classFile),
+      exampleUrl(entry.sourceFile),
+    ]);
+    expect((await fetchExampleResources(entry)).source).toContain('static int factorial(int n)');
+  });
+
+  it('serves no files at all for a manifest that is not one', () => {
+    expect(Object.keys(exampleRoutes({ version: 2, examples: [] }))).toEqual([MANIFEST_URL]);
+  });
+});
+
 describe('fetchExampleResources', () => {
   it('downloads the class file and its source', async () => {
     stubFetch(exampleRoutes());

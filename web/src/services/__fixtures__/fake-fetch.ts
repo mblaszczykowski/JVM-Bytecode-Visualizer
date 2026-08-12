@@ -1,7 +1,7 @@
 import { vi } from 'vitest';
 
 import { exampleUrl, MANIFEST_FILE } from '../examples';
-import type { ExampleManifest } from '../manifest';
+import { exampleManifestSchema, type ExampleEntry } from '../manifest';
 
 import { readExampleBytes, readExampleManifest, readExampleText } from './example-files';
 
@@ -15,16 +15,22 @@ export function okResponse(body: FakeBody): Response {
   return {
     ok: true,
     status: 200,
+    headers: new Headers(),
     json: () => Promise.resolve(body.json),
     text: () => Promise.resolve(body.text ?? ''),
     arrayBuffer: () => Promise.resolve(body.bytes ?? new ArrayBuffer(0)),
   } as unknown as Response;
 }
 
-export function jsonResponse(status: number, json: unknown): Response {
+export function jsonResponse(
+  status: number,
+  json: unknown,
+  headers?: Readonly<Record<string, string>>,
+): Response {
   return {
     ok: status >= 200 && status < 300,
     status,
+    headers: new Headers(headers),
     json: () => Promise.resolve(json),
     text: () => Promise.resolve(JSON.stringify(json)),
     arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)),
@@ -35,6 +41,7 @@ export function statusResponse(status: number): Response {
   return {
     ok: false,
     status,
+    headers: new Headers(),
     json: () => Promise.reject(new Error('no body')),
     text: () => Promise.resolve(''),
     arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)),
@@ -68,7 +75,7 @@ export function exampleRoutes(
     [exampleUrl(MANIFEST_FILE)]: () => okResponse({ json: manifest }),
   };
 
-  for (const example of (readExampleManifest() as ExampleManifest).examples) {
+  for (const example of examplesOf(manifest)) {
     routes[exampleUrl(example.classFile)] = () =>
       okResponse({ bytes: readExampleBytes(example.classFile) });
     routes[exampleUrl(example.sourceFile)] = () =>
@@ -76,4 +83,11 @@ export function exampleRoutes(
   }
 
   return routes;
+}
+
+const NO_EXAMPLES: readonly ExampleEntry[] = [];
+
+function examplesOf(manifest: unknown): readonly ExampleEntry[] {
+  const parsed = exampleManifestSchema.safeParse(manifest);
+  return parsed.success ? parsed.data.examples : NO_EXAMPLES;
 }

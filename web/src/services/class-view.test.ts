@@ -29,7 +29,7 @@ describe('class facts', () => {
   it('reads the class header the way javap opens a dump', () => {
     expect(factOf('this_class', 'Factorial.class')).toBe('Factorial');
     expect(factOf('super_class', 'Factorial.class')).toBe('java/lang/Object');
-    expect(factOf('interfaces', 'Factorial.class')).toBe('—');
+    expect(factOf('interfaces', 'Factorial.class')).toBe('–');
   });
 
   it('names the Java release a major version belongs to', () => {
@@ -53,8 +53,8 @@ describe('class facts', () => {
       accessFlags: 0,
     });
 
-    expect(facts.find((fact) => fact.label === 'super_class')?.value).toBe('—');
-    expect(facts.find((fact) => fact.label === 'access_flags')?.value).toBe('—');
+    expect(facts.find((fact) => fact.label === 'super_class')?.value).toBe('–');
+    expect(facts.find((fact) => fact.label === 'access_flags')?.value).toBe('–');
   });
 });
 
@@ -82,6 +82,12 @@ describe('access flag names', () => {
   it('names the field modifiers of JVMS table 4.5-A', () => {
     expect(fieldModifiersOf(0x001a)).toEqual(['private', 'static', 'final']);
     expect(fieldModifiersOf(0x4008)).toEqual(['static', 'enum']);
+    expect(fieldModifiersOf(0x0040)).toEqual(['volatile']);
+  });
+
+  it('names the bits javac sets that no source keyword spells', () => {
+    expect(methodModifiersOf(0x0040)).toEqual(['bridge']);
+    expect(methodModifiersOf(0x1080)).toEqual(['varargs', 'synthetic']);
   });
 });
 
@@ -131,12 +137,64 @@ describe('constant pool rows', () => {
   it('skips index 0 and the hole after a Long, which are not entries at all', () => {
     const pool: ConstantPool = [
       null,
-      { tag: ConstantTag.Long },
+      { tag: ConstantTag.Long, value: 4_294_967_296n },
       null,
       { tag: ConstantTag.Utf8, value: 'after' },
     ];
 
     expect(constantPoolRowsOf(pool).map((row) => row.index)).toEqual([1, 3]);
+  });
+
+  it('links the entries that were tag-only until the parser read their indices', () => {
+    const pool = new ConstantPoolBuilder();
+    const listClass = pool.classEntry('java/util/List');
+    const add = pool.raw({
+      tag: ConstantTag.NameAndType,
+      nameIndex: pool.utf8('add'),
+      descriptorIndex: pool.utf8('(Ljava/lang/Object;)Z'),
+    });
+    const interfaceMethod = pool.raw({
+      tag: ConstantTag.InterfaceMethodref,
+      classIndex: listClass,
+      nameAndTypeIndex: add,
+    });
+    const factory = pool.methodref('java/lang/invoke/StringConcatFactory', 'makeConcat', '()V');
+    const handle = pool.raw({
+      tag: ConstantTag.MethodHandle,
+      referenceKind: 6,
+      referenceIndex: factory,
+    });
+    const descriptor = pool.utf8('(Ljava/lang/Object;)Z');
+    const methodType = pool.raw({ tag: ConstantTag.MethodType, descriptorIndex: descriptor });
+    const moduleName = pool.utf8('java.base');
+    const module = pool.raw({ tag: ConstantTag.Module, nameIndex: moduleName });
+
+    const rows = constantPoolRowsOf(pool.build());
+    const referencesAt = (index: number) => rows.find((row) => row.index === index)?.references;
+
+    expect(referencesAt(interfaceMethod)).toEqual([listClass, add]);
+    expect(referencesAt(handle)).toEqual([factory]);
+    expect(referencesAt(methodType)).toEqual([descriptor]);
+    expect(referencesAt(module)).toEqual([moduleName]);
+  });
+
+  it('does not treat the bootstrap method index of an invokedynamic as a pool index', () => {
+    const pool = new ConstantPoolBuilder();
+    const member = pool.raw({
+      tag: ConstantTag.NameAndType,
+      nameIndex: pool.utf8('makeConcatWithConstants'),
+      descriptorIndex: pool.utf8('(I)Ljava/lang/String;'),
+    });
+    const invokeDynamic = pool.raw({
+      tag: ConstantTag.InvokeDynamic,
+      bootstrapMethodAttrIndex: 0,
+      nameAndTypeIndex: member,
+    });
+
+    const row = constantPoolRowsOf(pool.build()).find((entry) => entry.index === invokeDynamic);
+
+    expect(row?.references).toEqual([member]);
+    expect(row?.text).toBe('#0:makeConcatWithConstants:(I)Ljava/lang/String;');
   });
 
   it('keeps a row for an entry whose references do not resolve', () => {

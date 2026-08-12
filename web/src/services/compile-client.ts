@@ -9,21 +9,33 @@ export interface CompileDiagnostic {
   readonly message: string;
 }
 
+export interface ServiceFailure {
+  readonly code: string;
+  readonly message: string;
+  readonly retryAfterSeconds: number | undefined;
+}
+
 export type UnavailableReason =
   | { readonly kind: 'network'; readonly reason: string }
   | { readonly kind: 'timeout'; readonly ms: number }
-  | { readonly kind: 'http'; readonly status: number }
+  | {
+      readonly kind: 'http';
+      readonly status: number;
+      readonly service?: ServiceFailure | undefined;
+    }
   | { readonly kind: 'invalid-response'; readonly reason: string };
 
 export type CompileResult =
   | { readonly kind: 'compiled'; readonly className: string; readonly classBytes: ArrayBuffer }
   | { readonly kind: 'diagnostics'; readonly diagnostics: readonly CompileDiagnostic[] }
-  | { readonly kind: 'rate-limited' }
+  | { readonly kind: 'rate-limited'; readonly service?: ServiceFailure | undefined }
   | { readonly kind: 'unavailable'; readonly reason: UnavailableReason };
 
 export const HEALTH_TIMEOUT_MS = 2_000;
 
 export const COMPILE_TIMEOUT_MS = 30_000;
+
+export const COMPILER_BUSY = 'compiler-busy';
 
 const RATE_LIMITED = 429;
 const BAD_REQUEST = 400;
@@ -50,9 +62,6 @@ export async function compile(baseUrl: string, source: string): Promise<CompileR
   }
 
   const { response } = attempt;
-  if (response.status === RATE_LIMITED) {
-    return { kind: 'rate-limited' };
-  }
   if (response.status === BAD_REQUEST) {
     return {
       kind: 'diagnostics',
@@ -62,7 +71,10 @@ export async function compile(baseUrl: string, source: string): Promise<CompileR
     };
   }
   if (!response.ok) {
-    return { kind: 'unavailable', reason: { kind: 'http', status: response.status } };
+    const service = await serviceFailureOf(response);
+    return response.status === RATE_LIMITED
+      ? { kind: 'rate-limited', service }
+      : { kind: 'unavailable', reason: { kind: 'http', status: response.status, service } };
   }
 
   let raw: unknown;
@@ -109,6 +121,11 @@ const compileResponseSchema = z.discriminatedUnion('success', [
 
 const rejectionSchema = z.object({ message: z.string().min(1) });
 
+const errorDocumentSchema = z.object({
+  error: z.string().min(1),
+  message: z.string().min(1),
+});
+
 const GENERIC_REJECTION =
   'The service rejected the source: it must declare one public top-level class and stay under 64 KiB.';
 
@@ -143,6 +160,33 @@ async function rejectionOf(response: Response): Promise<string> {
   } catch {
     return GENERIC_REJECTION;
   }
+}
+
+async function serviceFailureOf(response: Response): Promise<ServiceFailure | undefined> {
+  let body: unknown;
+  try {
+    body = await response.json();
+  } catch {
+    return undefined;
+  }
+
+  const parsed = errorDocumentSchema.safeParse(body);
+  if (!parsed.success) {
+    return undefined;
+  }
+  return {
+    code: parsed.data.error,
+    message: parsed.data.message,
+    retryAfterSeconds: retryAfterSecondsOf(response),
+  };
+}
+
+function retryAfterSecondsOf(response: Response): number | undefined {
+  const header = response.headers.get('Retry-After');
+  if (header === null || !/^\d+$/.test(header.trim())) {
+    return undefined;
+  }
+  return Number(header.trim());
 }
 
 function unavailable(kind: 'invalid-response', reason: string): CompileResult {

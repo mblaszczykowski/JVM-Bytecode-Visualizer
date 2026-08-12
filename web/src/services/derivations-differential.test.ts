@@ -23,6 +23,12 @@ const SYMBOLS: Readonly<Record<string, string>> = {
   '×': 'imul',
   '÷': 'idiv',
   mod: 'irem',
+  '<<': 'ishl',
+  '>>': 'ishr',
+  '>>>': 'iushr',
+  '&': 'iand',
+  '|': 'ior',
+  '^': 'ixor',
 };
 
 function loadExample(classFile: string, sourceFile: string): LoadedProgram {

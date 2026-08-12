@@ -144,7 +144,7 @@ describe('buildProgram', () => {
       origin: { kind: 'upload', fileName: 'Switch.class' },
     });
 
-    expect(program.entry?.truncatedAtOffset).toBe(1);
+    expect(program.entry?.undecodedFromOffset).toBe(1);
     expect(program.entry?.instructions).toHaveLength(1);
   });
 });

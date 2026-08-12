@@ -1,7 +1,7 @@
 /**
  * A utility class: static helpers, a private constructor and no `main`. Nothing here is a
  * Java entry point, and every helper takes arguments, so this interpreter has no method it
- * can enter — the fixture for a class file that can only be read.
+ * can enter. The fixture for a class file that can only be read.
  */
 public final class Library {
     private Library() {

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { snapshots as bubbleSortSnapshots } from '../components/__fixtures__/bubble-sort-run';
 import { snapshots as factorialSnapshots } from '../components/__fixtures__/factorial-run';
-import type { Snapshot } from '../core/interpreter/types';
+import type { Snapshot } from '../core/interpreter';
 
 import { allTours, resolveTour, tourFor, toursFor, type Tour } from './tours';
 
