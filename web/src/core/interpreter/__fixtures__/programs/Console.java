@@ -1,7 +1,8 @@
 /**
  * Differential fixture for System.out: every println and print overload the interpreter
- * recognises, including the no-argument println that ends a line begun by print, and a String
- * held in a local variable rather than passed straight from the constant pool.
+ * recognises, including the no-argument println that ends a line begun by print, a String
+ * held in a local variable rather than passed straight from the constant pool, and a null
+ * String, which PrintStream renders as the four characters "null" rather than failing.
  *
  * Compilation and reference run (this exact command produces the committed files):
  *   javac -g --release 21 Console.java && java Console > Console.stdout.txt
@@ -30,6 +31,11 @@ public class Console {
         System.out.println(greeting);
 
         System.out.print(greeting);
+        System.out.println();
+
+        String missing = null;
+        System.out.println(missing);
+        System.out.print(missing);
         System.out.println();
     }
 }

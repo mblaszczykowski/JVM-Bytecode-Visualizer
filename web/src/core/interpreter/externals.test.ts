@@ -107,6 +107,38 @@ describe('execute: printing through System.out', () => {
     ).toEqual(['one', 'two']);
   });
 
+  it('prints a null String as the four characters PrintStream writes for it', () => {
+    const pool = new ConstantPoolBuilder();
+    const println = printStream(pool, 'println', '(Ljava/lang/String;)V');
+    const print = printStream(pool, 'print', '(Ljava/lang/String;)V');
+
+    expect(
+      consoleOf({
+        pool,
+        code: [
+          ...printCall(pool, println, [0x01]),
+          ...[0x01, 0x4c],
+          ...printCall(pool, print, [0x2b]),
+          ...printCall(pool, printStream(pool, 'println', '()V')),
+          0xb1,
+        ],
+      }),
+    ).toEqual(['null', 'null']);
+  });
+
+  it('refuses a reference to the heap where a String is expected', () => {
+    const pool = new ConstantPoolBuilder();
+    const println = printStream(pool, 'println', '(Ljava/lang/String;)V');
+    const error = expectVmError(
+      run({ pool, code: [...printCall(pool, println, [0x04, 0xbc, 0x0a]), 0xb1] }),
+    );
+
+    expect(error).toMatchObject({
+      kind: 'invalid-state',
+      message: 'argument names no known object',
+    });
+  });
+
   it('names System.out on the operand stack instead of leaving a bare number', () => {
     const pool = new ConstantPoolBuilder();
     const snapshots = expectCompleted(

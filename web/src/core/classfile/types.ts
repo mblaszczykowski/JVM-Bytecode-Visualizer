@@ -20,6 +20,14 @@ export const ConstantTag = {
 
 export type ConstantTag = (typeof ConstantTag)[keyof typeof ConstantTag];
 
+const TAG_NAMES: ReadonlyMap<number, string> = new Map(
+  Object.entries(ConstantTag).map(([name, tag]) => [tag, name]),
+);
+
+export function constantTagName(tag: number): string | undefined {
+  return TAG_NAMES.get(tag);
+}
+
 export interface Utf8Constant {
   readonly tag: typeof ConstantTag.Utf8;
   readonly value: string;
@@ -150,7 +158,6 @@ export interface ExceptionTableEntry {
   readonly startPc: number;
   readonly endPc: number;
   readonly handlerPc: number;
-  readonly catchTypeIndex: number;
   readonly catchType?: string;
 }
 
@@ -190,12 +197,7 @@ export interface ClassFile {
 
 export const AccessFlag = {
   Public: 0x0001,
-  Private: 0x0002,
-  Protected: 0x0004,
   Static: 0x0008,
-  Final: 0x0010,
-  Synchronized: 0x0020,
-  Native: 0x0100,
   Abstract: 0x0400,
 } as const;
 

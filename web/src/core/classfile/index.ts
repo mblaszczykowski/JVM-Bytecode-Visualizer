@@ -22,6 +22,7 @@ export {
   AccessFlag,
   accessFlagNames,
   CLASS_ACCESS_FLAGS,
+  constantTagName,
   ConstantTag,
   FIELD_ACCESS_FLAGS,
   isStatic,

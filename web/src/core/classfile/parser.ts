@@ -420,7 +420,6 @@ function readExceptionTable(body: ByteReader, pool: ConstantPool): readonly Exce
       startPc,
       endPc,
       handlerPc,
-      catchTypeIndex,
       ...(catchTypeIndex === 0
         ? {}
         : {

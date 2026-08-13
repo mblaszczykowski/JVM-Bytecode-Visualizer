@@ -1,4 +1,10 @@
-import type { CodeAttribute, LineNumberEntry, LocalVariableEntry, MethodInfo } from '../classfile';
+import type {
+  CodeAttribute,
+  ExceptionTableEntry,
+  LineNumberEntry,
+  LocalVariableEntry,
+  MethodInfo,
+} from '../classfile';
 import { disassemble, type DisassembledCode, type Instruction } from '../disassembler';
 import { VmFault } from './errors';
 import type { ValueKind } from './types';
@@ -44,7 +50,7 @@ export interface StackValue {
 export function prepareMethod(method: MethodInfo, code: CodeAttribute): PreparedMethod {
   const disassembled = disassemble(code.code);
   const flow = flowOf(disassembled, code.code.length);
-  checkBranchTargets(method.name, disassembled.instructions, flow);
+  checkBranchTargets(method.name, disassembled.instructions, flow, code.exceptionTable ?? []);
 
   return {
     name: method.name,
@@ -244,6 +250,7 @@ function checkBranchTargets(
   methodName: string,
   instructions: readonly Instruction[],
   flow: ReadonlyMap<number, FetchedInstruction>,
+  exceptionTable: readonly ExceptionTableEntry[],
 ): void {
   for (const instruction of instructions) {
     const targets =
@@ -256,6 +263,15 @@ function checkBranchTargets(
           { offset: instruction.offset, methodName },
         );
       }
+    }
+  }
+
+  for (const entry of exceptionTable) {
+    if (!flow.has(entry.handlerPc)) {
+      throw new VmFault(
+        { kind: 'bad-branch-target', mnemonic: 'exception handler', target: entry.handlerPc },
+        { offset: entry.startPc, methodName },
+      );
     }
   }
 }

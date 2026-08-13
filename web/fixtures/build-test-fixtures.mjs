@@ -77,6 +77,12 @@ const FIXTURES = Object.freeze([
     runs: true,
   },
   {
+    className: 'StackOps',
+    directory: 'src/core/interpreter/__fixtures__/programs',
+    javap: undefined,
+    runs: true,
+  },
+  {
     className: 'Switches',
     directory: 'src/core/interpreter/__fixtures__/programs',
     javap: undefined,

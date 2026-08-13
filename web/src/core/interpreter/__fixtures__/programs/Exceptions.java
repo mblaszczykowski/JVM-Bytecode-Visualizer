@@ -6,8 +6,9 @@
  * whole scope: nothing in the executable subset can construct an object, so `throw new ...`
  * has nothing to throw. What can be checked is everything that happens afterwards, and that
  * is what this file is: matching a handler, matching one by supertype, picking the first of
- * several, unwinding across a frame that has no handler, `finally` on both paths, and
- * rethrowing a caught exception with `athrow`.
+ * several, unwinding across a frame that has no handler, `finally` on both paths, rethrowing
+ * a caught exception with `athrow`, and the one throw the subset can write for itself,
+ * `throw null`.
  *
  * Compilation and reference run (this exact command produces the committed files):
  *   javac -g --release 21 Exceptions.java && java Exceptions > Exceptions.stdout.txt
@@ -126,6 +127,31 @@ public class Exceptions {
         return 10 / (safe - safe);
     }
 
+    /**
+     * `throw null` compiles to aconst_null followed by athrow. JVMS §6.5 (athrow) says that a
+     * null objectref raises a NullPointerException, so this catch clause is the one that runs.
+     */
+    static int throwingNull() {
+        try {
+            throw null;
+        } catch (NullPointerException e) {
+            return -11;
+        }
+    }
+
+    /** The NullPointerException athrow raised has to unwind like any other. */
+    static int throwingNullAcrossFrames() {
+        try {
+            return rethrowNull();
+        } catch (NullPointerException e) {
+            return -12;
+        }
+    }
+
+    static int rethrowNull() {
+        throw null;
+    }
+
     static int outOfRangeCaught(int n) {
         try {
             return outOfRange(n);
@@ -151,5 +177,7 @@ public class Exceptions {
         System.out.println(negativeSize(3));
         System.out.println(negativeSize(-1));
         System.out.println(outOfRangeCaught(1));
+        System.out.println(throwingNull());
+        System.out.println(throwingNullAcrossFrames());
     }
 }

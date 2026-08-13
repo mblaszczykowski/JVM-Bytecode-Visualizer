@@ -52,8 +52,10 @@ const EXECUTABLE_OPCODES: readonly (readonly [opcode: number, mnemonic: string])
   [0x58, 'pop2'],
   [0x59, 'dup'],
   [0x5a, 'dup_x1'],
+  [0x5b, 'dup_x2'],
   [0x5c, 'dup2'],
   [0x5d, 'dup2_x1'],
+  [0x5e, 'dup2_x2'],
   [0x5f, 'swap'],
   [0x60, 'iadd'],
   [0x64, 'isub'],
@@ -178,7 +180,7 @@ describe('opcode classification', () => {
       .sort((a, b) => a[0] - b[0]);
 
     expect(supported).toEqual(EXECUTABLE_OPCODES);
-    expect(supported).toHaveLength(90);
+    expect(supported).toHaveLength(92);
   });
 
   it('classifies `wide` as a prefix', () => {

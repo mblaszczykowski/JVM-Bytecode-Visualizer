@@ -255,13 +255,7 @@ describe('execute: faults on the member access paths', () => {
         ...[0x4c, 0x05, 0xac],
       ],
       exceptionTable: [
-        {
-          startPc: 0,
-          endPc: 4,
-          handlerPc: 5,
-          catchTypeIndex: pool.classEntry('java/lang/NullPointerException'),
-          catchType: 'java/lang/NullPointerException',
-        },
+        { startPc: 0, endPc: 4, handlerPc: 5, catchType: 'java/lang/NullPointerException' },
       ],
     });
     const completed = expectCompleted(result);

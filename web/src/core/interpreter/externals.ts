@@ -7,6 +7,7 @@ import type { ExternalValue, ValueKind } from './types';
 
 export type ExternalArgument =
   | { readonly kind: 'int'; readonly value: number }
+  | { readonly kind: 'null' }
   | { readonly kind: 'external'; readonly value: ExternalValue };
 
 export interface ExternalCall {
@@ -35,13 +36,17 @@ export class ExternalPool {
     this.budget = budget;
   }
 
+  add(value: ExternalValue): number {
+    return this.values.push(Object.freeze(value)) - 1;
+  }
+
   intern(value: ExternalValue): number {
     const key = `${value.className}|${value.label}|${value.detail ?? ''}`;
     const existing = this.handles.get(key);
     if (existing !== undefined) {
       return existing;
     }
-    const handle = this.values.push(Object.freeze(value)) - 1;
+    const handle = this.add(value);
     this.handles.set(key, handle);
     return handle;
   }
@@ -100,7 +105,10 @@ function intArgument(arg: ExternalArgument | undefined): number {
 }
 
 function textArgument(arg: ExternalArgument | undefined): string {
-  return arg?.kind === 'external' ? (arg.value.text ?? arg.value.label) : '';
+  if (arg?.kind === 'external') {
+    return arg.value.text ?? arg.value.label;
+  }
+  return 'null';
 }
 
 interface ExternalRow {

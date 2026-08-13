@@ -4,6 +4,7 @@ export {
   EXECUTABLE_OPCODES,
   findEntryMethod,
   isEntryMethod,
+  opensFrame,
   type EntryPoint,
 } from './interpreter';
 export {

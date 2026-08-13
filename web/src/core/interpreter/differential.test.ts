@@ -86,6 +86,7 @@ const BITS: DifferentialProgram = {
 const PROGRAMS_UNDER_TEST: readonly DifferentialProgram[] = [
   BITS,
   { name: 'Switches', directory: PROGRAMS, covers: 'tableswitch and lookupswitch' },
+  { name: 'StackOps', directory: PROGRAMS, covers: 'dup, dup_x2 and dup2' },
   { name: 'MathOps', directory: PROGRAMS, covers: 'the java.lang.Math intrinsics' },
   { name: 'Console', directory: PROGRAMS, covers: 'every println and print overload' },
   {

@@ -1,4 +1,5 @@
 import {
+  constantTagName,
   ConstantTag,
   isClassFileError,
   isStatic,
@@ -186,12 +187,10 @@ function dispatchThrow(machine: Machine, detail: VmFaultDetail): boolean {
     const handler = handlerFor(frame, thrown.className);
     if (handler !== undefined) {
       const handle =
-        thrown.handle ??
-        machine.externals.intern(throwableObject(thrown.className, thrown.message));
+        thrown.handle ?? machine.externals.add(throwableObject(thrown.className, thrown.message));
       clearOperandStack(frame);
       push(frame, handle, 'external');
       setPc(frame, handler.handlerPc);
-      frame.currentPc = handler.handlerPc;
       return true;
     }
     machine.callStack.pop();
@@ -274,8 +273,10 @@ const Op = {
   pop2: 0x58,
   dup: 0x59,
   dup_x1: 0x5a,
+  dup_x2: 0x5b,
   dup2: 0x5c,
   dup2_x1: 0x5d,
+  dup2_x2: 0x5e,
   swap: 0x5f,
   iadd: 0x60,
   isub: 0x64,
@@ -528,6 +529,13 @@ function step(machine: Machine, frame: Frame, instruction: Instruction): void {
       pushValues(frame, [value1, value2, value1]);
       break;
     }
+    case Op.dup_x2: {
+      const value1 = popAny(frame);
+      const value2 = popAny(frame);
+      const value3 = popAny(frame);
+      pushValues(frame, [value1, value3, value2, value1]);
+      break;
+    }
     case Op.dup2: {
       const value1 = popAny(frame);
       const value2 = popAny(frame);
@@ -539,6 +547,14 @@ function step(machine: Machine, frame: Frame, instruction: Instruction): void {
       const value2 = popAny(frame);
       const value3 = popAny(frame);
       pushValues(frame, [value2, value1, value3, value2, value1]);
+      break;
+    }
+    case Op.dup2_x2: {
+      const value1 = popAny(frame);
+      const value2 = popAny(frame);
+      const value3 = popAny(frame);
+      const value4 = popAny(frame);
+      pushValues(frame, [value2, value1, value4, value3, value2, value1]);
       break;
     }
     case Op.swap: {
@@ -788,8 +804,11 @@ function switchTargetOf(instruction: Instruction, key: number): number {
 }
 
 function throwFromStack(machine: Machine, frame: Frame): void {
-  const handle = pop(frame, 'external');
-  const value = machine.externals.at(handle);
+  const objectref = popReference(frame);
+  if (objectref.value === NULL_REFERENCE) {
+    throw new VmFault({ kind: 'null-reference' });
+  }
+  const value = externalAt(machine, objectref);
   if (value === undefined || !isThrowableClass(value.className)) {
     throw new VmFault({
       kind: 'invalid-state',
@@ -798,10 +817,14 @@ function throwFromStack(machine: Machine, frame: Frame): void {
   }
   throw new VmFault({
     kind: 'thrown',
-    handle,
+    handle: objectref.value,
     className: value.className,
     label: value.detail ?? value.label,
   });
+}
+
+function externalAt(machine: Machine, reference: StackValue): ExternalValue | undefined {
+  return reference.kind === 'external' ? machine.externals.at(reference.value) : undefined;
 }
 
 function returnFromFrame(machine: Machine, returned: StackValue | undefined): void {
@@ -836,12 +859,8 @@ function pushPoolConstant(machine: Machine, frame: Frame, poolIndex: number): vo
   throw new VmFault({ kind: 'unsupported-constant', target: describeConstant(entry, poolIndex) });
 }
 
-const TAG_NAMES: ReadonlyMap<number, string> = new Map(
-  Object.entries(ConstantTag).map(([name, tag]) => [tag, name]),
-);
-
 function describeConstant(entry: ConstantPoolEntry | undefined, index: number): string {
-  const named = entry === undefined ? undefined : TAG_NAMES.get(entry.tag);
+  const named = entry === undefined ? undefined : constantTagName(entry.tag);
   return named === undefined
     ? `constant pool entry #${String(index)}`
     : `the ${named} constant at #${String(index)}`;
@@ -964,18 +983,24 @@ function popArguments(
 ): readonly ExternalArgument[] {
   const args = new Array<ExternalArgument>(parameters.length);
   for (let index = parameters.length - 1; index >= 0; index -= 1) {
-    const kind = parameters[index];
-    if (kind === 'external') {
-      const value = machine.externals.at(pop(frame, 'external'));
-      if (value === undefined) {
-        throw new VmFault({ kind: 'invalid-state', message: 'argument names no known object' });
-      }
-      args[index] = { kind: 'external', value };
-    } else {
-      args[index] = { kind: 'int', value: pop(frame, 'int') };
-    }
+    args[index] =
+      parameters[index] === 'external'
+        ? popExternalArgument(machine, frame)
+        : { kind: 'int', value: pop(frame, 'int') };
   }
   return args;
+}
+
+function popExternalArgument(machine: Machine, frame: Frame): ExternalArgument {
+  const reference = popReference(frame);
+  if (reference.value === NULL_REFERENCE) {
+    return { kind: 'null' };
+  }
+  const value = externalAt(machine, reference);
+  if (value === undefined) {
+    throw new VmFault({ kind: 'invalid-state', message: 'argument names no known object' });
+  }
+  return { kind: 'external', value };
 }
 
 function invokeStatic(machine: Machine, frame: Frame, poolIndex: number): void {
@@ -1050,21 +1075,39 @@ function cacheCall(
   poolIndex: number,
   reference: MethodReference,
 ): ResolvedCall | undefined {
-  const method = findMethod(machine.classFile, reference.name, reference.descriptor);
-  const code = method?.code;
-  const parameters = parameterKinds(reference.descriptor);
-  if (method === undefined || code === undefined || parameters === undefined) {
+  const found = executableMethod(machine.classFile, reference.name, reference.descriptor);
+  if (found === undefined) {
     return undefined;
   }
 
-  const resolved: ResolvedCall = {
-    method,
-    code,
-    parameters,
-    isStatic: isStatic(method.accessFlags),
-  };
+  const resolved: ResolvedCall = { ...found, isStatic: isStatic(found.method.accessFlags) };
   machine.calls.set(poolIndex, resolved);
   return resolved;
+}
+
+function executableMethod(
+  classFile: ClassFile,
+  name: string,
+  descriptor: string,
+): Omit<ResolvedCall, 'isStatic'> | undefined {
+  const method = findMethod(classFile, name, descriptor);
+  const code = method?.code;
+  const parameters = parameterKinds(descriptor);
+  if (method === undefined || code === undefined || parameters === undefined) {
+    return undefined;
+  }
+  return { method, code, parameters };
+}
+
+export function opensFrame(
+  classFile: ClassFile,
+  owner: string,
+  name: string,
+  descriptor: string,
+): boolean {
+  return (
+    owner === classFile.thisClassName && executableMethod(classFile, name, descriptor) !== undefined
+  );
 }
 
 function prepare(

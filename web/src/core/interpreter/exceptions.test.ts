@@ -20,7 +20,6 @@ function handler(
     startPc,
     endPc,
     handlerPc,
-    catchTypeIndex: catchType === undefined ? 0 : 1,
     ...(catchType === undefined ? {} : { catchType }),
   };
 }
@@ -76,6 +75,30 @@ describe('the exception table', () => {
     ]);
 
     expect(expectCompleted(result).returnValue).toBe(-1);
+  });
+
+  it('rejects a handler offset that is not the start of an instruction (JVMS §4.9.1)', () => {
+    const result = execute(
+      syntheticClass({
+        methods: [
+          {
+            name: 'main',
+            descriptor: '()I',
+            code: [0x11, 0x00, 0x03, 0x03, 0x6c, 0xac],
+            exceptionTable: [handler(0, 5, 1, 'java/lang/ArithmeticException')],
+          },
+        ],
+      }),
+    );
+
+    expect(expectVmError(result)).toEqual({
+      kind: 'bad-branch-target',
+      mnemonic: 'exception handler',
+      target: 1,
+      offset: 0,
+      methodName: 'main',
+    });
+    expect(result.snapshots).toEqual([]);
   });
 
   it('enters the handler with the exception alone on the operand stack', () => {
@@ -139,6 +162,60 @@ describe('the objects a machine-raised exception leaves behind', () => {
         detail: 'ArrayIndexOutOfBoundsException: index 6 out of bounds for length 1',
       },
     ]);
+  });
+
+  it('gives two throws two objects, even when the detail is the same (JVMS §2.12)', () => {
+    const result = execute(
+      syntheticClass({
+        methods: [
+          {
+            name: 'main',
+            descriptor: '()I',
+            code: [
+              ...[0x04, 0x03, 0x6c, 0x57, 0x4c],
+              ...[0x04, 0x03, 0x6c, 0x57, 0x4d],
+              ...[0x2b, 0x2c, 0xa5, 0x00, 0x05, 0x03, 0xac, 0x04, 0xac],
+            ],
+            maxLocals: 3,
+            exceptionTable: [
+              handler(0, 4, 4, 'java/lang/ArithmeticException'),
+              handler(5, 9, 9, 'java/lang/ArithmeticException'),
+            ],
+          },
+        ],
+      }),
+    );
+    const completed = expectCompleted(result);
+    const raised = {
+      className: 'java/lang/ArithmeticException',
+      label: 'ArithmeticException',
+      detail: 'ArithmeticException: / by zero',
+    };
+
+    expect(completed.returnValue).toBe(0);
+    expect(completed.snapshots.at(-1)?.externals).toEqual([raised, raised]);
+  });
+
+  it('still gives one object to every ldc of the same String constant', () => {
+    const pool = new ConstantPoolBuilder();
+    const text = pool.stringEntry('shared');
+    const completed = expectCompleted(
+      execute(
+        syntheticClass({
+          pool,
+          methods: [
+            {
+              name: 'main',
+              descriptor: '()I',
+              code: [0x12, text, 0x12, text, 0xa5, 0x00, 0x05, 0x03, 0xac, 0x04, 0xac],
+            },
+          ],
+        }),
+      ),
+    );
+
+    expect(completed.returnValue).toBe(1);
+    expect(completed.snapshots.at(-1)?.externals).toHaveLength(1);
   });
 
   it('interns nothing while no handler is found', () => {
@@ -255,6 +332,57 @@ describe('athrow', () => {
       className: 'java/lang/ArrayIndexOutOfBoundsException',
       label: 'ArrayIndexOutOfBoundsException: index 9 out of bounds for length 1',
       offset: 17,
+    });
+  });
+
+  it('raises NullPointerException when the reference it pops is null (JVMS §6.5)', () => {
+    const result = execute(
+      syntheticClass({
+        methods: [
+          {
+            name: 'main',
+            descriptor: '()I',
+            code: [0x01, 0xbf, 0x4c, 0x02, 0xac],
+            maxLocals: 2,
+            exceptionTable: [handler(0, 2, 2, 'java/lang/NullPointerException')],
+          },
+        ],
+      }),
+    );
+    const completed = expectCompleted(result);
+
+    expect(completed.returnValue).toBe(-1);
+    expect(completed.snapshots.at(-1)?.externals).toEqual([
+      {
+        className: 'java/lang/NullPointerException',
+        label: 'NullPointerException',
+        detail: 'NullPointerException: the reference is null',
+      },
+    ]);
+  });
+
+  it('reports the null it could not throw when nothing catches it', () => {
+    const error = expectVmError(
+      execute(
+        syntheticClass({ methods: [{ name: 'main', descriptor: '()I', code: [0x01, 0xbf] }] }),
+      ),
+    );
+
+    expect(error).toMatchObject({ kind: 'null-reference', offset: 1, methodName: 'main' });
+  });
+
+  it('refuses a reference to something on the heap', () => {
+    const error = expectVmError(
+      execute(
+        syntheticClass({
+          methods: [{ name: 'main', descriptor: '()I', code: [0x04, 0xbc, T_INT, 0xbf] }],
+        }),
+      ),
+    );
+
+    expect(error).toMatchObject({
+      kind: 'invalid-state',
+      message: 'athrow needs a throwable on the operand stack, found an unknown object',
     });
   });
 

@@ -4,11 +4,11 @@
   "instructions": 1173738,
   "classFileMajorVersions": [49, 51, 52, 53],
   "classesWithRunnableEntry": 1,
-  "fullyExecutableMethods": 57732,
+  "fullyExecutableMethods": 57734,
   "fullyExecutableMethodPercent": 65.2,
   "distinctOpcodesSeen": 196,
-  "distinctOpcodesExecutable": 90,
-  "instructionsExecutable": 1073924,
+  "distinctOpcodesExecutable": 91,
+  "instructionsExecutable": 1073934,
   "instructionCoveragePercent": 91.5,
   "mostCommon": [
     {

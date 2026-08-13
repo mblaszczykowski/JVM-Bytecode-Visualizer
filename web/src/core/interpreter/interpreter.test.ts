@@ -15,7 +15,13 @@ import {
   syntheticClass,
   SYNTHETIC_CLASS_NAME,
 } from './__fixtures__/synthetic-class';
-import { EXECUTABLE_OPCODES, execute, findEntryMethod, isEntryMethod } from './interpreter';
+import {
+  EXECUTABLE_OPCODES,
+  execute,
+  findEntryMethod,
+  isEntryMethod,
+  opensFrame,
+} from './interpreter';
 import type { Snapshot, StackFrame } from './types';
 
 const FACTORIAL_CLASS = new URL('../classfile/__fixtures__/Factorial.class', import.meta.url);
@@ -689,8 +695,14 @@ describe('execute: remaining operand stack instructions', () => {
   it.each([
     { mnemonic: 'pop2', code: [0x04, 0x05, 0x06, 0x58, 0xac], answer: 1 },
     { mnemonic: 'dup_x1', code: [0x04, 0x05, 0x5a, 0x57, 0x57, 0xac], answer: 2 },
+    { mnemonic: 'dup_x2', code: [0x04, 0x05, 0x06, 0x5b, 0x57, 0x57, 0x57, 0xac], answer: 3 },
     { mnemonic: 'dup2', code: [0x04, 0x05, 0x5c, 0x57, 0xac], answer: 1 },
     { mnemonic: 'dup2_x1', code: [0x04, 0x05, 0x06, 0x5d, 0x57, 0x57, 0x57, 0xac], answer: 3 },
+    {
+      mnemonic: 'dup2_x2',
+      code: [0x04, 0x05, 0x06, 0x07, 0x5e, 0x57, 0x57, 0x57, 0x57, 0x57, 0xac],
+      answer: 3,
+    },
     { mnemonic: 'swap', code: [0x04, 0x05, 0x5f, 0xac], answer: 1 },
   ])('$mnemonic leaves $answer on top', ({ code, answer }) => {
     expect(evaluate(code)).toBe(answer);
@@ -705,6 +717,24 @@ describe('execute: remaining operand stack instructions', () => {
     expect(snapshots[4]?.callStack[0]?.operandStack).toEqual([2, 3, 1, 2, 3]);
   });
 
+  it('inserts the copy below both of the values under it for dup_x2 (JVMS §6.5, form 1)', () => {
+    const classFile = syntheticClass({
+      methods: [{ name: 'main', descriptor: '()V', code: [0x04, 0x05, 0x06, 0x5b, 0xb1] }],
+    });
+    const snapshots = expectCompleted(execute(classFile)).snapshots;
+
+    expect(snapshots[4]?.callStack[0]?.operandStack).toEqual([3, 1, 2, 3]);
+  });
+
+  it('inserts both copies below both of the values under them for dup2_x2 (form 1)', () => {
+    const classFile = syntheticClass({
+      methods: [{ name: 'main', descriptor: '()V', code: [0x04, 0x05, 0x06, 0x07, 0x5e, 0xb1] }],
+    });
+    const snapshots = expectCompleted(execute(classFile)).snapshots;
+
+    expect(snapshots[5]?.callStack[0]?.operandStack).toEqual([3, 4, 1, 2, 3, 4]);
+  });
+
   it('moves references without turning them into ints', () => {
     const classFile = syntheticClass({
       methods: [{ name: 'main', descriptor: '()V', code: [0x04, 0xbc, 0x0a, 0x10, 7, 0x5f, 0xb1] }],
@@ -713,6 +743,59 @@ describe('execute: remaining operand stack instructions', () => {
 
     expect(frame?.operandKinds).toEqual(['int', 'ref']);
     expect(frame?.operandStack).toEqual([7, 0]);
+  });
+});
+
+describe('opensFrame', () => {
+  const CALLABLE = syntheticClass({
+    methods: [
+      { name: 'main', descriptor: '()I', code: [0x03, 0xac] },
+      { name: 'helper', descriptor: '(II)I', code: [0x1a, 0xac] },
+      { name: 'widening', descriptor: '(J)I', code: [0x03, 0xac] },
+      { name: 'declaredOnly', descriptor: '()V' },
+    ],
+  });
+
+  it('answers true for a method of the loaded class the interpreter can run', () => {
+    expect(opensFrame(CALLABLE, SYNTHETIC_CLASS_NAME, 'helper', '(II)I')).toBe(true);
+  });
+
+  it('answers false for a member of any class other than the one being executed', () => {
+    expect(opensFrame(CALLABLE, 'java/lang/Object', '<init>', '()V')).toBe(false);
+    expect(opensFrame(CALLABLE, 'java/io/PrintStream', 'println', '(I)V')).toBe(false);
+  });
+
+  it('answers false for a name or descriptor the class does not declare', () => {
+    expect(opensFrame(CALLABLE, SYNTHETIC_CLASS_NAME, 'missing', '(II)I')).toBe(false);
+    expect(opensFrame(CALLABLE, SYNTHETIC_CLASS_NAME, 'helper', '(I)I')).toBe(false);
+  });
+
+  it('answers false for a declared method that carries no Code attribute', () => {
+    expect(opensFrame(CALLABLE, SYNTHETIC_CLASS_NAME, 'declaredOnly', '()V')).toBe(false);
+  });
+
+  it('answers false for a descriptor outside the int and reference subset', () => {
+    expect(opensFrame(CALLABLE, SYNTHETIC_CLASS_NAME, 'widening', '(J)I')).toBe(false);
+  });
+
+  it('answers what the call itself does, frame for frame', () => {
+    const pool = new ConstantPoolBuilder();
+    const helper = pool.methodref(SYNTHETIC_CLASS_NAME, 'helper', '(II)I');
+    const widening = pool.methodref(SYNTHETIC_CLASS_NAME, 'widening', '(J)I');
+    const classFile = syntheticClass({
+      pool,
+      methods: [
+        { name: 'main', descriptor: '()I', code: [0x04, 0x05, 0xb8, 0x00, helper, 0xac] },
+        { name: 'callsWidening', descriptor: '()I', code: [0xb8, 0x00, widening, 0xac] },
+        { name: 'helper', descriptor: '(II)I', code: [0x1a, 0xac] },
+        { name: 'widening', descriptor: '(J)I', code: [0x03, 0xac] },
+      ],
+    });
+
+    expect(maxCallStackDepth(expectCompleted(execute(classFile)).snapshots)).toBe(2);
+    expect(expectVmError(execute(classFile, { entryMethod: 'callsWidening' })).kind).toBe(
+      'unsupported-call',
+    );
   });
 });
 

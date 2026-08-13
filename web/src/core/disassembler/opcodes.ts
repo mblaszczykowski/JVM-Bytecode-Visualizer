@@ -371,8 +371,10 @@ const STACK_EFFECTS = new Map<number, StackEffect>([
   [0x58, fixed(2, 0)],
   [0x59, fixed(1, 2)],
   [0x5a, fixed(2, 3)],
+  [0x5b, fixed(3, 4)],
   [0x5c, fixed(2, 4)],
   [0x5d, fixed(3, 5)],
+  [0x5e, fixed(4, 6)],
   [0x5f, fixed(2, 2)],
 
   [0x60, BINARY_ARITHMETIC],

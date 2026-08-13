@@ -474,8 +474,8 @@ describe('parseClassFile: the exception table (JVMS §4.7.3)', () => {
 
   it('reads every row and resolves the class each one catches', () => {
     expect(parseClassFile(buffer).methods[0]?.code?.exceptionTable).toEqual([
-      { startPc: 0, endPc: 1, handlerPc: 1, catchTypeIndex: 7, catchType: ARITHMETIC },
-      { startPc: 0, endPc: 1, handlerPc: 1, catchTypeIndex: 0 },
+      { startPc: 0, endPc: 1, handlerPc: 1, catchType: ARITHMETIC },
+      { startPc: 0, endPc: 1, handlerPc: 1 },
     ]);
   });
 
@@ -488,7 +488,7 @@ describe('parseClassFile: the exception table (JVMS §4.7.3)', () => {
   it('keeps the rows in the order the class file wrote them', () => {
     const rows = parseClassFile(buffer).methods[0]?.code?.exceptionTable ?? [];
 
-    expect(rows.map((row) => row.catchTypeIndex)).toEqual([7, 0]);
+    expect(rows.map((row) => row.catchType)).toEqual([ARITHMETIC, undefined]);
   });
 });
 

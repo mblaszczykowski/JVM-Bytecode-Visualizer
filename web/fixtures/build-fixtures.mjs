@@ -70,7 +70,7 @@ export const SUPPORTED_INSTRUCTION_SET = Object.freeze({
   increment: ['iinc', 'iinc_w'],
   arrays: ['newarray', 'iaload', 'iastore', 'arraylength'],
   objects: ['new', 'getfield', 'putfield'],
-  stack: ['pop', 'pop2', 'dup', 'dup_x1', 'dup2', 'dup2_x1', 'swap'],
+  stack: ['pop', 'pop2', 'dup', 'dup_x1', 'dup_x2', 'dup2', 'dup2_x1', 'dup2_x2', 'swap'],
   arithmetic: ['iadd', 'isub', 'imul', 'idiv', 'irem', 'ineg'],
   'shifts and bitwise logic': ['ishl', 'ishr', 'iushr', 'iand', 'ior', 'ixor'],
   'narrowing conversions': ['i2b', 'i2c', 'i2s'],
