@@ -471,7 +471,13 @@ web/
     disassembler/   full opcode table, decoding, branch targets, switch tables
     interpreter/    execute() → snapshots, frames, int32, heap, external members
   src/workers/      the run off the main thread, streamed back in batches
-  src/components/   panels, transport, branch gutter, depth chart, constant pool
+  src/components/   React, grouped by where each surface appears
+    panels/         the ten panels and their rows, gutter and highlights
+    transport/      play, scrub, the depth chart, the tour strip
+    chrome/         shell, toolbar, theme, error banner and boundary
+    dialogs/        glossary, keyboard help, the editor, the example sheet
+    welcome/        first screen, upload, what the machine can run
+    ui/             button, pill, segmented control, reference chip
   src/hooks/        the player, row navigation, scroll follow, dialog focus
   src/services/     program building, app state machine, derivations, compile client
   corpus/           the Maven Central fetch script and the committed scan

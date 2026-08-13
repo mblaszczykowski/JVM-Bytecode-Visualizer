@@ -22,7 +22,7 @@ import {
   type LoadedProgram,
   type MethodListing,
 } from '../../services/program';
-import type { ExampleOption } from '../ExamplePicker';
+import type { ExampleOption } from '../dialogs/ExamplePicker';
 
 const CLASS_FILE = 'Factorial.class';
 const SOURCE_FILE = 'Factorial.java';

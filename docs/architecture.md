@@ -33,7 +33,7 @@ flowchart TD
   end
   subgraph ui["web/src/components + hooks: React"]
     player["useExecutionPlayer<br/>index, play, seek"]
-    panels["panels, transport, gutter, depth chart"]
+    panels["panels/, transport/, chrome/<br/>dialogs/, welcome/, ui/"]
   end
   app --> core
   app --> worker
