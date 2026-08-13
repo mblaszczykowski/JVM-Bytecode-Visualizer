@@ -21,6 +21,7 @@ import { NO_SNAPSHOTS, type StackFrame } from './core/interpreter';
 import { useExamplePreviews } from './hooks/useExamplePreviews';
 import { useExecutionPlayer } from './hooks/useExecutionPlayer';
 import { useFileDropGuard } from './hooks/useFileDropGuard';
+import { useGuidedTour } from './hooks/useGuidedTour';
 import { useProgramView } from './hooks/useProgramView';
 import { useTransportShortcuts } from './hooks/useTransportShortcuts';
 import {
@@ -55,7 +56,6 @@ import {
   type MethodListing,
 } from './services/program';
 import type { ProgramContext } from './services/telemetry';
-import { resolveTour, tourFor, toursFor, type Tour } from './services/tours';
 import {
   defaultProgramRunner,
   isRunCancelled,
@@ -66,8 +66,6 @@ import {
 const APP_NAME = 'JVM Bytecode Visualizer';
 
 const NO_DIAGNOSTICS: readonly CompileDiagnostic[] = [];
-
-const NO_TOURS: readonly Tour[] = [];
 
 const NO_FRAMES: readonly StackFrame[] = [];
 
@@ -177,9 +175,6 @@ export function App({
   const [embedded] = useState(() => isEmbedded(window.location.search));
   const pendingExample = useRef(openedAt?.exampleId);
   const pendingStep = useRef(openedAt?.stepIndex);
-  const pendingTour = useRef(openedAt?.tour);
-  const [tourId, setTourId] = useState<string | undefined>(undefined);
-  const [tourStop, setTourStop] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -353,65 +348,18 @@ export function App({
     }
   }, [loadedExampleId, openedAt, stepCount, seekTo]);
 
-  const availableTours = loadedExampleId === undefined ? NO_TOURS : toursFor(loadedExampleId);
-  const activeTour = useMemo(() => {
-    if (loadedExampleId === undefined || tourId === undefined) {
-      return undefined;
-    }
-    const tour = tourFor(loadedExampleId, tourId);
-    if (tour === undefined) {
-      return undefined;
-    }
-    const stops = resolveTour(tour, snapshots);
-    return stops.length === 0 ? undefined : { tour, stops };
-  }, [loadedExampleId, tourId, snapshots]);
-
-  const goToStop = (index: number) => {
-    const stop = activeTour?.stops[index];
-    if (stop === undefined) {
-      return;
-    }
-    setTourStop(index);
-    seekTo(stop.step);
-  };
-
-  const startTour = (id: string) => {
-    setTourId(id);
-    setTourStop(0);
-  };
-
-  const leaveTour = () => {
-    setTourId(undefined);
-    setTourStop(0);
-  };
-
-  useEffect(() => {
-    const link = pendingTour.current;
-    if (link === undefined || stepCount === 0 || loadedExampleId !== openedAt?.exampleId) {
-      return;
-    }
-    pendingTour.current = undefined;
-    setTourId(link.tourId);
-    setTourStop(link.stopIndex);
-  }, [loadedExampleId, openedAt, stepCount]);
-
-  useEffect(() => {
-    const stop = activeTour?.stops[tourStop];
-    if (stop !== undefined) {
-      seekTo(stop.step);
-    }
-  }, [activeTour, tourStop, seekTo]);
+  const tour = useGuidedTour({ exampleId: loadedExampleId, snapshots, seekTo, openedAt });
 
   useEffect(() => {
     if (loadedExampleId === undefined) {
       return;
     }
-    if (activeTour !== undefined) {
-      writeTourLink(loadedExampleId, activeTour.tour.id, tourStop);
+    if (tour.active !== undefined) {
+      writeTourLink(loadedExampleId, tour.active.tour.id, tour.stopIndex);
       return;
     }
     writeDeepLink(loadedExampleId, stepCount === 0 ? undefined : player.stepIndex);
-  }, [loadedExampleId, activeTour, tourStop, player.stepIndex, stepCount]);
+  }, [loadedExampleId, tour.active, tour.stopIndex, player.stepIndex, stepCount]);
 
   useTransportShortcuts({
     enabled: snapshots.length > 0 && editor.kind === 'closed',
@@ -601,12 +549,12 @@ export function App({
         <>
           {!canReplay ? null : (
             <TourStrip
-              available={availableTours}
-              active={activeTour}
-              stopIndex={tourStop}
-              onStart={startTour}
-              onGoToStop={goToStop}
-              onLeave={leaveTour}
+              available={tour.available}
+              active={tour.active}
+              stopIndex={tour.stopIndex}
+              onStart={tour.start}
+              onGoToStop={tour.goToStop}
+              onLeave={tour.leave}
             />
           )}
           {footerNotice === undefined ? null : (

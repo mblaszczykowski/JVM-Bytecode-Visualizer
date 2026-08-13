@@ -462,6 +462,20 @@ describe('a link into a run', () => {
     );
   });
 
+  it('opens on the tour stop the hash names', async () => {
+    window.history.replaceState(null, '', '#/factorial/tour/recursion/3');
+    stubFetch(exampleRoutes());
+
+    render(<App />);
+
+    await waitFor(() =>
+      expect(screen.getByTestId('step-counter')).toHaveTextContent(
+        `step 10 / ${String(FACTORIAL_STEPS)}`,
+      ),
+    );
+    expect(screen.getByTestId('tour-strip')).toHaveTextContent('3 / 6');
+  });
+
   it('drops a step past the end of the run rather than clamping to it', async () => {
     window.history.replaceState(null, '', `#/factorial/${String(FACTORIAL_STEPS + 1)}`);
     stubFetch(exampleRoutes());
@@ -494,6 +508,24 @@ describe('a link into a run', () => {
     seekTo(12);
 
     expect(window.location.hash).toBe('#/factorial/13');
+  });
+
+  it('writes the tour stop back, and the step again once the tour is left', async () => {
+    stubFetch(exampleRoutes());
+    await openFactorial();
+
+    fireEvent.click(screen.getByTestId('tour-start'));
+
+    expect(window.location.hash).toBe('#/factorial/tour/recursion/1');
+
+    fireEvent.click(screen.getByTestId('tour-next'));
+
+    expect(window.location.hash).toBe('#/factorial/tour/recursion/2');
+
+    fireEvent.click(screen.getByTestId('tour-leave'));
+
+    expect(screen.queryByTestId('tour-strip')).not.toBeInTheDocument();
+    expect(window.location.hash).toBe('#/factorial/5');
   });
 
   it('says nothing about an upload, which the link could not reach', async () => {
