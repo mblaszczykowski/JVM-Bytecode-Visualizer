@@ -8,7 +8,6 @@ import { withHistory, type RunCommand, type RunEvent } from './run-protocol';
 
 afterEach(() => {
   vi.restoreAllMocks();
-  vi.resetModules();
 });
 
 async function postedFor(command: RunCommand): Promise<readonly RunEvent[]> {
@@ -39,5 +38,21 @@ describe('the run worker', () => {
     expect(withHistory(done.result, snapshots)).toEqual(
       execute(classFile, { entryMethod: 'main', maxSteps: 20_000 }),
     );
+  });
+
+  it('registers one listener, however many times the module is imported', async () => {
+    const classFile = parseClassFile(readExampleBytes('Gcd.class'));
+
+    const posted = await postedFor({ classFile, entryMethod: 'main', maxSteps: 20_000 });
+
+    expect(posted.filter((event) => event.kind === 'done')).toHaveLength(1);
+  });
+
+  it('carries the whole command across the structured clone the worker boundary needs', () => {
+    const classFile = parseClassFile(readExampleBytes('Gcd.class'));
+    const command: RunCommand = { classFile, entryMethod: 'main', maxSteps: 20_000 };
+
+    expect(() => structuredClone(command)).not.toThrow();
+    expect(structuredClone(command).classFile.thisClassName).toBe(classFile.thisClassName);
   });
 });

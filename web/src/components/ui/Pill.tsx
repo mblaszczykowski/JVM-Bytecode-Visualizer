@@ -11,15 +11,14 @@ const TONE: Record<PillTone, string> = {
 interface PillProps {
   readonly tone?: PillTone;
   readonly title?: string | undefined;
-  readonly className?: string;
   readonly children: ReactNode;
 }
 
-export function Pill({ tone = 'neutral', title, className = '', children }: PillProps) {
+export function Pill({ tone = 'neutral', title, children }: PillProps) {
   return (
     <span
       title={title}
-      className={`shrink-0 self-center rounded-chip px-1.5 py-px text-micro leading-none ${TONE[tone]} ${className}`}
+      className={`shrink-0 self-center rounded-chip px-1.5 py-px text-micro leading-none ${TONE[tone]}`}
     >
       {children}
     </span>

@@ -222,4 +222,27 @@ describe('fetchExampleResources', () => {
       status: 404,
     });
   });
+
+  it('gives up on a manifest whose body never arrives', async () => {
+    vi.useFakeTimers();
+    try {
+      const stalled = new Response(new ReadableStream(), {
+        headers: { 'Content-Type': 'application/json' },
+      });
+      vi.stubGlobal('fetch', () => Promise.resolve(stalled));
+
+      const settled = vi.fn();
+      const pending = fetchExampleManifest().then(settled, settled);
+
+      await vi.advanceTimersByTimeAsync(EXAMPLE_TIMEOUT_MS + 1);
+      await pending;
+
+      expect(settled).toHaveBeenCalledOnce();
+      expect(settled.mock.calls[0]?.[0]).toMatchObject({
+        detail: { kind: 'network', reason: expect.stringContaining('no answer') as string },
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

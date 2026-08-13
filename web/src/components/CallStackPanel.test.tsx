@@ -57,7 +57,7 @@ describe('CallStackPanel', () => {
     expect(within(oldest).queryByText(/^pc /)).not.toBeInTheDocument();
   });
 
-  it('sends the frames below the newest two back a text step, not down an opacity ladder', () => {
+  it('recedes the older frames by a text step, then by the declared row utility', () => {
     render(<CallStackPanel frames={deepestFrames} />);
 
     expect(frameAt(0)).toHaveClass('text-accent-text');
@@ -66,8 +66,8 @@ describe('CallStackPanel', () => {
     expect(frameAt(3)).toHaveClass('row-unreached', 'text-fg-3');
     expect(frameAt(4)).toHaveClass('row-unreached', 'text-fg-3');
 
-    const opacities = screen.getAllByTestId('call-frame').map((frame) => frame.style.opacity);
-    expect(new Set(opacities).size).toBe(1);
+    const classNames = screen.getAllByTestId('call-frame').flatMap((frame) => [...frame.classList]);
+    expect(classNames.filter((name) => name.startsWith('opacity-'))).toEqual([]);
   });
 
   it('folds the middle of a deep stack into one expandable row', () => {

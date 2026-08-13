@@ -336,4 +336,30 @@ describe('the answers the service records for this client', () => {
   it('names the busy service by the code the recorded answer carries', () => {
     expect(errorDocument(recordedResponse('compiler-busy')).error).toBe(COMPILER_BUSY);
   });
+
+  it('gives up on a 200 whose body never arrives', async () => {
+    vi.useFakeTimers();
+    try {
+      const stalled = {
+        ok: true,
+        status: 200,
+        headers: new Headers(),
+        json: () => new Promise<unknown>(() => undefined),
+      };
+      vi.stubGlobal('fetch', () => Promise.resolve(stalled as unknown as Response));
+
+      const settled = vi.fn();
+      const pending = compile('https://compile.example', 'public class A { }').then(settled);
+
+      await vi.advanceTimersByTimeAsync(COMPILE_TIMEOUT_MS + 1);
+      await pending;
+
+      expect(settled).toHaveBeenCalledWith({
+        kind: 'unavailable',
+        reason: { kind: 'timeout', ms: COMPILE_TIMEOUT_MS },
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

@@ -53,14 +53,13 @@ const TIMED_OUT = `no answer within ${String(EXAMPLE_TIMEOUT_MS / 1000)} s`;
 
 export async function fetchExampleManifest(): Promise<ExampleManifest> {
   const url = exampleUrl(MANIFEST_FILE);
-  const response = await request(url);
-
-  let raw: unknown;
-  try {
-    raw = await response.json();
-  } catch (error) {
-    throw new ExampleLoadError({ kind: 'invalid-json', url, reason: reasonOf(error) });
-  }
+  const raw = await request(url, async (response) => {
+    try {
+      return (await response.json()) as unknown;
+    } catch (error) {
+      throw new ExampleLoadError({ kind: 'invalid-json', url, reason: reasonOf(error) });
+    }
+  });
 
   const parsed = exampleManifestSchema.safeParse(raw);
   if (!parsed.success) {
@@ -90,16 +89,30 @@ export function shortTitleOf(entry: ExampleEntry): string {
   return head === undefined ? entry.title : head.trim();
 }
 
-async function request(url: string): Promise<Response> {
+function abortRejection(signal: AbortSignal): Promise<never> {
+  return new Promise((_, reject) => {
+    signal.addEventListener('abort', () => {
+      reject(new Error(TIMED_OUT));
+    });
+  });
+}
+
+async function request<T>(url: string, read: (response: Response) => Promise<T>): Promise<T> {
   const controller = new AbortController();
   const timer = setTimeout(() => {
     controller.abort();
   }, EXAMPLE_TIMEOUT_MS);
 
-  let response: Response;
   try {
-    response = await fetch(url, { signal: controller.signal });
+    const response = await fetch(url, { signal: controller.signal });
+    if (!response.ok) {
+      throw new ExampleLoadError({ kind: 'http', url, status: response.status });
+    }
+    return await Promise.race([read(response), abortRejection(controller.signal)]);
   } catch (error) {
+    if (error instanceof ExampleLoadError) {
+      throw error;
+    }
     throw new ExampleLoadError({
       kind: 'network',
       url,
@@ -108,27 +121,12 @@ async function request(url: string): Promise<Response> {
   } finally {
     clearTimeout(timer);
   }
-
-  if (!response.ok) {
-    throw new ExampleLoadError({ kind: 'http', url, status: response.status });
-  }
-  return response;
 }
 
 async function fetchBinary(url: string): Promise<ArrayBuffer> {
-  const response = await request(url);
-  try {
-    return await response.arrayBuffer();
-  } catch (error) {
-    throw new ExampleLoadError({ kind: 'network', url, reason: reasonOf(error) });
-  }
+  return request(url, (response) => response.arrayBuffer());
 }
 
 async function fetchText(url: string): Promise<string> {
-  const response = await request(url);
-  try {
-    return await response.text();
-  } catch (error) {
-    throw new ExampleLoadError({ kind: 'network', url, reason: reasonOf(error) });
-  }
+  return request(url, (response) => response.text());
 }

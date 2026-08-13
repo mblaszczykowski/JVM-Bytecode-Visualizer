@@ -366,7 +366,7 @@ export function App({
   const tour = useGuidedTour({ exampleId: loadedExampleId, snapshots, seekTo, openedAt });
 
   useEffect(() => {
-    if (loadedExampleId === undefined) {
+    if (loadedExampleId === undefined || player.isPlaying) {
       return;
     }
     if (tour.active !== undefined) {
@@ -374,7 +374,7 @@ export function App({
       return;
     }
     writeDeepLink(loadedExampleId, stepCount === 0 ? undefined : player.stepIndex);
-  }, [loadedExampleId, tour.active, tour.stopIndex, player.stepIndex, stepCount]);
+  }, [loadedExampleId, tour.active, tour.stopIndex, player.stepIndex, player.isPlaying, stepCount]);
 
   useTransportShortcuts({
     enabled: snapshots.length > 0 && editor.kind === 'closed',

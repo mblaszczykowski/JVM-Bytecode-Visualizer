@@ -55,7 +55,11 @@ export function compileApiBaseUrl(): string | undefined {
 
 export async function checkHealth(baseUrl: string): Promise<boolean> {
   const attempt = await send(`${baseUrl}/actuator/health`, HEALTH_TIMEOUT_MS);
-  return attempt.kind === 'response' && attempt.response.ok;
+  if (attempt.kind === 'failed') {
+    return false;
+  }
+  attempt.done();
+  return attempt.response.ok;
 }
 
 export async function compile(baseUrl: string, source: string): Promise<CompileResult> {
@@ -68,6 +72,17 @@ export async function compile(baseUrl: string, source: string): Promise<CompileR
     return { kind: 'unavailable', reason: attempt.reason };
   }
 
+  try {
+    return await Promise.race([
+      interpret(attempt),
+      attempt.expired.then<CompileResult>((reason) => ({ kind: 'unavailable', reason })),
+    ]);
+  } finally {
+    attempt.done();
+  }
+}
+
+async function interpret(attempt: Extract<Attempt, { kind: 'response' }>): Promise<CompileResult> {
   const { response } = attempt;
   if (response.status === BAD_REQUEST) {
     return {
@@ -88,7 +103,9 @@ export async function compile(baseUrl: string, source: string): Promise<CompileR
   try {
     raw = await response.json();
   } catch (error) {
-    return unavailable('invalid-response', reasonOf(error));
+    return attempt.reasonFor(error).kind === 'timeout'
+      ? { kind: 'unavailable', reason: attempt.reasonFor(error) }
+      : unavailable('invalid-response', reasonOf(error));
   }
 
   const parsed = compileResponseSchema.safeParse(raw);
@@ -142,7 +159,13 @@ const GENERIC_REJECTION =
   'The service rejected the source: it must declare one public top-level class and stay under 64 KiB.';
 
 type Attempt =
-  | { readonly kind: 'response'; readonly response: Response }
+  | {
+      readonly kind: 'response';
+      readonly response: Response;
+      readonly reasonFor: (error: unknown) => UnavailableReason;
+      readonly expired: Promise<UnavailableReason>;
+      readonly done: () => void;
+    }
   | { readonly kind: 'failed'; readonly reason: UnavailableReason };
 
 async function send(url: string, timeoutMs: number, init?: RequestInit): Promise<Attempt> {
@@ -150,18 +173,29 @@ async function send(url: string, timeoutMs: number, init?: RequestInit): Promise
   const timer = setTimeout(() => {
     controller.abort();
   }, timeoutMs);
+  const reasonFor = (error: unknown): UnavailableReason =>
+    controller.signal.aborted
+      ? { kind: 'timeout', ms: timeoutMs }
+      : { kind: 'network', reason: reasonOf(error) };
 
   try {
-    return { kind: 'response', response: await fetch(url, { ...init, signal: controller.signal }) };
-  } catch (error) {
+    const response = await fetch(url, { ...init, signal: controller.signal });
     return {
-      kind: 'failed',
-      reason: controller.signal.aborted
-        ? { kind: 'timeout', ms: timeoutMs }
-        : { kind: 'network', reason: reasonOf(error) },
+      kind: 'response',
+      response,
+      reasonFor,
+      expired: new Promise<UnavailableReason>((resolve) => {
+        controller.signal.addEventListener('abort', () => {
+          resolve({ kind: 'timeout', ms: timeoutMs });
+        });
+      }),
+      done: () => {
+        clearTimeout(timer);
+      },
     };
-  } finally {
+  } catch (error) {
     clearTimeout(timer);
+    return { kind: 'failed', reason: reasonFor(error) };
   }
 }
 

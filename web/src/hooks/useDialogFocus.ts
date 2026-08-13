@@ -80,7 +80,9 @@ export function useDialogFocus(
       }
 
       if (event.key === 'Tab') {
-        const focusable = [...dialog.querySelectorAll<HTMLElement>(FOCUSABLE)];
+        const focusable = [...dialog.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
+          (element) => element.tabIndex >= 0,
+        );
         const first = focusable[0];
         const last = focusable.at(-1);
         if (first === undefined || last === undefined) {

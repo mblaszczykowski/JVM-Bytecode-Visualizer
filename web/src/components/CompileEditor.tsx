@@ -58,13 +58,14 @@ export function CompileEditor({
     <section
       ref={editorRef}
       role="dialog"
-      aria-modal="true"
-      aria-label="Java editor"
+      aria-labelledby="compile-editor-heading"
       data-testid="compile-editor"
       className="col-span-full row-span-full flex min-h-0 flex-col rounded-panel bg-panel shadow-panel"
     >
       <div className="flex shrink-0 items-baseline justify-between gap-3 px-4 pt-3.5 pb-2.5">
-        <h2 className="text-title font-medium text-fg">Write Java</h2>
+        <h2 id="compile-editor-heading" className="text-title font-medium text-fg">
+          Write Java
+        </h2>
         <div className="flex items-baseline gap-3">
           <span className="hidden font-mono text-meta text-fg-3 sm:inline">
             javac on the server · executed in this tab

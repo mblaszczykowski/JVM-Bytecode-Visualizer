@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { createEvent, fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { exampleOptions } from './__fixtures__/factorial-run';
@@ -115,6 +115,26 @@ describe('the folded picker', () => {
     expect(screen.getAllByRole('radiogroup')).toHaveLength(1);
     fireEvent.click(trigger);
     expect(screen.getAllByRole('radiogroup')).toHaveLength(1);
+  });
+
+  it('keeps Tab inside the sheet, though only one radio is tabbable', () => {
+    const { trigger } = renderCollapsed();
+    fireEvent.click(trigger);
+    const sheet = screen.getByRole('dialog');
+    const tabbable = screen.getAllByRole('radio').filter((radio) => radio.tabIndex >= 0);
+
+    expect(tabbable).toHaveLength(1);
+    const anchor = tabbable[0];
+    if (anchor === undefined) {
+      throw new Error('the roving tab stop is missing');
+    }
+    anchor.focus();
+
+    const forward = createEvent.keyDown(sheet, { key: 'Tab' });
+    fireEvent(sheet, forward);
+
+    expect(forward.defaultPrevented).toBe(true);
+    expect(anchor).toHaveFocus();
   });
 
   it('closes on Escape and hands the focus back to the trigger', () => {
