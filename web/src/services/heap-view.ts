@@ -8,6 +8,10 @@ export function objectLabel(object: HeapObject, handle: number): string {
     : `${object.className}@${String(handle)}`;
 }
 
+export function objectTypeName(object: HeapObject): string {
+  return object.kind === 'int-array' ? 'int[]' : object.className;
+}
+
 export function cellValuesOf(object: HeapObject): readonly number[] {
   return object.kind === 'int-array' ? object.elements : object.fields.map((field) => field.value);
 }

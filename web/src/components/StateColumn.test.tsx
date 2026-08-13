@@ -16,7 +16,10 @@ import {
   firstInternedStep as collatzInternedStep,
   snapshotAt as collatzSnapshotAt,
 } from './__fixtures__/collatz-run';
-import { snapshotAt as factorialSnapshotAt } from './__fixtures__/factorial-run';
+import {
+  snapshotAt as factorialSnapshotAt,
+  snapshots as factorialSnapshots,
+} from './__fixtures__/factorial-run';
 import { StateColumn } from './StateColumn';
 
 const sortingStep = firstStepOf('iaload');
@@ -174,6 +177,27 @@ describe('StateColumn', () => {
     rerender(<StateColumn frames={factorialSnapshotAt(21).callStack} />);
 
     expect(screen.getByTestId('state-announcement')).toHaveTextContent('operand stack empty.');
+  });
+
+  it('says a call and a return moved the frame, rather than reporting an assignment', () => {
+    const history = factorialSnapshots();
+    const callStep = history.findIndex((snapshot) => snapshot.callStack.length === 3);
+    const returnStep = history.findIndex(
+      (snapshot, step) => step > callStep && snapshot.callStack.length === 2,
+    );
+    const { rerender } = render(
+      <StateColumn frames={factorialSnapshotAt(callStep - 1).callStack} />,
+    );
+
+    rerender(<StateColumn frames={factorialSnapshotAt(callStep).callStack} />);
+    expect(screen.getByTestId('state-announcement')).toHaveTextContent(
+      /^Called factorial, 3 frames deep;/,
+    );
+
+    rerender(<StateColumn frames={factorialSnapshotAt(returnStep).callStack} />);
+    const announcement = screen.getByTestId('state-announcement');
+    expect(announcement).toHaveTextContent(/^Returned to factorial, 2 frames deep;/);
+    expect(announcement).not.toHaveTextContent('n is now');
   });
 
   it('names the locals by the value they hold, references included', () => {

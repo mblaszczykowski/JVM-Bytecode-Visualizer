@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
-import type { ExternalValue, StackFrame } from '../core/interpreter';
+import type { ExternalValue, HeapObject, StackFrame } from '../core/interpreter';
 
 import {
   firstStepOf as bubbleSortStepOf,
@@ -88,6 +88,32 @@ describe('LocalsPanel', () => {
     const counter = within(slotAt(1));
     expect(counter.getByText(': I')).toBeInTheDocument();
     expect(counter.queryByTestId('ref-chip')).not.toBeInTheDocument();
+  });
+
+  it('types a slot holding an instance by its class, not as an array', () => {
+    const frame: StackFrame = {
+      methodName: 'main',
+      methodDescriptor: '()V',
+      pc: 0,
+      operandStack: [],
+      locals: [0],
+      localNames: ['counter'],
+      localKinds: ['ref'],
+    };
+    const heap: readonly HeapObject[] = [
+      {
+        kind: 'instance',
+        className: 'Counter',
+        fields: [{ name: 'value', descriptor: 'I', value: 3, kind: 'int' }],
+      },
+    ];
+
+    render(<LocalsPanel frame={frame} heap={heap} />);
+
+    const slot = within(slotAt(0));
+    expect(slot.getByText(': Counter')).toBeInTheDocument();
+    expect(slot.queryByText(': int[]')).not.toBeInTheDocument();
+    expect(slot.getByTestId('ref-chip')).toHaveTextContent('Counter@0');
   });
 
   it('names a slot holding a standard-library object rather than its handle', () => {

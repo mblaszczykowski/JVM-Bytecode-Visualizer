@@ -3,6 +3,7 @@ import { useState } from 'react';
 import type { ExternalValue, HeapObject, StackFrame } from '../core/interpreter';
 import { useRowNavigation } from '../hooks/useRowNavigation';
 import { describeValue } from '../services/derivations';
+import { objectTypeName } from '../services/heap-view';
 
 import { NO_EXTERNALS, NO_HEAP } from './empty';
 import { OriginButton } from './OriginButton';
@@ -108,6 +109,8 @@ export function LocalsPanel({
             const originPosition = originRow.get(slot);
             const label =
               value === undefined ? UNINITIALISED : describeValue(kind, value, heap, externals);
+            const referent = kind === 'ref' && value !== undefined ? heap[value] : undefined;
+            const slotType = kind === 'ref' ? referent && objectTypeName(referent) : 'I';
 
             return (
               <li
@@ -121,10 +124,8 @@ export function LocalsPanel({
                 <PulseOverlay pulse={pulse} className="rounded-row" />
                 <span className="w-3 shrink-0 font-mono text-micro text-fg-3">{slot}</span>
                 <span className={isInitialised ? 'text-fg-2' : 'text-fg-3'}>{name}</span>
-                {isInitialised && kind !== 'external' ? (
-                  <span className="font-mono text-meta text-fg-3">
-                    {kind === 'ref' ? ': int[]' : ': I'}
-                  </span>
+                {isInitialised && kind !== 'external' && slotType !== undefined ? (
+                  <span className="font-mono text-meta text-fg-3">{`: ${slotType}`}</span>
                 ) : null}
                 <span className="grow" />
                 {origin === undefined ||

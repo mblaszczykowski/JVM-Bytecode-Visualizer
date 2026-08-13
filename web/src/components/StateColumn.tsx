@@ -57,25 +57,39 @@ function describeLocals(
   });
 }
 
+function framesDeep(depth: number): string {
+  return depth === 1 ? '1 frame deep' : `${String(depth)} frames deep`;
+}
+
 function describeState(
-  frame: StackFrame | undefined,
-  previous: StackFrame | undefined,
+  frames: readonly StackFrame[],
+  previous: readonly StackFrame[] | undefined,
   heap: readonly HeapObject[],
   externals: readonly ExternalValue[],
   printed: string | undefined,
 ): string {
+  const frame = frames.at(-1);
   if (frame === undefined) {
     return printed === undefined
       ? 'No frame left; the run has finished.'
       : `No frame left; the run has finished. Printed ${printed}.`;
   }
 
-  const sameFrame =
-    previous?.methodName === frame.methodName &&
-    previous.methodDescriptor === frame.methodDescriptor;
+  const depth = frames.length;
+  const previousDepth = previous?.length;
+  const parts: string[] = [];
+  if (previousDepth === undefined) {
+    parts.push(`In ${frame.methodName}`);
+  } else if (depth > previousDepth) {
+    parts.push(`Called ${frame.methodName}, ${framesDeep(depth)}`);
+  } else if (depth < previousDepth) {
+    parts.push(`Returned to ${frame.methodName}, ${framesDeep(depth)}`);
+  }
 
-  const parts = sameFrame ? [] : [`In ${frame.methodName}`];
-  parts.push(...describeLocals(frame, sameFrame ? previous : undefined, heap, externals));
+  if (previousDepth === undefined || depth >= previousDepth) {
+    const against = previousDepth === depth ? previous?.at(-1) : undefined;
+    parts.push(...describeLocals(frame, against, heap, externals));
+  }
 
   const top = frame.operandStack.at(-1);
   parts.push(
@@ -111,7 +125,7 @@ function useStateAnnouncement(
   const [announced, setAnnounced] = useState<Announced>(() => ({
     frames,
     printedCount,
-    text: describeState(frames.at(-1), undefined, heap, externals, undefined),
+    text: describeState(frames, undefined, heap, externals, undefined),
   }));
 
   if (announced.frames !== frames || announced.printedCount !== printedCount) {
@@ -119,7 +133,7 @@ function useStateAnnouncement(
     setAnnounced({
       frames,
       printedCount,
-      text: describeState(frames.at(-1), announced.frames.at(-1), heap, externals, printed),
+      text: describeState(frames, announced.frames, heap, externals, printed),
     });
   }
 
