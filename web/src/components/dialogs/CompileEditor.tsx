@@ -1,7 +1,7 @@
 import { useRef } from 'react';
 
 import { useDialogFocus } from '../../hooks/useDialogFocus';
-import type { CompileDiagnostic, DiagnosticKind } from '../../services/compile-client';
+import type { CompileDiagnostic, DiagnosticKind } from '../../services/loading/compile-client';
 
 import { Button } from '../ui/Button';
 

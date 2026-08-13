@@ -1,5 +1,5 @@
 import { useRowNavigation } from '../../hooks/useRowNavigation';
-import type { ConstantPoolRow } from '../../services/class-view';
+import type { ConstantPoolRow } from '../../services/views/class-view';
 
 import { CODE_ROW, NAME_COLUMN, POOL_INDEX_COLUMN } from '../rhythm';
 

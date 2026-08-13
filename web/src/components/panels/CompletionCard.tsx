@@ -1,5 +1,5 @@
 import { NO_EXTERNALS, NO_HEAP, type ExternalValue, type HeapObject } from '../../core/interpreter';
-import type { RunSummary } from '../../services/program';
+import type { RunSummary } from '../../services/loading/program';
 
 import { HeapArrayRow, HeapInstanceRow } from './HeapRows';
 import { Panel } from './Panel';

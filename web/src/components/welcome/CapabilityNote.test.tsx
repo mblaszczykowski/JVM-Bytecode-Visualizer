@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
-import { capabilitySummary } from '../../services/capabilities';
+import { capabilitySummary } from '../../services/views/capabilities';
 
 import { CapabilityNote } from './CapabilityNote';
 

@@ -1,6 +1,6 @@
 import { type ChangeEvent, type DragEvent, useId, useRef, useState } from 'react';
 
-import { MAX_UPLOAD_LABEL } from '../../services/app-state';
+import { MAX_UPLOAD_LABEL } from '../../services/loading/app-state';
 
 import { buttonSurface } from '../ui/button-surface';
 

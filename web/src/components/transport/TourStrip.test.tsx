@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
-import type { ResolvedStop, Tour } from '../../services/tours';
+import type { ResolvedStop, Tour } from '../../services/views/tours';
 
 import { TourStrip } from './TourStrip';
 

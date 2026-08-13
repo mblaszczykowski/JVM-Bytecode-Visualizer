@@ -1,8 +1,8 @@
 import { useEffect, type Dispatch } from 'react';
 
-import type { AppAction } from '../services/app-state';
-import { toAppError } from '../services/errors';
-import { fetchExampleManifest } from '../services/examples';
+import type { AppAction } from '../services/loading/app-state';
+import { toAppError } from '../services/loading/errors';
+import { fetchExampleManifest } from '../services/loading/examples';
 
 export function useExampleManifest(dispatch: Dispatch<AppAction>): void {
   useEffect(() => {

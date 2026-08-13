@@ -8,8 +8,8 @@ import {
   type StackFrame,
 } from '../../core/interpreter';
 import { useRowNavigation } from '../../hooks/useRowNavigation';
-import { describeValue } from '../../services/derivations';
-import { objectTypeName } from '../../services/heap-view';
+import { describeValue } from '../../services/views/derivations';
+import { objectTypeName } from '../../services/views/heap-view';
 
 import { OriginButton } from '../chrome/OriginButton';
 import { EmptyState, Panel } from './Panel';

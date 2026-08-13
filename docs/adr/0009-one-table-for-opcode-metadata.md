@@ -26,7 +26,7 @@ their intersection. A fifth set of hand-maintained parallel tables was the wrong
 
 ## Decision
 
-`OPCODE_NOTES` in `web/src/services/opcode-notes.ts` is the one table the teaching layer reads for an
+`OPCODE_NOTES` in `web/src/services/views/opcode-notes.ts` is the one table the teaching layer reads for an
 instruction's metadata: the sentence that names it, the kind of value it pushes, whether it moves a
 call frame, and how to resolve a stack effect the disassembler could not fix. One row per mnemonic:
 
@@ -61,7 +61,7 @@ byte and not from the decoded instruction, so the five forms the `wide` prefix m
 to find no row at all: a blank tooltip, and a Next card that fell through to the generic filler.
 
 The rows are made to hold by a test rather than by review.
-`web/src/services/derivations.test.ts` walks `EXECUTABLE_OPCODES` together with the widened forms,
+`web/src/services/views/derivations.test.ts` walks `EXECUTABLE_OPCODES` together with the widened forms,
 97 in all, and fails the build if any of them lacks help, has no resolvable stack delta, or produces
 effect pills that disagree with that delta. It also rejects an explanation that does not end in a
 period, that contains `undefined` or a `?`, or that is the generic fallback. A dispatch arm added

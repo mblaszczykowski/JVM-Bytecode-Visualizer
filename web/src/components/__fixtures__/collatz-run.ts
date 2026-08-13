@@ -1,7 +1,7 @@
 import { parseClassFile } from '../../core/classfile';
 import type { ExternalValue, Snapshot, StackFrame } from '../../core/interpreter';
 import { readExampleBytes, readExampleText } from '../../services/__fixtures__/example-files';
-import { buildProgram, type LoadedProgram } from '../../services/program';
+import { buildProgram, type LoadedProgram } from '../../services/loading/program';
 
 const CLASS_FILE = 'Collatz.class';
 const SOURCE_FILE = 'Collatz.java';

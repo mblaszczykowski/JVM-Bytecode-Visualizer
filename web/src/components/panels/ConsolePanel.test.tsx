@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
-import { consoleLinesOf } from '../../services/program';
+import { consoleLinesOf } from '../../services/loading/program';
 
 import { snapshotAt } from '../__fixtures__/factorial-run';
 import { ConsolePanel } from './ConsolePanel';

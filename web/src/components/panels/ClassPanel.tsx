@@ -2,8 +2,8 @@ import { useCallback, useMemo, type ReactNode } from 'react';
 
 import type { ClassFile } from '../../core/classfile';
 import { useScrollFollow } from '../../hooks/useScrollFollow';
-import { classFactsOf, constantPoolRowsOf, fieldRowsOf } from '../../services/class-view';
-import type { MethodListing } from '../../services/program';
+import { classFactsOf, constantPoolRowsOf, fieldRowsOf } from '../../services/views/class-view';
+import type { MethodListing } from '../../services/loading/program';
 
 import { ConstantPoolList } from './ConstantPoolList';
 import { MethodPicker } from './MethodPicker';

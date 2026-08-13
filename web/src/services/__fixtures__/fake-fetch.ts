@@ -1,7 +1,7 @@
 import { vi } from 'vitest';
 
-import { exampleUrl, MANIFEST_FILE } from '../examples';
-import { exampleManifestSchema, type ExampleEntry } from '../manifest';
+import { exampleUrl, MANIFEST_FILE } from '../loading/examples';
+import { exampleManifestSchema, type ExampleEntry } from '../loading/manifest';
 
 import { readExampleBytes, readExampleManifest, readExampleText } from './example-files';
 

@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
-import { lineForOffset, type MethodListing } from '../../services/program';
+import { lineForOffset, type MethodListing } from '../../services/loading/program';
 
 import {
   commentsOf,

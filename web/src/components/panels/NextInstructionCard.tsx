@@ -1,6 +1,6 @@
 import { Fragment } from 'react';
 
-import type { EffectPill } from '../../services/derivations';
+import type { EffectPill } from '../../services/views/derivations';
 
 import { Pill } from '../ui/Pill';
 

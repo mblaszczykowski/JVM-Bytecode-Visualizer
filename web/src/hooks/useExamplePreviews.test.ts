@@ -8,8 +8,8 @@ import {
   statusResponse,
   stubFetch,
 } from '../services/__fixtures__/fake-fetch';
-import { exampleUrl } from '../services/examples';
-import type { ExampleEntry } from '../services/manifest';
+import { exampleUrl } from '../services/loading/examples';
+import type { ExampleEntry } from '../services/loading/manifest';
 
 import { useExamplePreviews } from './useExamplePreviews';
 

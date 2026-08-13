@@ -1,8 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import type { Snapshot } from '../core/interpreter';
-import type { DeepLink } from '../services/deep-link';
-import { resolveTour, tourFor, toursFor, type ResolvedStop, type Tour } from '../services/tours';
+import type { DeepLink } from '../services/session/deep-link';
+import {
+  resolveTour,
+  tourFor,
+  toursFor,
+  type ResolvedStop,
+  type Tour,
+} from '../services/views/tours';
 
 const NO_TOURS: readonly Tour[] = [];
 

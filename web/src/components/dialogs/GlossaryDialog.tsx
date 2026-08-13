@@ -3,8 +3,8 @@ import { createPortal } from 'react-dom';
 
 import { useDialogFocus } from '../../hooks/useDialogFocus';
 import { useOpenGlossaryTerm } from '../../hooks/useOpenGlossaryTerm';
-import { GLOSSARY, glossaryEntry, type GlossaryTermId } from '../../services/glossary';
-import { closeGlossary } from '../../services/glossary-store';
+import { GLOSSARY, glossaryEntry, type GlossaryTermId } from '../../services/views/glossary';
+import { closeGlossary } from '../../services/views/glossary-store';
 
 import { Button } from '../ui/Button';
 

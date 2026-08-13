@@ -1,5 +1,5 @@
-import { openGlossary } from '../../services/glossary-store';
-import type { RunPreview } from '../../services/program';
+import { openGlossary } from '../../services/views/glossary-store';
+import type { RunPreview } from '../../services/loading/program';
 
 import { CapabilityNote } from './CapabilityNote';
 import { ErrorBanner, type BannerSeverity } from '../chrome/ErrorBanner';

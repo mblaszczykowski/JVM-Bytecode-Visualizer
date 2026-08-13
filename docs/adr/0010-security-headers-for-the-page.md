@@ -60,7 +60,7 @@ Production source maps are emitted as `sourcemap: 'hidden'` in `web/vite.config.
 files are built and uploaded, and no `sourceMappingURL` comment points at them, so a browser never
 fetches one and devtools open on the shipped bundle. They exist so that a frame from a production
 build can be read back to source by loading the map by hand. Nothing does that automatically:
-`web/src/services/telemetry.ts` sends an error name and two counters, never a stack and never a
+`web/src/services/session/telemetry.ts` sends an error name and two counters, never a stack and never a
 message, and `telemetry.test.ts` pins the exact set of keys a report may carry.
 
 ## Consequences

@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
-import { consoleLinesOf } from '../../services/program';
+import { consoleLinesOf } from '../../services/loading/program';
 
 import {
   firstStepOf,

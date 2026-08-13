@@ -1,5 +1,5 @@
 import { PLAYBACK_SPEEDS, type PlaybackSpeed } from '../../hooks/useExecutionPlayer';
-import type { TimelineEvent } from '../../services/timeline';
+import type { TimelineEvent } from '../../services/views/timeline';
 
 import { DepthTrack } from './DepthTrack';
 import { Button } from '../ui/Button';

@@ -58,7 +58,7 @@ replays only if all of it runs.
 What still stops is now one thing instead of a list, and it is stated as one sentence:
 `new ArrayList<>()` and `throw new IllegalStateException(...)` fail not for want of an instruction
 but for want of a class to load. No opcode expresses that limit, so `CALL_SCOPE_NOTE` in
-`web/src/services/capabilities.ts` asserts it by hand while the derived gap list, which reads the
+`web/src/services/views/capabilities.ts` asserts it by hand while the derived gap list, which reads the
 executable opcode set directly, stops naming objects as missing. The welcome screen updated itself.
 
 `Instances.java` under `core/interpreter/__fixtures__/programs/` pins the whole of it against a real

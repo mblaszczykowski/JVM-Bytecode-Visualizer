@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 
-import { parseDeepLink, type DeepLink } from '../services/deep-link';
-import type { ExampleEntry } from '../services/manifest';
+import { parseDeepLink, type DeepLink } from '../services/session/deep-link';
+import type { ExampleEntry } from '../services/loading/manifest';
 
 interface OpenedLinkOptions {
   readonly examples: readonly ExampleEntry[];

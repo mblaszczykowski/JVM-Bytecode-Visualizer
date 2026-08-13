@@ -10,10 +10,10 @@ import {
   operandTokens,
   stackEffectOf,
   type OperandToken,
-} from '../../services/bytecode-format';
-import { constantPoolIndexOf } from '../../services/constant-pool';
-import type { Construct } from '../../services/constructs';
-import type { StackDelta } from '../../services/opcode-notes';
+} from '../../services/views/bytecode-format';
+import { constantPoolIndexOf } from '../../services/views/constant-pool';
+import type { Construct } from '../../services/views/constructs';
+import type { StackDelta } from '../../services/views/opcode-notes';
 
 import { BranchGutter } from './BranchGutter';
 import { CurrentRowHighlight } from './CurrentRowHighlight';

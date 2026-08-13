@@ -1,9 +1,14 @@
 import { parseClassFile } from '../../core/classfile';
 import type { ArrayObject, HeapObject, Snapshot, StackFrame } from '../../core/interpreter';
 import { readExampleBytes, readExampleText } from '../../services/__fixtures__/example-files';
-import { describeOperandRoles } from '../../services/derivations';
-import { buildProgram, listingFor, runSummaryOf, type LoadedProgram } from '../../services/program';
-import type { RunSummary } from '../../services/program';
+import { describeOperandRoles } from '../../services/views/derivations';
+import {
+  buildProgram,
+  listingFor,
+  runSummaryOf,
+  type LoadedProgram,
+} from '../../services/loading/program';
+import type { RunSummary } from '../../services/loading/program';
 
 const CLASS_FILE = 'BubbleSort.class';
 const SOURCE_FILE = 'BubbleSort.java';

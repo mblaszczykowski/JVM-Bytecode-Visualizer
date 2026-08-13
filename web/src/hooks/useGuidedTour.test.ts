@@ -3,8 +3,8 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { snapshots as factorialSnapshots } from '../components/__fixtures__/factorial-run';
 import type { Snapshot } from '../core/interpreter';
-import type { DeepLink } from '../services/deep-link';
-import { tourFor, type TourStop } from '../services/tours';
+import type { DeepLink } from '../services/session/deep-link';
+import { tourFor, type TourStop } from '../services/views/tours';
 
 import { useGuidedTour } from './useGuidedTour';
 

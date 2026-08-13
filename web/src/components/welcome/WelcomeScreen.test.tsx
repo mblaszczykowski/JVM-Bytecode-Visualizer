@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
-import type { RunPreview } from '../../services/program';
+import type { RunPreview } from '../../services/loading/program';
 
 import { GlossaryDialog } from '../dialogs/GlossaryDialog';
 import { WelcomeScreen, type WelcomeExample } from './WelcomeScreen';

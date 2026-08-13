@@ -10,9 +10,9 @@ import {
   readExampleManifest,
   readExampleText,
 } from './__fixtures__/example-files';
-import { describeNextInstruction } from './derivations';
-import { parseExampleManifest } from './manifest';
-import { buildProgram, listingFor, type LoadedProgram } from './program';
+import { describeNextInstruction } from './views/derivations';
+import { parseExampleManifest } from './loading/manifest';
+import { buildProgram, listingFor, type LoadedProgram } from './loading/program';
 
 const ARITHMETIC = /and pushes (-?\d+) (\S+) (-?\d+) = (-?\d+)\.$/;
 const BRANCH_TAKEN = /: true, so execution jumps to pc (\d+)\.$/;

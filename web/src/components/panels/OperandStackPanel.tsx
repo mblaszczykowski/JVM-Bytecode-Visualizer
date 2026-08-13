@@ -7,7 +7,7 @@ import {
   type HeapObject,
   type StackFrame,
 } from '../../core/interpreter';
-import { describeValue } from '../../services/derivations';
+import { describeValue } from '../../services/views/derivations';
 
 import { useRowNavigation } from '../../hooks/useRowNavigation';
 

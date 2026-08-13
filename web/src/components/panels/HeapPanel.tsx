@@ -6,7 +6,7 @@ import {
   type HeapObject,
   type StackFrame,
 } from '../../core/interpreter';
-import { cellValuesOf, heapFocusOf, type HeapFocus } from '../../services/heap-view';
+import { cellValuesOf, heapFocusOf, type HeapFocus } from '../../services/views/heap-view';
 
 import { HeapArrayRow, HeapInstanceRow } from './HeapRows';
 import { Panel } from './Panel';

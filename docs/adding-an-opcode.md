@@ -70,7 +70,7 @@ needs a program that makes it observable.
 
 ## 4. Say what it does, in one sentence
 
-`OPCODE_NOTES` in `web/src/services/opcode-notes.ts` is the table the teaching layer reads for an
+`OPCODE_NOTES` in `web/src/services/views/opcode-notes.ts` is the table the teaching layer reads for an
 instruction's metadata. One row per mnemonic, keyed on the base mnemonic, so a form the `wide`
 prefix mints takes the row of the instruction it widens:
 
@@ -104,7 +104,7 @@ Two extras that are worth adding when they apply, and skipping when they do not:
 
 Five things follow from the tables above, so do not duplicate them by hand:
 
-- The capability note and its count. `web/src/services/capabilities.ts` derives its families by
+- The capability note and its count. `web/src/services/views/capabilities.ts` derives its families by
   intersecting the JVMS opcode blocks with the interpreter's executable set. An instruction that
   gains an implementation joins its family, any feature listed as blocked on it stops being listed,
   and the count on the welcome screen moves on its own.
@@ -121,7 +121,7 @@ same opcode, and an addition that updated two of the three left a wrong pill or 
 that only a reader would notice. They are gone, folded into the one row above.
 
 What keeps it that way is a test.
-`web/src/services/derivations.test.ts`, in "gives every executable instruction help, a stack delta
+`web/src/services/views/derivations.test.ts`, in "gives every executable instruction help, a stack delta
 and effect pills", walks `EXECUTABLE_OPCODES` together with the forms the `wide` prefix mints and
 fails the build if any of them lacks `help`, has no resolvable stack delta, or produces effect pills
 that disagree with that delta. It also rejects an explanation that does not end in a period,

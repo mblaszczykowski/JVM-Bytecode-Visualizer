@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { parseClassFile, type ClassFile, type FieldInfo } from '../../core/classfile';
 import { syntheticClass } from '../../core/interpreter/__fixtures__/synthetic-class';
 import { readExampleBytes, readFixtureBytes } from '../../services/__fixtures__/example-files';
-import { buildProgram, type LoadedProgram } from '../../services/program';
+import { buildProgram, type LoadedProgram } from '../../services/loading/program';
 
 import { ClassPanel } from './ClassPanel';
 

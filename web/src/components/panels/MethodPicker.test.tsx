@@ -3,7 +3,11 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { parseClassFile } from '../../core/classfile';
 import { readFixtureBytes } from '../../services/__fixtures__/example-files';
-import { buildProgram, type LoadedProgram, type MethodListing } from '../../services/program';
+import {
+  buildProgram,
+  type LoadedProgram,
+  type MethodListing,
+} from '../../services/loading/program';
 
 import { MethodPicker } from './MethodPicker';
 

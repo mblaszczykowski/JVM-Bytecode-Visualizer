@@ -1,6 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 
-import { report, type ProgramContext } from '../../services/telemetry';
+import { report, type ProgramContext } from '../../services/session/telemetry';
 
 interface ErrorBoundaryProps {
   readonly children: ReactNode;

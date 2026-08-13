@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 
 import { parseClassFile } from '../core/classfile';
-import { fetchExampleClass } from '../services/examples';
-import type { ExampleEntry } from '../services/manifest';
-import { previewProgram, type RunPreview } from '../services/program';
+import { fetchExampleClass } from '../services/loading/examples';
+import type { ExampleEntry } from '../services/loading/manifest';
+import { previewProgram, type RunPreview } from '../services/loading/program';
 
 const NONE: ReadonlyMap<string, RunPreview> = new Map();
 

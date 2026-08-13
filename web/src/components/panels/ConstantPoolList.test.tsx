@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { parseClassFile } from '../../core/classfile';
 import { readExampleBytes } from '../../services/__fixtures__/example-files';
-import { constantPoolRowsOf, type ConstantPoolRow } from '../../services/class-view';
+import { constantPoolRowsOf, type ConstantPoolRow } from '../../services/views/class-view';
 
 import { ConstantPoolList } from './ConstantPoolList';
 import { POOL_INDEX_COLUMN } from '../rhythm';

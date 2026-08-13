@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
-import type { TimelineEvent } from '../../services/timeline';
+import type { TimelineEvent } from '../../services/views/timeline';
 
 import { depths } from '../__fixtures__/factorial-run';
 import { DepthTrack } from './DepthTrack';

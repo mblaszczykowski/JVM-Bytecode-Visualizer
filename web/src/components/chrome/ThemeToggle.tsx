@@ -7,7 +7,7 @@ import {
   storeTheme,
   THEME_LABELS,
   type ThemeChoice,
-} from '../../services/theme';
+} from '../../services/session/theme';
 
 function ThemeIcon({ choice }: { readonly choice: ThemeChoice }) {
   if (choice === 'light') {

@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 
-import type { CompileDiagnostic } from '../../services/compile-client';
+import type { CompileDiagnostic } from '../../services/loading/compile-client';
 
 import { CompileEditor, SEED_SOURCE } from './CompileEditor';
 

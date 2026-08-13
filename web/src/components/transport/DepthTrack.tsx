@@ -8,7 +8,7 @@ import {
   type StepBucket,
   type TimelineEvent,
   type TimelineEventKind,
-} from '../../services/timeline';
+} from '../../services/views/timeline';
 
 interface DepthTrackProps {
   readonly depths: readonly number[];

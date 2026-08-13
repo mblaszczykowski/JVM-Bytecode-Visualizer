@@ -5,14 +5,14 @@ import {
   readExampleManifest,
   readExampleText,
 } from '../../services/__fixtures__/example-files';
-import { constantPoolComments } from '../../services/constant-pool';
+import { constantPoolComments } from '../../services/views/constant-pool';
 import {
   describeNextInstruction,
   describeOperandRoles,
   type NextInstructionSummary,
-} from '../../services/derivations';
-import { shortTitleOf } from '../../services/examples';
-import { parseExampleManifest } from '../../services/manifest';
+} from '../../services/views/derivations';
+import { shortTitleOf } from '../../services/loading/examples';
+import { parseExampleManifest } from '../../services/loading/manifest';
 import {
   buildProgram,
   depthsOf,
@@ -21,7 +21,7 @@ import {
   listingFor,
   type LoadedProgram,
   type MethodListing,
-} from '../../services/program';
+} from '../../services/loading/program';
 import type { ExampleOption } from '../dialogs/ExamplePicker';
 
 const CLASS_FILE = 'Factorial.class';

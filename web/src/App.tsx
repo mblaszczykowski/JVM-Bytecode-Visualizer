@@ -46,29 +46,33 @@ import {
   rerunState,
   runFromState,
   type AppState,
-} from './services/app-state';
-import { compile, compileApiBaseUrl, type CompileDiagnostic } from './services/compile-client';
-import { fullAppUrl, isEmbedded } from './services/embed';
+} from './services/loading/app-state';
+import {
+  compile,
+  compileApiBaseUrl,
+  type CompileDiagnostic,
+} from './services/loading/compile-client';
+import { fullAppUrl, isEmbedded } from './services/session/embed';
 import {
   describeAppError,
   describeCompileDiagnostics,
   describeCompileFailure,
   toAppError,
-} from './services/errors';
-import { shortTitleOf } from './services/examples';
+} from './services/loading/errors';
+import { shortTitleOf } from './services/loading/examples';
 import {
   listingToShow,
   methodKeyOf,
   type LoadedProgram,
   type MethodListing,
-} from './services/program';
-import type { ProgramContext } from './services/telemetry';
+} from './services/loading/program';
+import type { ProgramContext } from './services/session/telemetry';
 import {
   defaultProgramRunner,
   isRunCancelled,
   type LoadContext,
   type ProgramRunner,
-} from './services/program-runner';
+} from './services/loading/program-runner';
 
 const APP_NAME = 'JVM Bytecode Visualizer';
 

@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 
-import { writeDeepLink, writeTourLink } from '../services/deep-link';
+import { writeDeepLink, writeTourLink } from '../services/session/deep-link';
 
 interface UrlSyncOptions {
   readonly exampleId: string | undefined;

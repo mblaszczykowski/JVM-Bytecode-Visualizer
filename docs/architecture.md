@@ -25,11 +25,11 @@ flowchart TD
     shim --> protocol
   end
   subgraph app["web/src/services: application layer, 27 modules"]
-    program["program.ts, program-view.ts<br/>parse, disassemble, listings"]
-    runner["program-runner.ts<br/>inline or worker, cancellation"]
-    derive["opcode-notes.ts, derivations.ts<br/>constant-pool.ts, timeline.ts, constructs.ts<br/>what the panels explain"]
-    state["app-state.ts, deep-link.ts, embed.ts, theme.ts<br/>state and the URL"]
-    compileClient["compile-client.ts<br/>optional service"]
+    program["loading/program.ts<br/>parse, disassemble, listings"]
+    runner["loading/program-runner.ts<br/>inline or worker, cancellation"]
+    derive["views/opcode-notes.ts, views/derivations.ts<br/>views/constant-pool.ts, views/timeline.ts<br/>what the panels read"]
+    state["loading/app-state.ts, session/deep-link.ts<br/>session/embed.ts, session/theme.ts"]
+    compileClient["loading/compile-client.ts<br/>optional service"]
   end
   subgraph ui["web/src/components + hooks: React"]
     player["useExecutionPlayer<br/>index, play, seek"]
@@ -77,7 +77,7 @@ index arithmetic; the panels read `snapshots[index]`.
 
 `execute()` is still one synchronous call that returns when the program has finished, and it is
 still a pure function. What changed with [ADR-0006](adr/0006-execution-in-a-worker.md) is the thread
-it runs on. `web/src/services/program-runner.ts` picks between two runners with the same interface:
+it runs on. `web/src/services/loading/program-runner.ts` picks between two runners with the same interface:
 `inlineRunner`, which calls `execute()` on the main thread, and `workerRunner`, which posts the
 class file to `web/src/workers/run-program.worker.ts`.
 
@@ -137,7 +137,7 @@ the tab for as long as the first attempt took. A worker that goes quiet for
 
 ## From bytes to a playable history
 
-`buildProgram()` in `web/src/services/program.ts` is the seam where the three domain modules meet.
+`buildProgram()` in `web/src/services/loading/program.ts` is the seam where the three domain modules meet.
 The path is the same whichever way the bytes arrived: a bundled example, a drag-and-dropped file, or
 a response from the compile service.
 
@@ -331,7 +331,7 @@ one visible step at a time. A fault with no handler anywhere becomes `uncaught-e
 the run. [ADR-0007](adr/0007-exceptions-without-an-object-model.md) records why catching arrived
 without a way to construct an exception of your own.
 
-`web/src/services/errors.ts` widens those into one `AppError` union that also covers failures which
+`web/src/services/loading/errors.ts` widens those into one `AppError` union that also covers failures which
 only exist at the application boundary (an example that would not download, a file over the 512 KiB
 upload cap, a file that could not be read) and maps every variant to its banner wording and severity
 in one place. A stopped run is an error; a run that merely ran out of steps is a warning. The
@@ -347,7 +347,7 @@ grid and the transport stay alive over whatever was recorded before the failure.
 
 The other half of not surprising anyone is saying what the machine can run _before_ a file is
 loaded, and that statement is derived from the code rather than maintained by hand.
-`web/src/services/capabilities.ts`
+`web/src/services/views/capabilities.ts`
 intersects the disassembler's opcode table with the interpreter's `EXECUTABLE_OPCODES`: the
 instruction families on the welcome screen are the executable opcodes grouped by the blocks the JVMS
 §6.5 tables lay them out in, and the missing Java features are the entries whose required

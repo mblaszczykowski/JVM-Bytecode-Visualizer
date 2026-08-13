@@ -2,7 +2,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 
 import { App } from './App';
-import { observeUnhandledFailures } from './services/telemetry';
+import { observeUnhandledFailures } from './services/session/telemetry';
 import './index.css';
 
 const rootElement = document.getElementById('root');

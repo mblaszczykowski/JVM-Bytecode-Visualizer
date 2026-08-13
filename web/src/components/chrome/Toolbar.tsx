@@ -1,4 +1,4 @@
-import { openGlossary } from '../../services/glossary-store';
+import { openGlossary } from '../../services/views/glossary-store';
 
 import { type ExampleOption, ExamplePicker } from '../dialogs/ExamplePicker';
 import { FileUpload } from '../welcome/FileUpload';

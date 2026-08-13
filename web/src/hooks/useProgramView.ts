@@ -1,13 +1,13 @@
 import { useMemo } from 'react';
 
 import type { Snapshot } from '../core/interpreter';
-import type { LoadedProgram, MethodListing } from '../services/program';
+import type { LoadedProgram, MethodListing } from '../services/loading/program';
 import {
   historyViewOf,
   listingViewOf,
   stepViewOf,
   type ProgramView,
-} from '../services/program-view';
+} from '../services/views/program-view';
 
 export function useProgramView(
   program: LoadedProgram | undefined,

@@ -1,7 +1,7 @@
 import { render, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
-import type { RunSummary } from '../../services/program';
+import type { RunSummary } from '../../services/loading/program';
 
 import { heapAt, runSummary, terminalStep } from '../__fixtures__/bubble-sort-run';
 import { CompletionCard } from './CompletionCard';

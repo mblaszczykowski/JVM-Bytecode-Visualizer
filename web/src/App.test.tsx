@@ -15,8 +15,8 @@ import {
   type FakeRoute,
 } from './services/__fixtures__/fake-fetch';
 import { uploadFile } from './services/__fixtures__/upload-file';
-import { exampleUrl, MANIFEST_FILE } from './services/examples';
-import { inlineRunner, RunCancelled, type ProgramRunner } from './services/program-runner';
+import { exampleUrl, MANIFEST_FILE } from './services/loading/examples';
+import { inlineRunner, RunCancelled, type ProgramRunner } from './services/loading/program-runner';
 
 const FACTORIAL_STEPS = 40;
 

@@ -7,8 +7,8 @@ import {
   type HeapObject,
   type StackFrame,
 } from '../../core/interpreter';
-import { describeValue } from '../../services/derivations';
-import type { RunSummary } from '../../services/program';
+import { describeValue } from '../../services/views/derivations';
+import type { RunSummary } from '../../services/loading/program';
 
 import { CallStackPanel } from './CallStackPanel';
 import { CompletionCard } from './CompletionCard';

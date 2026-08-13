@@ -1,4 +1,4 @@
-import { CALL_SCOPE_NOTE, capabilitySummary } from '../../services/capabilities';
+import { CALL_SCOPE_NOTE, capabilitySummary } from '../../services/views/capabilities';
 
 export function CapabilityNote() {
   const { executable, assigned, families, gaps } = capabilitySummary();

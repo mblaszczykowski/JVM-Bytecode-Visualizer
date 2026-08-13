@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import type { Snapshot } from '../core/interpreter';
-import { depthsOf } from '../services/program';
-import { stepOutTarget, stepOverTarget } from '../services/timeline';
+import { depthsOf } from '../services/loading/program';
+import { stepOutTarget, stepOverTarget } from '../services/views/timeline';
 
 export const PLAYBACK_SPEEDS = [0.5, 1, 2, 4, 8] as const;
 

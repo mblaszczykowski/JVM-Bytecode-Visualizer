@@ -1,4 +1,4 @@
-import type { ResolvedStop, Tour } from '../../services/tours';
+import type { ResolvedStop, Tour } from '../../services/views/tours';
 
 import { Button } from '../ui/Button';
 

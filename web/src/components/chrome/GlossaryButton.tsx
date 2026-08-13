@@ -1,5 +1,5 @@
-import { glossaryEntry, type GlossaryTermId } from '../../services/glossary';
-import { openGlossary } from '../../services/glossary-store';
+import { glossaryEntry, type GlossaryTermId } from '../../services/views/glossary';
+import { openGlossary } from '../../services/views/glossary-store';
 
 export function GlossaryButton({ term }: { readonly term: GlossaryTermId }) {
   const { question } = glossaryEntry(term);

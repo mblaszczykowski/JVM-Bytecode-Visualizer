@@ -1,6 +1,6 @@
 import type { ReactNode, RefObject } from 'react';
 
-import { glossaryTermForPanel } from '../../services/glossary';
+import { glossaryTermForPanel } from '../../services/views/glossary';
 
 import { GlossaryButton } from '../chrome/GlossaryButton';
 

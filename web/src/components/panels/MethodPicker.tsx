@@ -1,5 +1,5 @@
-import { methodModifiersOf } from '../../services/class-view';
-import { describeNotRunnable, type MethodListing } from '../../services/program';
+import { methodModifiersOf } from '../../services/views/class-view';
+import { describeNotRunnable, type MethodListing } from '../../services/loading/program';
 
 import { Button } from '../ui/Button';
 import { Pill } from '../ui/Pill';

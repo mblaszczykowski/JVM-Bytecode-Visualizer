@@ -1,7 +1,7 @@
 import { useEffect, type Dispatch } from 'react';
 
-import type { AppAction } from '../services/app-state';
-import { checkHealth } from '../services/compile-client';
+import type { AppAction } from '../services/loading/app-state';
+import { checkHealth } from '../services/loading/compile-client';
 
 export function useCompilerHealth(
   baseUrl: string | undefined,

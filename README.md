@@ -164,7 +164,7 @@ for the server, and lists the placeholders to fill in.
 
 ### Crash reporting
 
-`web/src/services/telemetry.ts` is one function, one payload type and one endpoint, off unless
+`web/src/services/session/telemetry.ts` is one function, one payload type and one endpoint, off unless
 `VITE_TELEMETRY_URL` is set. An uploaded `.class` never leaves the tab, and a crash report is the
 sort of thing that quietly breaks such a promise, so the payload is a closed union of scalars: no
 field a class file, a line of source or a pool string can be put in, and a test reads the bytes
@@ -479,7 +479,10 @@ web/
     welcome/        first screen, upload, what the machine can run
     ui/             button, pill, segmented control, reference chip
   src/hooks/        the player, row navigation, scroll follow, dialog focus
-  src/services/     program building, app state machine, derivations, compile client
+  src/services/     the application layer, grouped by what each module serves
+    loading/        getting a program in front of the reader: state, runner, clients
+    views/          what a panel reads: the opcode table, derivations, the glossary
+    session/        the URL, the theme, the crash beacon
   corpus/           the Maven Central fetch script and the committed scan
   fixtures/         example .java sources + the build scripts
   public/examples/  committed .class files and manifest.json
@@ -495,7 +498,7 @@ are to build.
 
 1. Arguments for the method a run starts from. `ExecuteOptions` names an entry method but has no
    channel for argument values, so a static `int` method that takes parameters is listed and marked
-   but not offered. `notRunnableReasonOf` in `web/src/services/program.ts` is the one place that
+   but not offered. `notRunnableReasonOf` in `web/src/services/loading/program.ts` is the one place that
    has to change.
 2. A second class file, the limit that now decides most outcomes. Loading a class by name would let
    `new` and the call instructions resolve against something other than the file in front of them,

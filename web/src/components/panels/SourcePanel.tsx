@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 
 import { useRowNavigation } from '../../hooks/useRowNavigation';
 import { rowTopOf, useScrollFollow } from '../../hooks/useScrollFollow';
-import { tokenizeJavaLines, type TokenKind } from '../../services/syntax';
+import { tokenizeJavaLines, type TokenKind } from '../../services/views/syntax';
 
 import { CurrentRowHighlight } from './CurrentRowHighlight';
 import { Panel } from './Panel';

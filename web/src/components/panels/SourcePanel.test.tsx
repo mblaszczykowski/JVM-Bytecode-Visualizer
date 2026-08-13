@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
-import { lineMappingNote, offsetsForLine } from '../../services/program';
+import { lineMappingNote, offsetsForLine } from '../../services/loading/program';
 
 import {
   factorialListing,
