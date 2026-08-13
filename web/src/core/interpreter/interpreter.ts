@@ -1,16 +1,9 @@
 import {
-  constantTagName,
   ConstantTag,
-  isClassFileError,
   isStatic,
-  parseMethodDescriptor,
   type ClassFile,
   type CodeAttribute,
-  type ConstantPool,
-  type ConstantPoolEntry,
   type ExceptionTableEntry,
-  type JvmReturnType,
-  type MethodDescriptor,
   type MethodInfo,
 } from '../classfile';
 import { arrayTypeName, lookupOpcode, T_INT, type Instruction } from '../disassembler';
@@ -63,6 +56,17 @@ import {
   iushr,
   ixor,
 } from './int32';
+import {
+  callTarget,
+  classNameAt,
+  describeConstant,
+  parameterKinds,
+  poolEntry,
+  resolveMemberReference,
+  resolveMethodref,
+  utf8,
+  type MethodReference,
+} from './pool';
 import {
   createTerminalSnapshot,
   SnapshotWriter,
@@ -859,13 +863,6 @@ function pushPoolConstant(machine: Machine, frame: Frame, poolIndex: number): vo
   throw new VmFault({ kind: 'unsupported-constant', target: describeConstant(entry, poolIndex) });
 }
 
-function describeConstant(entry: ConstantPoolEntry | undefined, index: number): string {
-  const named = entry === undefined ? undefined : constantTagName(entry.tag);
-  return named === undefined
-    ? `constant pool entry #${String(index)}`
-    : `the ${named} constant at #${String(index)}`;
-}
-
 function pushStaticField(machine: Machine, frame: Frame, poolIndex: number): void {
   const reference = resolveMemberReference(
     machine.classFile.constantPool,
@@ -1160,48 +1157,6 @@ export function isEntryMethod(method: MethodInfo): boolean {
   );
 }
 
-function parameterKinds(descriptor: string): readonly ValueKind[] | undefined {
-  const parsed = parseDescriptor(descriptor);
-  if (parsed === undefined) {
-    return undefined;
-  }
-  const returnable =
-    parsed.returnType.kind === 'void' ||
-    isIntType(parsed.returnType) ||
-    isReferenceType(parsed.returnType);
-  if (!returnable || !parsed.params.every((type) => isIntType(type) || isReferenceType(type))) {
-    return undefined;
-  }
-  return parsed.params.map((type) => (isIntType(type) ? 'int' : 'ref'));
-}
-
-function isReferenceType(type: JvmReturnType): boolean {
-  return type.kind === 'class' || type.kind === 'array';
-}
-
-function classNameAt(pool: ConstantPool, index: number): string {
-  const entry = poolEntry(pool, index);
-  if (entry?.tag !== ConstantTag.Class) {
-    throw badPoolEntry(index, 'Class');
-  }
-  return utf8(pool, entry.nameIndex);
-}
-
-function parseDescriptor(descriptor: string): MethodDescriptor | undefined {
-  try {
-    return parseMethodDescriptor(descriptor);
-  } catch (error) {
-    if (!isClassFileError(error)) {
-      throw error;
-    }
-    return undefined;
-  }
-}
-
-function isIntType(type: JvmReturnType): boolean {
-  return type.kind === 'primitive' && type.name === 'int';
-}
-
 function operand(instruction: Instruction, index: number): number {
   const value = instruction.operands[index];
   if (value === undefined) {
@@ -1211,63 +1166,4 @@ function operand(instruction: Instruction, index: number): number {
     });
   }
   return value;
-}
-
-interface MethodReference {
-  readonly className: string;
-  readonly name: string;
-  readonly descriptor: string;
-}
-
-function callTarget(reference: MethodReference): string {
-  return `${reference.className}.${reference.name}${reference.descriptor}`;
-}
-
-function resolveMethodref(pool: ConstantPool, index: number): MethodReference {
-  return resolveMemberReference(pool, index, ConstantTag.Methodref, 'Methodref');
-}
-
-function resolveMemberReference(
-  pool: ConstantPool,
-  index: number,
-  tag: typeof ConstantTag.Methodref | typeof ConstantTag.Fieldref,
-  tagName: string,
-): MethodReference {
-  const reference = poolEntry(pool, index);
-  if (reference?.tag !== tag) {
-    throw badPoolEntry(index, tagName);
-  }
-  const owner = poolEntry(pool, reference.classIndex);
-  if (owner?.tag !== ConstantTag.Class) {
-    throw badPoolEntry(reference.classIndex, 'Class');
-  }
-  const nameAndType = poolEntry(pool, reference.nameAndTypeIndex);
-  if (nameAndType?.tag !== ConstantTag.NameAndType) {
-    throw badPoolEntry(reference.nameAndTypeIndex, 'NameAndType');
-  }
-
-  return {
-    className: utf8(pool, owner.nameIndex),
-    name: utf8(pool, nameAndType.nameIndex),
-    descriptor: utf8(pool, nameAndType.descriptorIndex),
-  };
-}
-
-function poolEntry(pool: ConstantPool, index: number): ConstantPoolEntry | undefined {
-  return pool[index] ?? undefined;
-}
-
-function utf8(pool: ConstantPool, index: number): string {
-  const entry = poolEntry(pool, index);
-  if (entry?.tag !== ConstantTag.Utf8) {
-    throw badPoolEntry(index, 'Utf8');
-  }
-  return entry.value;
-}
-
-function badPoolEntry(index: number, expected: string): VmFault {
-  return new VmFault({
-    kind: 'invalid-state',
-    message: `constant pool entry #${String(index)} is not a ${expected}`,
-  });
 }

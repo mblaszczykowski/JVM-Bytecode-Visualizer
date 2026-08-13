@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { ConstantTag, type ClassFile } from '../classfile';
+import type { ClassFile } from '../classfile';
 import {
   debugVmError,
   expectCompleted,
@@ -517,68 +517,17 @@ describe('execute: malformed constant pool', () => {
     );
   }
 
-  it('rejects an index that is not a Methodref', () => {
+  it('stops the run at the instruction holding the bad index', () => {
     const pool = new ConstantPoolBuilder();
     const utf8 = pool.utf8('not a method');
+    const result = callIndex(utf8, pool);
 
-    expect(expectVmError(callIndex(utf8, pool))).toMatchObject({
+    expect(expectVmError(result)).toEqual({
       kind: 'invalid-state',
       message: `constant pool entry #${String(utf8)} is not a Methodref`,
+      offset: 0,
+      methodName: 'main',
     });
-  });
-
-  it('rejects an empty pool slot', () => {
-    expect(expectVmError(callIndex(0, new ConstantPoolBuilder()))).toMatchObject({
-      kind: 'invalid-state',
-      message: 'constant pool entry #0 is not a Methodref',
-    });
-  });
-
-  it('rejects a Methodref whose class_index is not a Class', () => {
-    const pool = new ConstantPoolBuilder();
-    const utf8 = pool.utf8('bogus');
-    const reference = pool.raw({
-      tag: ConstantTag.Methodref,
-      classIndex: utf8,
-      nameAndTypeIndex: utf8,
-    });
-
-    expect(expectVmError(callIndex(reference, pool))).toMatchObject({
-      message: `constant pool entry #${String(utf8)} is not a Class`,
-    });
-  });
-
-  it('rejects a Methodref whose name_and_type_index is not a NameAndType', () => {
-    const pool = new ConstantPoolBuilder();
-    const owner = pool.classEntry(SYNTHETIC_CLASS_NAME);
-    const utf8 = pool.utf8('bogus');
-    const reference = pool.raw({
-      tag: ConstantTag.Methodref,
-      classIndex: owner,
-      nameAndTypeIndex: utf8,
-    });
-
-    expect(expectVmError(callIndex(reference, pool))).toMatchObject({
-      message: `constant pool entry #${String(utf8)} is not a NameAndType`,
-    });
-  });
-
-  it('rejects a NameAndType that does not point at Utf8 entries', () => {
-    const pool = new ConstantPoolBuilder();
-    const owner = pool.classEntry(SYNTHETIC_CLASS_NAME);
-    const nameAndType = pool.raw({
-      tag: ConstantTag.NameAndType,
-      nameIndex: owner,
-      descriptorIndex: owner,
-    });
-    const reference = pool.raw({
-      tag: ConstantTag.Methodref,
-      classIndex: owner,
-      nameAndTypeIndex: nameAndType,
-    });
-
-    expect(expectVmError(callIndex(reference, pool))).toMatchObject({
-      message: `constant pool entry #${String(owner)} is not a Utf8`,
-    });
+    expect(result.snapshots).toHaveLength(1);
   });
 });
