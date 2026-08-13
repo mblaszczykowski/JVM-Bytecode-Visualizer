@@ -16,9 +16,10 @@ import {
   type SyntheticMethod,
 } from '../core/interpreter/__fixtures__/synthetic-class';
 
-import { COMPILER_BUSY } from './compile-client';
+import { COMPILER_BUSY, type CompileDiagnostic } from './compile-client';
 import {
   describeAppError,
+  describeCompileDiagnostics,
   describeCompileFailure,
   toAppError,
   type AppError,
@@ -731,5 +732,75 @@ describe('describeCompileFailure', () => {
         reason: { kind: 'invalid-response', reason: 'className: required' },
       }),
     ).toContain('className: required');
+  });
+});
+
+describe('describeCompileDiagnostics', () => {
+  const unchecked: CompileDiagnostic = {
+    line: 5,
+    column: 9,
+    kind: 'warning',
+    message: 'unchecked call to add(int,int)',
+  };
+
+  const deprecated: CompileDiagnostic = {
+    line: 11,
+    column: 20,
+    kind: 'warning',
+    message: 'Integer(int) in Integer has been deprecated and marked for removal',
+  };
+
+  const note: CompileDiagnostic = {
+    line: undefined,
+    column: undefined,
+    kind: 'note',
+    message: 'some input files use unchecked or unsafe operations',
+  };
+
+  function messageFor(diagnostics: readonly CompileDiagnostic[]): string {
+    const presentation = describeCompileDiagnostics(diagnostics);
+    if (presentation === undefined) {
+      throw new Error('javac said something about this compile, so there should be a notice');
+    }
+    return presentation.message;
+  }
+
+  it('has nothing to say about a compile javac made no remark on', () => {
+    expect(describeCompileDiagnostics([])).toBeUndefined();
+  });
+
+  it('repeats the single warning and says the class still ran', () => {
+    expect(describeCompileDiagnostics([unchecked])).toEqual({
+      severity: 'warning',
+      message:
+        'javac compiled the class with 1 warning at line 5: unchecked call to add(int,int). ' +
+        'Warnings do not stop a compile, so the class it produced is the one on screen.',
+    });
+  });
+
+  it('counts the warnings and quotes the first of them', () => {
+    expect(messageFor([unchecked, deprecated])).toContain(
+      'with 2 warnings, the first at line 5: unchecked call to add(int,int).',
+    );
+  });
+
+  it('leaves out a position javac did not give', () => {
+    expect(messageFor([{ ...unchecked, line: undefined }])).toContain(
+      'with 1 warning: unchecked call to add(int,int).',
+    );
+  });
+
+  it('reports a note as a note, below the severity of a warning', () => {
+    expect(describeCompileDiagnostics([note])).toEqual({
+      severity: 'info',
+      message:
+        'javac compiled the class with 1 note: some input files use unchecked or unsafe ' +
+        'operations. Notes do not stop a compile, so the class it produced is the one on screen.',
+    });
+  });
+
+  it('passes over the notes when there is a warning to report', () => {
+    expect(describeCompileDiagnostics([note, unchecked])?.severity).toBe('warning');
+    expect(messageFor([note, unchecked])).toContain('with 1 warning at line 5');
   });
 });

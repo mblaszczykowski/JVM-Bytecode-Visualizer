@@ -7,6 +7,7 @@ import type { VmError } from '../core/interpreter';
 
 import {
   COMPILER_BUSY,
+  type CompileDiagnostic,
   type CompileResult,
   type ServiceFailure,
   type UnavailableReason,
@@ -90,6 +91,38 @@ export function describeCompileFailure(failure: CompileFailure): ErrorPresentati
     case 'unavailable':
       return describeUnavailable(failure.reason);
   }
+}
+
+export function describeCompileDiagnostics(
+  diagnostics: readonly CompileDiagnostic[],
+): ErrorPresentation | undefined {
+  const warnings = diagnostics.filter((diagnostic) => diagnostic.kind === 'warning');
+  const reported = warnings.length > 0 ? warnings : diagnostics;
+  const first = reported[0];
+  if (first === undefined) {
+    return undefined;
+  }
+
+  const { severity, noun, plural } = warnings.length > 0 ? WARNINGS : NOTES;
+  return {
+    severity,
+    message:
+      `javac compiled the class with ${countOf(reported.length, noun)}${atLine(first)}: ` +
+      `${first.message}. ${plural} do not stop a compile, so the class it produced is the one ` +
+      'on screen.',
+  };
+}
+
+const WARNINGS = { severity: 'warning', noun: 'warning', plural: 'Warnings' } as const;
+
+const NOTES = { severity: 'info', noun: 'note', plural: 'Notes' } as const;
+
+function countOf(total: number, noun: string): string {
+  return total === 1 ? `1 ${noun}` : `${String(total)} ${noun}s, the first`;
+}
+
+function atLine(diagnostic: CompileDiagnostic): string {
+  return diagnostic.line === undefined ? '' : ` at line ${String(diagnostic.line)}`;
 }
 
 const STILL_WORKS = 'The examples and .class uploads still work.';

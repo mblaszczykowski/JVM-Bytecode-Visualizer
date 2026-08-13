@@ -28,7 +28,12 @@ export type UnavailableReason =
   | { readonly kind: 'invalid-response'; readonly reason: string };
 
 export type CompileResult =
-  | { readonly kind: 'compiled'; readonly className: string; readonly classBytes: ArrayBuffer }
+  | {
+      readonly kind: 'compiled';
+      readonly className: string;
+      readonly classBytes: ArrayBuffer;
+      readonly diagnostics: readonly CompileDiagnostic[];
+    }
   | { readonly kind: 'diagnostics'; readonly diagnostics: readonly CompileDiagnostic[] }
   | { readonly kind: 'rate-limited'; readonly service?: ServiceFailure | undefined }
   | { readonly kind: 'unavailable'; readonly reason: UnavailableReason };
@@ -98,7 +103,12 @@ export async function compile(baseUrl: string, source: string): Promise<CompileR
   if (classBytes === undefined) {
     return unavailable('invalid-response', 'classFileBase64 is not valid base64');
   }
-  return { kind: 'compiled', className: parsed.data.className, classBytes };
+  return {
+    kind: 'compiled',
+    className: parsed.data.className,
+    classBytes,
+    diagnostics: parsed.data.diagnostics.map(toDiagnostic),
+  };
 }
 
 const diagnosticSchema = z.object({

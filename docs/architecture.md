@@ -327,7 +327,10 @@ without a way to construct an exception of your own.
 `web/src/services/errors.ts` widens those into one `AppError` union that also covers failures which
 only exist at the application boundary (an example that would not download, a file over the 512 KiB
 upload cap, a file that could not be read) and maps every variant to its banner wording and severity
-in one place. A stopped run is an error; a run that merely ran out of steps is a warning.
+in one place. A stopped run is an error; a run that merely ran out of steps is a warning. The
+warnings javac attaches to a class it did compile are described there too, as one line naming the
+count and the first message. That run goes ahead either way, so a failure in it takes the banner
+ahead of them.
 
 The rule this taxonomy exists to serve: a failure that still has history keeps the program loaded.
 `app-state.ts` models that explicitly. The `error` state carries an optional `LoadedProgram`, so the

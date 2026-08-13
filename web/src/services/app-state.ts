@@ -278,6 +278,7 @@ export interface AppModel {
   readonly compiler: CompilerAvailability;
   readonly examples: ExamplesStatus;
   readonly compileFailure: CompileFailure | undefined;
+  readonly compileDiagnostics: readonly CompileDiagnostic[];
   readonly loadToken: number;
   readonly compileToken: number;
 }
@@ -288,6 +289,7 @@ export type AppAction =
       readonly token: number;
       readonly label: string;
       readonly cancellable: boolean;
+      readonly compileDiagnostics: readonly CompileDiagnostic[];
     }
   | { readonly kind: 'load-progress'; readonly token: number; readonly steps: number }
   | { readonly kind: 'load-cancelled'; readonly token: number }
@@ -307,6 +309,7 @@ export function initialAppModel(compilerConfigured: boolean): AppModel {
     compiler: compilerConfigured ? 'checking' : 'unconfigured',
     examples: { kind: 'loading' },
     compileFailure: undefined,
+    compileDiagnostics: NO_DIAGNOSTICS,
     loadToken: 0,
     compileToken: 0,
   };
@@ -326,6 +329,7 @@ export function appReducer(model: AppModel, action: AppAction): AppModel {
         },
         editor: CLOSED_EDITOR,
         compileFailure: undefined,
+        compileDiagnostics: action.compileDiagnostics,
         loadToken: action.token,
         compileToken: action.token,
       };
@@ -346,7 +350,12 @@ export function appReducer(model: AppModel, action: AppAction): AppModel {
     case 'compiler-checked':
       return { ...model, compiler: action.healthy ? 'online' : 'unavailable' };
     case 'editor-opened':
-      return { ...model, editor: EDITING, compileFailure: undefined };
+      return {
+        ...model,
+        editor: EDITING,
+        compileFailure: undefined,
+        compileDiagnostics: NO_DIAGNOSTICS,
+      };
     case 'editor-closed':
       return {
         ...model,

@@ -32,7 +32,7 @@ import {
   type AppModel,
   type AppState,
 } from './app-state';
-import { COMPILER_BUSY, type CompileResult } from './compile-client';
+import { COMPILER_BUSY, type CompileDiagnostic, type CompileResult } from './compile-client';
 import { describeAppError, type AppError } from './errors';
 import { exampleUrl } from './examples';
 import type { ExampleEntry, ExampleManifest } from './manifest';
@@ -466,17 +466,35 @@ describe('the application model', () => {
   }
 
   function started(token: number, label = 'Loading Factorial'): AppAction {
-    return { kind: 'load-started', token, label, cancellable: true };
+    return { kind: 'load-started', token, label, cancellable: true, compileDiagnostics: [] };
+  }
+
+  function compiledRun(token: number, compileDiagnostics: readonly CompileDiagnostic[]): AppAction {
+    return {
+      kind: 'load-started',
+      token,
+      label: 'Running Gcd',
+      cancellable: true,
+      compileDiagnostics,
+    };
   }
 
   function reduce(model: AppModel, ...actions: readonly AppAction[]): AppModel {
     return actions.reduce(appReducer, model);
   }
 
+  const warning: CompileDiagnostic = {
+    line: 5,
+    column: 9,
+    kind: 'warning',
+    message: 'unchecked call to add(int,int)',
+  };
+
   const compiled: CompileResult = {
     kind: 'compiled',
     className: 'Gcd',
     classBytes: new ArrayBuffer(0),
+    diagnostics: [warning],
   };
 
   const busy: CompileResult = {
@@ -670,6 +688,32 @@ describe('the application model', () => {
 
       expect(model.editor).toEqual({ kind: 'compiling' });
       expect(appReducer(model, started(2)).editor).toEqual({ kind: 'closed' });
+    });
+
+    it('carries what javac said about a compiled class into the run it belongs to', () => {
+      const model = reduce(
+        initialAppModel(true),
+        { kind: 'editor-opened' },
+        { kind: 'compile-started', token: 1 },
+        { kind: 'compile-settled', token: 1, result: compiled },
+        compiledRun(2, [warning]),
+      );
+
+      expect(model.compileDiagnostics).toEqual([warning]);
+    });
+
+    it('forgets it once another program is loaded', () => {
+      const model = reduce(initialAppModel(true), compiledRun(1, [warning]), started(2));
+
+      expect(model.compileDiagnostics).toEqual([]);
+    });
+
+    it('forgets it once the editor is open again over a new draft', () => {
+      const model = reduce(initialAppModel(true), compiledRun(1, [warning]), {
+        kind: 'editor-opened',
+      });
+
+      expect(model.compileDiagnostics).toEqual([]);
     });
 
     it('reports an outage in the banner and marks the compiler degraded', () => {

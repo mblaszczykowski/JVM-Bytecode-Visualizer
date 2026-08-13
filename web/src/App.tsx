@@ -47,7 +47,12 @@ import {
 } from './services/compile-client';
 import { parseDeepLink, writeDeepLink, writeTourLink } from './services/deep-link';
 import { fullAppUrl, isEmbedded } from './services/embed';
-import { describeAppError, describeCompileFailure, toAppError } from './services/errors';
+import {
+  describeAppError,
+  describeCompileDiagnostics,
+  describeCompileFailure,
+  toAppError,
+} from './services/errors';
 import { fetchExampleManifest, shortTitleOf } from './services/examples';
 import {
   listingToShow,
@@ -221,13 +226,20 @@ export function App({
   const startLoad = async (
     label: string,
     load: (context: LoadContext) => Promise<AppState>,
+    compileDiagnostics: readonly CompileDiagnostic[] = NO_DIAGNOSTICS,
   ): Promise<void> => {
     const token = issueToken();
     running.current?.abort();
     const controller = new AbortController();
     running.current = controller;
 
-    dispatch({ kind: 'load-started', token, label, cancellable: programRunner.cancellable });
+    dispatch({
+      kind: 'load-started',
+      token,
+      label,
+      cancellable: programRunner.cancellable,
+      compileDiagnostics,
+    });
     setViewedMethodKey(undefined);
     setSelectedConstant(undefined);
     setLinkedLine(undefined);
@@ -308,12 +320,15 @@ export function App({
     dispatch({ kind: 'compile-settled', token, result });
 
     if (result.kind === 'compiled') {
-      void startLoad(`Running ${result.className}`, (context) =>
-        loadCompiledState(
-          { className: result.className, classBytes: result.classBytes, source: draft },
-          undefined,
-          context,
-        ),
+      void startLoad(
+        `Running ${result.className}`,
+        (context) =>
+          loadCompiledState(
+            { className: result.className, classBytes: result.classBytes, source: draft },
+            undefined,
+            context,
+          ),
+        result.diagnostics,
       );
     }
   };
@@ -444,6 +459,7 @@ export function App({
   const examplesFailure = examplesError === undefined ? undefined : describeAppError(examplesError);
   const compileNotice =
     model.compileFailure === undefined ? undefined : describeCompileFailure(model.compileFailure);
+  const javacNotice = describeCompileDiagnostics(model.compileDiagnostics);
   const nextStepLimit =
     state.status === 'error' && state.error.kind === 'step-limit' && program !== undefined
       ? raisedStepLimit(program.maxSteps)
@@ -460,7 +476,7 @@ export function App({
     compiler === 'online' ? 'online' : compiler === 'degraded' ? 'offline' : 'hidden';
   const writeJava = compilerIsUsable ? openEditor : undefined;
 
-  const raised = compileNotice ?? failure ?? examplesFailure;
+  const raised = compileNotice ?? failure ?? examplesFailure ?? javacNotice;
   const notice = raised?.message === dismissed ? undefined : raised;
   const dismissNotice = () => {
     setDismissed(raised?.message);

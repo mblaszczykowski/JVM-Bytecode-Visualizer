@@ -778,6 +778,18 @@ const compiledGcd: FakeRoute = () =>
     },
   });
 
+const compiledGcdWithWarning: FakeRoute = () =>
+  okResponse({
+    json: {
+      success: true,
+      className: 'Gcd',
+      classFileBase64: base64Of(readExampleBytes('Gcd.class')),
+      diagnostics: [
+        { line: 2, column: 34, kind: 'WARNING', message: 'unchecked call to add(int,int)' },
+      ],
+    },
+  });
+
 const healthy: FakeRoute = () => okResponse({ json: { status: 'UP' } });
 
 function diagnosticsResponse(message: string): Response {
@@ -853,6 +865,44 @@ describe('the compile editor', () => {
     expect(source).toHaveTextContent('Gcd.java');
     expect(source).toHaveTextContent('static int gcd(int a, int b)');
     expect(screen.queryByTestId('compile-editor')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('error-banner')).not.toBeInTheDocument();
+  });
+
+  it('says what javac warned about, and plays the class back all the same', async () => {
+    stubFetch(compileRoutes(compiledGcdWithWarning));
+    await openApp(COMPILE_API);
+
+    await writeAndCompile();
+
+    expect(await screen.findByTestId('step-counter')).toHaveTextContent(
+      `step 1 / ${String(GCD_STEPS)}`,
+    );
+    const banner = screen.getByTestId('error-banner');
+    expect(banner).toHaveAttribute('data-severity', 'warning');
+    expect(banner).toHaveTextContent(
+      'javac compiled the class with 1 warning at line 2: unchecked call to add(int,int). ' +
+        'Warnings do not stop a compile, so the class it produced is the one on screen.',
+    );
+  });
+
+  it('drops the warning when it is dismissed, and does not raise it over the next program', async () => {
+    stubFetch(compileRoutes(compiledGcdWithWarning));
+    await openApp(COMPILE_API);
+
+    await writeAndCompile();
+    await screen.findByTestId('error-banner');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss this message' }));
+    expect(screen.queryByTestId('error-banner')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Factorial' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('step-counter')).toHaveTextContent(
+        `step 1 / ${String(FACTORIAL_STEPS)}`,
+      );
+    });
+    expect(screen.queryByTestId('error-banner')).not.toBeInTheDocument();
   });
 
   it('keeps javac diagnostics in the editor rather than in the banner', async () => {

@@ -129,6 +129,17 @@ describe('compile', () => {
     );
   });
 
+  it('keeps the warnings javac attached to a class it did compile', async () => {
+    stubFetch({ [COMPILE_URL]: contractRoute(recordedResponse('compile-success')) });
+
+    expect(await compile(BASE, SOURCE)).toMatchObject({
+      kind: 'compiled',
+      diagnostics: [
+        { line: 5, column: 9, kind: 'warning', message: 'unchecked call to add(int,int)' },
+      ],
+    });
+  });
+
   it('reports the rate limit even when there is no error document to read', async () => {
     stubFetch({ [COMPILE_URL]: () => statusResponse(429) });
 
@@ -270,6 +281,9 @@ describe('the answers the service records for this client', () => {
       kind: 'compiled',
       className: 'Adder',
       classBytes: [0xca, 0xfe, 0xba, 0xbe],
+      diagnostics: [
+        { line: 5, column: 9, kind: 'warning', message: 'unchecked call to add(int,int)' },
+      ],
     }),
     'compile-diagnostics': () => ({
       kind: 'diagnostics',
