@@ -21,14 +21,7 @@ export function withHistory(
   result: RunResultWithoutHistory,
   snapshots: readonly Snapshot[],
 ): ExecutionResult {
-  switch (result.kind) {
-    case 'completed':
-      return { ...result, snapshots };
-    case 'vm-error':
-      return { ...result, snapshots };
-    case 'step-limit':
-      return { ...result, snapshots };
-  }
+  return { ...result, snapshots };
 }
 
 export function runAndStream(command: RunCommand, post: (event: RunEvent) => void): void {

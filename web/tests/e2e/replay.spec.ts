@@ -53,6 +53,16 @@ test('replays a recursive program from the welcome screen to its result', async 
   await expect(locals).toContainText('24');
 });
 
+test('the interpreter runs in a worker', async ({ page }) => {
+  await page.goto('/');
+
+  const spawned = page.waitForEvent('worker');
+  await page.getByRole('radio', { name: 'Factorial', exact: true }).click();
+
+  expect((await spawned).url()).toContain('run-program.worker');
+  await expect(page.getByTestId('step-counter')).toHaveText(`step 1 / ${String(FACTORIAL_STEPS)}`);
+});
+
 test('clicking an instruction row seeks to the first step that reached it', async ({ page }) => {
   await openFactorial(page);
   await page.getByRole('slider', { name: 'Execution history position' }).fill('20');

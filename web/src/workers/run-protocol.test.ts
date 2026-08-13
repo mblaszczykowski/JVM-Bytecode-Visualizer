@@ -70,6 +70,25 @@ describe('runAndStream', () => {
     expect(done).toEqual({ kind: 'done', result: { kind: 'completed', snapshots: NO_SNAPSHOTS } });
   });
 
+  it('carries a VM error through as the outcome of a finished run', () => {
+    const dividesByZero = syntheticClass({
+      methods: [
+        { name: 'main', descriptor: '([Ljava/lang/String;)V', code: [0x04, 0x03, 0x6c, 0xb1] },
+      ],
+    });
+
+    const events = collect(commandFor(dividesByZero));
+
+    const done = events.at(-1);
+    if (done?.kind !== 'done') {
+      throw new Error('the run did not finish');
+    }
+    expect(done.result.kind).toBe('vm-error');
+    expect(withHistory(done.result, streamed(events))).toEqual(
+      execute(dividesByZero, { entryMethod: 'main', maxSteps: 20_000 }),
+    );
+  });
+
   it('reports an interpreter that threw, rather than leaving the caller waiting', () => {
     const classFile = gcd();
     const unreadable: ClassFile = {

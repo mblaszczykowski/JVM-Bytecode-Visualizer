@@ -13,12 +13,12 @@ afterEach(() => {
 
 async function postedFor(command: RunCommand): Promise<readonly RunEvent[]> {
   const posted: RunEvent[] = [];
-  vi.spyOn(window, 'postMessage').mockImplementation((event: unknown) => {
+  vi.spyOn(self, 'postMessage').mockImplementation((event: unknown) => {
     posted.push(event as RunEvent);
   });
 
   await import('./run-program.worker');
-  window.dispatchEvent(new MessageEvent('message', { data: command }));
+  self.dispatchEvent(new MessageEvent('message', { data: command }));
 
   return posted;
 }
