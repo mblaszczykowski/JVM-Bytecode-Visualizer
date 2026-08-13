@@ -1,6 +1,8 @@
 import type { Instruction } from '../disassembler';
 
 export const NO_SNAPSHOTS: readonly Snapshot[] = Object.freeze([]);
+export const NO_HEAP: readonly HeapObject[] = Object.freeze([]);
+export const NO_EXTERNALS: readonly ExternalValue[] = Object.freeze([]);
 
 export type ValueKind = 'int' | 'ref' | 'external';
 

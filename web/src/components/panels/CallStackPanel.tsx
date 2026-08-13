@@ -1,7 +1,7 @@
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { useState } from 'react';
 
-import type { StackFrame } from '../../core/interpreter/types';
+import type { StackFrame } from '../../core/interpreter';
 
 import { EmptyState, Panel } from './Panel';
 import { Pill } from '../ui/Pill';

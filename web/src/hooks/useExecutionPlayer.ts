@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
-import type { Snapshot } from '../core/interpreter/types';
+import type { Snapshot } from '../core/interpreter';
 import { depthsOf } from '../services/program';
 import { stepOutTarget, stepOverTarget } from '../services/timeline';
 

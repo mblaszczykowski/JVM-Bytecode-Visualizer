@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
-import type { StackFrame } from '../../core/interpreter/types';
+import type { StackFrame } from '../../core/interpreter';
 
 import { firstStepOf, snapshotAt } from '../__fixtures__/factorial-run';
 import { CallStackPanel } from './CallStackPanel';

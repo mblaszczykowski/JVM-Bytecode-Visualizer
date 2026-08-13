@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
-import type { Instruction } from '../../core/disassembler/types';
+import type { Instruction } from '../../core/disassembler';
 
 import { factorialListing } from '../__fixtures__/factorial-run';
 import { BranchGutter } from './BranchGutter';

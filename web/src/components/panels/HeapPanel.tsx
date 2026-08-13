@@ -1,9 +1,13 @@
 import { useState } from 'react';
 
-import type { ExternalValue, HeapObject, StackFrame } from '../../core/interpreter';
+import {
+  NO_EXTERNALS,
+  type ExternalValue,
+  type HeapObject,
+  type StackFrame,
+} from '../../core/interpreter';
 import { cellValuesOf, heapFocusOf, type HeapFocus } from '../../services/heap-view';
 
-import { NO_EXTERNALS } from '../empty';
 import { HeapArrayRow, HeapInstanceRow } from './HeapRows';
 import { Panel } from './Panel';
 

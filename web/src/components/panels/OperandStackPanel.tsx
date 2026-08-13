@@ -1,11 +1,16 @@
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 
-import type { ExternalValue, HeapObject, StackFrame } from '../../core/interpreter';
+import {
+  NO_EXTERNALS,
+  NO_HEAP,
+  type ExternalValue,
+  type HeapObject,
+  type StackFrame,
+} from '../../core/interpreter';
 import { describeValue } from '../../services/derivations';
 
 import { useRowNavigation } from '../../hooks/useRowNavigation';
 
-import { NO_EXTERNALS, NO_HEAP } from '../empty';
 import { OriginButton } from '../chrome/OriginButton';
 import { EmptyState, Panel } from './Panel';
 import { ReferenceChip } from '../ui/ReferenceChip';

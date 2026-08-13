@@ -49,6 +49,11 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      # eslint stops an import reaching past a module barrel; nothing else notices two modules
+      # importing each other, which is legal until the day one reads the other during evaluation.
+      - name: Check the module graph for cycles
+        run: npm run imports -w web
+
       # vercel.json allows the inline theme script in web/index.html by sha256, and neither file
       # can tell that the other moved. That is why vercel.json is in this workflow's path filter.
       - name: Check the CSP hash against the inline script

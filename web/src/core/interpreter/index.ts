@@ -9,6 +9,8 @@ export {
 } from './interpreter';
 export {
   DEFAULT_MAX_STEPS,
+  NO_EXTERNALS,
+  NO_HEAP,
   NO_SNAPSHOTS,
   type ArrayObject,
   type FieldSlot,

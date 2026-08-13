@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { parseClassFile } from '../core/classfile';
 import { lookupOpcode, T_INT, type OperandSpec } from '../core/disassembler';
-import { WIDENED_FORMS } from '../core/disassembler/opcodes';
+import { WIDENED_FORMS } from '../core/disassembler';
 import {
   EXECUTABLE_OPCODES,
   type ExternalValue,

@@ -1,13 +1,18 @@
 import { useState } from 'react';
 
-import type { ExternalValue, HeapObject, StackFrame } from '../../core/interpreter';
+import {
+  NO_EXTERNALS,
+  NO_HEAP,
+  type ExternalValue,
+  type HeapObject,
+  type StackFrame,
+} from '../../core/interpreter';
 import { describeValue } from '../../services/derivations';
 import type { RunSummary } from '../../services/program';
 
 import { CallStackPanel } from './CallStackPanel';
 import { CompletionCard } from './CompletionCard';
 import { ConsolePanel } from './ConsolePanel';
-import { NO_EXTERNALS, NO_HEAP } from '../empty';
 import { HeapPanel } from './HeapPanel';
 import { LocalsPanel } from './LocalsPanel';
 import { OperandStackPanel } from './OperandStackPanel';

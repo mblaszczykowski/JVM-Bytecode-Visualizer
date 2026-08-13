@@ -1,7 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-import { execute, parseClassFile, type HeapObject, type Snapshot } from '../index';
+import { parseClassFile } from '../classfile';
+import { execute, type HeapObject, type Snapshot } from './index';
 import { expectCompleted, lastFrameOf, localValue } from './__fixtures__/expect-execution';
 
 const EXAMPLES = new URL('../../../public/examples/', import.meta.url);

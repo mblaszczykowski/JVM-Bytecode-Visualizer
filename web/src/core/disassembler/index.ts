@@ -5,6 +5,7 @@ export {
   lookupOpcode,
   OPCODES,
   T_INT,
+  WIDENED_FORMS,
   type OpcodeInfo,
   type OperandRole,
   type OperandSpec,

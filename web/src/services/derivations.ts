@@ -2,6 +2,8 @@ import { ConstantTag, type ClassFile, type ConstantPool } from '../core/classfil
 import { arrayTypeName, lookupOpcode, T_INT, type Instruction } from '../core/disassembler';
 import {
   EXTERNAL_FIELDS,
+  NO_EXTERNALS,
+  NO_HEAP,
   EXTERNAL_METHODS,
   i2b,
   i2c,
@@ -65,9 +67,6 @@ interface ExplainContext {
   readonly listing: MethodListing | undefined;
   readonly classFile: ClassFile;
 }
-
-const NO_HEAP: readonly HeapObject[] = [];
-const NO_EXTERNALS: readonly ExternalValue[] = [];
 
 export function describeNextInstruction(
   snapshot: Snapshot,

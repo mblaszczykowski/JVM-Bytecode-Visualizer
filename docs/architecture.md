@@ -49,6 +49,13 @@ import from `components/` or `hooks/` either. `no-restricted-globals` for `windo
 `localStorage` stays scoped to `core/**`, because deep links, the theme, telemetry and embed
 detection legitimately read the browser.
 
+Two more rules keep the shape from eroding quietly. Everything outside `core/` reaches it through
+the three module barrels, and a deep import of a module a barrel already re-exports is refused, so
+the boundary cannot be worn away one convenience import at a time. And
+`web/scripts/check-imports.mjs`, run in the web workflow, fails the build on an import cycle: a
+cycle is legal TypeScript and works at run time right up to the day one module reads the other's
+binding during evaluation, which surfaces as a crash in a build nobody changed.
+
 The split has a practical payoff beyond tidiness. `web/vite.config.ts` defines three Vitest
 projects: `core` runs in a Node environment with no DOM available at all, `ui` runs in jsdom and
 covers `components/`, `hooks/`, `services/` and `workers/`, and `scripts` covers the build scripts.

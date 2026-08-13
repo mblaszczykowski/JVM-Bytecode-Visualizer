@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 
-import type { Snapshot } from '../core/interpreter/types';
+import type { Snapshot } from '../core/interpreter';
 import type { LoadedProgram, MethodListing } from '../services/program';
 import {
   historyViewOf,

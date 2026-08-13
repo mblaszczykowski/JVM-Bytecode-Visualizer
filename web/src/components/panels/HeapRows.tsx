@@ -1,13 +1,14 @@
-import type {
-  ArrayObject,
-  ExternalValue,
-  HeapObject,
-  InstanceObject,
+import {
+  NO_EXTERNALS,
+  NO_HEAP,
+  type ArrayObject,
+  type ExternalValue,
+  type HeapObject,
+  type InstanceObject,
 } from '../../core/interpreter';
 import { describeValue } from '../../services/derivations';
 import { objectLabel, type HeapFocus } from '../../services/heap-view';
 
-import { NO_EXTERNALS, NO_HEAP } from '../empty';
 import { Pill } from '../ui/Pill';
 import { PulseOverlay } from '../ui/PulseOverlay';
 

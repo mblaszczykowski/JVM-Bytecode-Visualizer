@@ -1,7 +1,7 @@
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { Snapshot, StackFrame } from '../core/interpreter/types';
+import type { Snapshot, StackFrame } from '../core/interpreter';
 import { BASE_STEP_INTERVAL_MS, useExecutionPlayer } from './useExecutionPlayer';
 
 function historyOf(steps: number): readonly Snapshot[] {

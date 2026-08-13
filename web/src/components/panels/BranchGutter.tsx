@@ -1,6 +1,6 @@
 import { Fragment, useMemo } from 'react';
 
-import type { Instruction } from '../../core/disassembler/types';
+import type { Instruction } from '../../core/disassembler';
 
 import { ROW_HEIGHT } from '../rhythm';
 

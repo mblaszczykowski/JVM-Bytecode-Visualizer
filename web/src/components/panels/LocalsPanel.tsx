@@ -1,11 +1,16 @@
 import { useState } from 'react';
 
-import type { ExternalValue, HeapObject, StackFrame } from '../../core/interpreter';
+import {
+  NO_EXTERNALS,
+  NO_HEAP,
+  type ExternalValue,
+  type HeapObject,
+  type StackFrame,
+} from '../../core/interpreter';
 import { useRowNavigation } from '../../hooks/useRowNavigation';
 import { describeValue } from '../../services/derivations';
 import { objectTypeName } from '../../services/heap-view';
 
-import { NO_EXTERNALS, NO_HEAP } from '../empty';
 import { OriginButton } from '../chrome/OriginButton';
 import { EmptyState, Panel } from './Panel';
 import { PulseOverlay } from '../ui/PulseOverlay';

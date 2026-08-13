@@ -29,6 +29,14 @@ const CORE_FORBIDDEN_IMPORTS = [
 
 const REACT_LAYER_MODULES = String.raw`(^|/)(components|hooks)/(?!__fixtures__/)|(^|/)(App|main)$`;
 
+// Everything outside src/core reaches core through the three barrels. A deep import of a module
+// the barrel already re-exports is drift, and it is how a boundary stops being one.
+const CORE_DEEP_IMPORT = {
+  regex: String.raw`(^|/)core/(classfile|disassembler|interpreter)/(?!index$)(?!__fixtures__/)[a-z-]+$`,
+  message:
+    'Import from the module barrel (core/classfile, core/disassembler, core/interpreter) rather than reaching past it.',
+};
+
 const SERVICES_FORBIDDEN_IMPORTS = [
   {
     group: REACT_PACKAGES,
@@ -210,8 +218,15 @@ export default tseslint.config(
     rules: {
       '@typescript-eslint/no-restricted-imports': [
         'error',
-        { patterns: SERVICES_FORBIDDEN_IMPORTS },
+        { patterns: [...SERVICES_FORBIDDEN_IMPORTS, CORE_DEEP_IMPORT] },
       ],
+    },
+  },
+
+  {
+    files: ['src/{components,hooks}/**/*.{ts,tsx}'],
+    rules: {
+      '@typescript-eslint/no-restricted-imports': ['error', { patterns: [CORE_DEEP_IMPORT] }],
     },
   },
 
