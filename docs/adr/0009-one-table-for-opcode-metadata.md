@@ -26,7 +26,7 @@ their intersection. A fifth set of hand-maintained parallel tables was the wrong
 
 ## Decision
 
-`OPCODE_NOTES` in `web/src/services/derivations.ts` is the one table the teaching layer reads for an
+`OPCODE_NOTES` in `web/src/services/opcode-notes.ts` is the one table the teaching layer reads for an
 instruction's metadata: the sentence that names it, the kind of value it pushes, whether it moves a
 call frame, and how to resolve a stack effect the disassembler could not fix. One row per mnemonic:
 

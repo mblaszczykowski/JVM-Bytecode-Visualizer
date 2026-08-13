@@ -13,7 +13,7 @@ import {
 } from '../../services/bytecode-format';
 import { constantPoolIndexOf } from '../../services/constant-pool';
 import type { Construct } from '../../services/constructs';
-import type { StackDelta } from '../../services/derivations';
+import type { StackDelta } from '../../services/opcode-notes';
 
 import { BranchGutter } from './BranchGutter';
 import { CurrentRowHighlight } from './CurrentRowHighlight';

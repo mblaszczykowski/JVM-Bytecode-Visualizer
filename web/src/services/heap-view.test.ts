@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { HeapObject, StackFrame } from '../core/interpreter';
 
-import { OPERAND_ADDRESSING } from './derivations';
+import { OPERAND_ADDRESSING } from './opcode-notes';
 import { cellValuesOf, heapFocusOf, objectLabel } from './heap-view';
 
 const array: HeapObject = { kind: 'int-array', length: 3, elements: [7, 8, 9] };

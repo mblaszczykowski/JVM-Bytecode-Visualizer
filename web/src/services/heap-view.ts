@@ -1,6 +1,6 @@
 import type { HeapObject, StackFrame } from '../core/interpreter';
 
-import { OPERAND_ADDRESSING } from './derivations';
+import { OPERAND_ADDRESSING } from './opcode-notes';
 
 export function objectLabel(object: HeapObject, handle: number): string {
   return object.kind === 'int-array'

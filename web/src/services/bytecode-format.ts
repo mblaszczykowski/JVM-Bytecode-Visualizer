@@ -1,7 +1,7 @@
 import type { ConstantPool } from '../core/classfile';
 import { lookupOpcode, type Instruction } from '../core/disassembler';
 
-import { stackDeltaOf, type StackDelta } from './derivations';
+import { stackDeltaOf, type StackDelta } from './opcode-notes';
 
 export function formatOperands(instruction: Instruction): string {
   return operandTokens(instruction)

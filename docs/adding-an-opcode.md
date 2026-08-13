@@ -70,7 +70,7 @@ needs a program that makes it observable.
 
 ## 4. Say what it does, in one sentence
 
-`OPCODE_NOTES` in `web/src/services/derivations.ts` is the table the teaching layer reads for an
+`OPCODE_NOTES` in `web/src/services/opcode-notes.ts` is the table the teaching layer reads for an
 instruction's metadata. One row per mnemonic, keyed on the base mnemonic, so a form the `wide`
 prefix mints takes the row of the instruction it widens:
 

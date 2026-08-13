@@ -17,16 +17,14 @@ import {
 } from '../core/interpreter/__fixtures__/synthetic-class';
 
 import { readExampleBytes, readExampleText } from './__fixtures__/example-files';
+import { describeNextInstruction, describeOperandRoles, describeValue } from './derivations';
 import {
   baseMnemonicOf,
-  describeNextInstruction,
-  describeOperandRoles,
-  describeValue,
   explainMnemonic,
   OPCODE_NOTES,
   OPERAND_ADDRESSING,
   stackDeltaOf,
-} from './derivations';
+} from './opcode-notes';
 import { buildProgram, listingFor, type LoadedProgram } from './program';
 
 function factorialProgram(): LoadedProgram {
