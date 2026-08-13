@@ -24,23 +24,6 @@ describe('ByteReader: unsigned reads', () => {
 });
 
 describe('ByteReader: signed reads', () => {
-  it('reads 0xFF as -1 via readI1 and as 255 via readU1', () => {
-    expect(readerOf(0xff).readI1()).toBe(-1);
-    expect(readerOf(0xff).readU1()).toBe(255);
-  });
-
-  it('reads 0xFFFE as -2 via readI2 and as 65534 via readU2', () => {
-    expect(readerOf(0xff, 0xfe).readI2()).toBe(-2);
-    expect(readerOf(0xff, 0xfe).readU2()).toBe(65_534);
-  });
-
-  it('reads the extreme values of the signed types', () => {
-    expect(readerOf(0x80).readI1()).toBe(-128);
-    expect(readerOf(0x7f).readI1()).toBe(127);
-    expect(readerOf(0x80, 0x00).readI2()).toBe(-32_768);
-    expect(readerOf(0x7f, 0xff).readI2()).toBe(32_767);
-  });
-
   it('reads i8 as a bigint, which keeps the values a double would round', () => {
     expect(readerOf(0, 0, 0, 1, 0, 0, 0, 0).readI8()).toBe(4_294_967_296n);
     expect(readerOf(0x7f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff).readI8()).toBe(
@@ -71,7 +54,6 @@ describe('ByteReader: cursor', () => {
     const reader = readerOf(1, 2, 3, 4, 5, 6, 7);
     expect(reader.offset).toBe(0);
     expect(reader.remaining).toBe(7);
-    expect(reader.endOffset).toBe(7);
 
     reader.readU1();
     reader.readU2();
@@ -79,14 +61,6 @@ describe('ByteReader: cursor', () => {
 
     expect(reader.offset).toBe(7);
     expect(reader.remaining).toBe(0);
-  });
-
-  it('skip jumps over bytes without reading them', () => {
-    const reader = readerOf(1, 2, 3, 4);
-    reader.skip(3);
-
-    expect(reader.offset).toBe(3);
-    expect(reader.readU1()).toBe(4);
   });
 
   it('readBytes returns a copy, so mutating it leaves the source buffer alone', () => {
@@ -141,11 +115,9 @@ describe('ByteReader: reading past the buffer', () => {
   });
 
   it('rejects negative and non-integer byte counts', () => {
-    expect(
-      expectClassFileError(() => {
-        readerOf(1, 2).skip(-1);
-      }),
-    ).toMatchObject({ kind: 'malformed-structure' });
+    expect(expectClassFileError(() => readerOf(1, 2).readBytes(-1))).toMatchObject({
+      kind: 'malformed-structure',
+    });
     expect(expectClassFileError(() => readerOf(1, 2).readBytes(1.5))).toMatchObject({
       kind: 'malformed-structure',
     });
@@ -183,12 +155,11 @@ describe('ByteReader: subReader', () => {
 
   it('reports absolute buffer offsets, not offsets relative to the block', () => {
     const reader = readerOf(0x00, 0x00, 0xaa, 0xbb);
-    reader.skip(2);
+    reader.readU2();
     const body = reader.subReader(2);
     body.readU1();
 
     expect(body.offset).toBe(3);
-    expect(body.endOffset).toBe(4);
     expect(expectClassFileError(() => body.readU2())).toMatchObject({ offset: 3 });
   });
 

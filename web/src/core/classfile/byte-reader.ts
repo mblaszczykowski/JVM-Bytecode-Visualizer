@@ -36,10 +36,6 @@ export class ByteReader {
     return this.base + this.cursor;
   }
 
-  get endOffset(): number {
-    return this.base + this.view.byteLength;
-  }
-
   get remaining(): number {
     return this.view.byteLength - this.cursor;
   }
@@ -54,14 +50,6 @@ export class ByteReader {
 
   readU4(context = 'u4'): number {
     return this.view.getUint32(this.claim(4, context));
-  }
-
-  readI1(context = 'i1'): number {
-    return this.view.getInt8(this.claim(1, context));
-  }
-
-  readI2(context = 'i2'): number {
-    return this.view.getInt16(this.claim(2, context));
   }
 
   readI8(context = 'i8'): bigint {
@@ -79,10 +67,6 @@ export class ByteReader {
   readBytes(count: number, context = 'bytes'): Uint8Array {
     const start = this.claim(count, context);
     return this.bytes.slice(start, start + count);
-  }
-
-  skip(count: number, context = 'skipped bytes'): void {
-    this.claim(count, context);
   }
 
   subReader(length: number, context = 'block'): ByteReader {
