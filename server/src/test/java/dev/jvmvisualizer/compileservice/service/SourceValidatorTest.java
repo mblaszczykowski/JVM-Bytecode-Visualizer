@@ -47,4 +47,11 @@ class SourceValidatorTest {
                 DataSize.ofKilobytes(256), Duration.ofSeconds(10), 2,
                 new CompileProperties.RateLimit(10, false, 0)));
     }
+
+    @Test
+    void refusesATypeNameHoldingACharacterNoFileNameCanCarry() {
+        assertThatThrownBy(() -> validatorAccepting(64 * 1024).validate("public class A\u0001B { }"))
+                .isInstanceOfSatisfying(InvalidSourceException.class,
+                        e -> assertThat(e.error()).isEqualTo(ErrorCode.NO_PUBLIC_CLASS));
+    }
 }

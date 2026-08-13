@@ -112,7 +112,7 @@ AA contrast for the text steps against the surfaces in both palettes and checks 
 `--color-*` token the stylesheet declares resolves. Coverage thresholds are CI-enforced: `web/src/core/**` must stay at 90% lines, branches and
 functions, measured per file rather than in aggregate, in `web/vite.config.ts`. The server has its own
 gate in `server/pom.xml`: 0.85 line and 0.75 branch coverage per package on `api`, `compiler`, `config`
-and `service`, against 101 tests, which today sit at 95.7/81.8, 87.6/82.8, 92.8/85.2 and 96.9/85.7.
+and `service`, against 112 tests, which today sit at 95.7/81.8, 88.1/80.5, 92.8/85.2 and 97.2/87.5.
 
 ## Performance
 

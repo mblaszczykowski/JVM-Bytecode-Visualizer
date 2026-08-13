@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.time.Duration;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 class SourceNamesTest {
 
@@ -133,5 +135,36 @@ class SourceNamesTest {
         long start = System.nanoTime();
         assertThat(SourceNames.publicTypeName(source)).contains("Big");
         assertThat(Duration.ofNanos(System.nanoTime() - start)).isLessThan(Duration.ofSeconds(1));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "public class Plain { }",
+        "public @Deprecated class Annotated { }",
+        "public @SuppressWarnings(\"all\") final class Suppressed { }",
+        "public @java.lang.Deprecated class Qualified { }",
+        "@Deprecated public class AnnotationFirst { }",
+        "public @interface Marker { }",
+        "public @Deprecated record Annotated(int a) { }",
+        "public abstract class Shape { }",
+        "public enum Suit { HEARTS }",
+    })
+    void agreesWithJavacOnWhichTypeAFileDeclares(String source) {
+        String name = SourceNames.publicTypeName(source).orElseThrow();
+
+        CompilationResult result = new InMemoryCompiler().compile(new SourceUnit(name, source));
+
+        assertThat(result)
+                .as("javac must accept %s and emit exactly the type SourceNames named", name)
+                .isInstanceOfSatisfying(CompilationResult.Success.class,
+                        success -> assertThat(success.className()).isEqualTo(name));
+    }
+
+    @Test
+    void keepsScanningPastAnAnnotationThatCarriesArguments() {
+        assertThat(SourceNames.publicTypeName("public @A(v = f(1, (2))) class Nested { }"))
+                .contains("Nested");
+        assertThat(SourceNames.publicTypeName("public @A(\"(\") class Parenthesis { }"))
+                .contains("Parenthesis");
     }
 }

@@ -553,7 +553,7 @@ per file (`perFile: true` in `web/vite.config.ts`), so one thoroughly tested mod
 neglected one.
 
 The server has its own gate, in `server/pom.xml`: JaCoCo checks `api`, `compiler`, `config` and
-`service` per package at 0.85 line and 0.75 branch coverage, against 101 tests. The four packages
-sit at 95.7% / 81.8%, 87.6% / 82.8%, 92.8% / 85.2% and 96.9% / 85.7%. `api` used to be outside the
+`service` per package at 0.85 line and 0.75 branch coverage, against 112 tests. The four packages
+sit at 95.7% / 81.8%, 88.1% / 80.5%, 92.8% / 85.2% and 97.2% / 87.5%. `api` used to be outside the
 gate at 58.8% branch coverage. A test for the malformed-JSON branch of `ApiExceptionHandler`, and
 the removal of one arm no request could reach, put it over the same minimum as the other three.

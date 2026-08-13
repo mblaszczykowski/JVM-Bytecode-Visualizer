@@ -45,6 +45,10 @@ public final class SourceNames {
                 index = skipCharLiteral(source, index);
                 continue;
             }
+            if (current == '@' && !declaresAnnotationType(source, index)) {
+                index = skipAnnotation(source, index);
+                continue;
+            }
 
             if (Character.isJavaIdentifierStart(current)) {
                 int end = endOfWord(source, index);
@@ -88,6 +92,62 @@ public final class SourceNames {
 
     private static char next(String source, int index) {
         return index + 1 < source.length() ? source.charAt(index + 1) : '\0';
+    }
+
+    private static boolean declaresAnnotationType(String source, int at) {
+        int start = skipWhitespace(source, at + 1);
+        return start < source.length()
+                && Character.isJavaIdentifierStart(source.charAt(start))
+                && source.substring(start, endOfWord(source, start)).equals("interface");
+    }
+
+    private static int skipAnnotation(String source, int at) {
+        int index = skipWhitespace(source, at + 1);
+        if (index >= source.length() || !Character.isJavaIdentifierStart(source.charAt(index))) {
+            return at + 1;
+        }
+        index = endOfWord(source, index);
+
+        int dot = skipWhitespace(source, index);
+        while (dot < source.length() && source.charAt(dot) == '.') {
+            int name = skipWhitespace(source, dot + 1);
+            if (name >= source.length() || !Character.isJavaIdentifierStart(source.charAt(name))) {
+                return index;
+            }
+            index = endOfWord(source, name);
+            dot = skipWhitespace(source, index);
+        }
+
+        return dot < source.length() && source.charAt(dot) == '(' ? skipArguments(source, dot) : index;
+    }
+
+    private static int skipArguments(String source, int open) {
+        int index = open + 1;
+        int depth = 1;
+        while (index < source.length() && depth > 0) {
+            char current = source.charAt(index);
+            if (current == '"') {
+                index = skipTextOrString(source, index);
+            } else if (current == '\'') {
+                index = skipCharLiteral(source, index);
+            } else {
+                if (current == '(') {
+                    depth++;
+                } else if (current == ')') {
+                    depth--;
+                }
+                index++;
+            }
+        }
+        return index;
+    }
+
+    private static int skipWhitespace(String source, int start) {
+        int index = start;
+        while (index < source.length() && Character.isWhitespace(source.charAt(index))) {
+            index++;
+        }
+        return index;
     }
 
     private static int endOfWord(String source, int start) {

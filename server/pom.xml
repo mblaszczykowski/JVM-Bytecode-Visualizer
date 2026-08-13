@@ -104,8 +104,8 @@
             <configuration>
               <rules>
                 <!-- Each package is measured on its own. The minima sit under what the suite
-                     reaches today (api 95.7% lines / 81.8% branches, compiler 87.6% / 82.8%,
-                     config 92.8% / 85.2%, service 96.9% / 85.7%), so the gate catches
+                     reaches today (api 95.7% lines / 81.8% branches, compiler 88.1% / 80.5%,
+                     config 92.8% / 85.2%, service 97.2% / 87.5%), so the gate catches
                      regressions. CompilerProcessMain runs in the forked JVM, which the agent
                      never sees; that alone accounts for 15 uncovered lines in the compiler
                      package. What is left uncovered in api is the ResponseEntityExceptionHandler

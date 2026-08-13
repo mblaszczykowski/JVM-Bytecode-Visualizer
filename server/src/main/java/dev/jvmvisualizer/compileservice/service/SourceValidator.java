@@ -22,9 +22,18 @@ public class SourceValidator {
                     "source is %d bytes, the limit is %d bytes".formatted(bytes, maxSourceBytes));
         }
         return SourceNames.publicTypeName(source)
+                .map(SourceValidator::nameableType)
                 .map(typeName -> new SourceUnit(typeName, source))
                 .orElseThrow(() -> new InvalidSourceException(ErrorCode.NO_PUBLIC_CLASS,
                         "source must declare a public top-level class"));
+    }
+
+    private static String nameableType(String typeName) {
+        if (typeName.codePoints().anyMatch(Character::isIdentifierIgnorable)) {
+            throw new InvalidSourceException(ErrorCode.NO_PUBLIC_CLASS,
+                    "the public type name holds a character that cannot appear in a file name");
+        }
+        return typeName;
     }
 
     private static long utf8Length(String source) {
