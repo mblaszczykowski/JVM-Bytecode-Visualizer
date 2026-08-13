@@ -1,6 +1,8 @@
 # ADR-0007: Exceptions the machine raises, caught without an object model
 
-- **Status:** Accepted
+- **Status:** Accepted, and amended on 2026-08-13: a throw allocates a throwable instead of
+  interning one, which changes what a throwing loop costs the recording budget. See "Every throw
+  allocates" at the end of this record.
 - **Date:** 2026-08-02
 - **Amends:** [ADR-0002](0002-int-only-mvp-without-heap.md), the "no exceptions" half of that
   decision.
@@ -66,3 +68,29 @@ half of a feature that is complete and testable on its own, and say plainly wher
 `new` and `invokespecial` land, throwing an exception of your own is the last row of this table to
 fill in, and nothing here has to be rebuilt for it. `athrow` already takes a reference off the stack
 and does not care where it came from.
+
+## Every throw allocates (2026-08-13)
+
+Making a thrown exception an `ExternalValue` put it in the pool that also holds `System.out` and the
+`String` constants `ldc` pushes, and that pool interns: it keys a value on class name, label and
+detail and hands back the handle it gave out last time. That is wrong for a throwable. Two divisions
+by zero in the same method produced one object, so a program that caught both and compared the two
+references found them equal, where a real JVM creates a distinct instance per throw (JVMS §2.12).
+
+`dispatchThrow` now calls `ExternalPool.add`, which appends without consulting the key map.
+Interning is kept where identity really is defined that way: `ldc` of a `String` constant, which
+JVMS §5.1 requires to be the same object for the same literal, and the external fields such as
+`System.out`, which name one object each.
+
+The cost is charged to the recording budget, because each step that grew the pool charges the pool's
+whole length, so n throws cost n(n+1)/2 of the 24,000,000 elements in `MAX_RECORDED_ELEMENTS`.
+Measured on a loop that does nothing but divide by zero and catch it, five recorded steps per throw:
+at the default 20,000-step limit it throws 4,000 times and charges 8,002,000 elements, a third of
+the budget, and still ends at the step limit. Raise the limit to 500,000 and it ends instead with an
+`OutOfMemoryError` naming the history, after 6,927 throws at step 34,638. Interned, the pool never
+grew past one entry and the same program ran to the step limit.
+
+This is accepted for two reasons. Object identity is part of what the visualizer is here to show,
+and the failure mode is one the machine already has: a loop that prints on every step charges the
+console the same way and ends the same way, with an `OutOfMemoryError` naming the history and the
+recorded prefix still loaded and scrubbable (ADR-0005, ADR-0006).

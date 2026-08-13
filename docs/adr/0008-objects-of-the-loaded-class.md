@@ -19,7 +19,7 @@ have objects" but "how much of an object model is a complete, testable piece of 
 
 The obvious scope, objects the way Java has them, needs class loading, a superclass chain, method
 overriding, interface dispatch, static initialisers and a `String` that is a real object instead of
-a token. That is not a boundary, it is the rest of the JVM.
+a token. That list is most of the rest of the JVM, and it has no natural place to stop.
 
 ## Decision
 
@@ -50,7 +50,7 @@ Three details were decided rather than falling out of the implementation:
 
 ## Consequences
 
-65.2% of the corpus's 88,604 methods, 57,732 of them, now consist entirely of instructions this
+65.2% of the corpus's 88,604 methods, 57,734 of them, now consist entirely of instructions this
 interpreter implements, up from what three missing opcodes allowed. The per-instruction figure is
 91.5%, but the per-method one is the honest measure of reach and is what the README quotes: a method
 replays only if all of it runs.

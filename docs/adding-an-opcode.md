@@ -70,8 +70,9 @@ needs a program that makes it observable.
 
 ## 4. Say what it does, in one sentence
 
-`OPCODE_NOTES` in `web/src/services/derivations.ts` is the single table the teaching layer reads.
-One row per mnemonic:
+`OPCODE_NOTES` in `web/src/services/derivations.ts` is the table the teaching layer reads for an
+instruction's metadata. One row per mnemonic, keyed on the base mnemonic, so a form the `wide`
+prefix mints takes the row of the instruction it widens:
 
 ```ts
 export interface OpcodeNote {
@@ -112,7 +113,7 @@ Five things follow from the tables above, so do not duplicate them by hand:
 - The effect pills on the Next card, from the stack effect and `frame`.
 - The operand roles, from `OPERAND_ADDRESSING` where there is a row and from the invoke-aware
   defaults where there is not.
-- The mnemonic tooltip, from `help`.
+- The mnemonic tooltip, from `help`, for the widened forms as well as the narrow one.
 
 This list used to be shorter and the by-hand list longer. `MNEMONIC_HELP`, `REFERENCE_PUSHING` and a
 hand-maintained `stackDeltaOf` switch were three separate places saying overlapping things about the
@@ -121,11 +122,11 @@ that only a reader would notice. They are gone, folded into the one row above.
 
 What keeps it that way is a test.
 `web/src/services/derivations.test.ts`, in "gives every executable instruction help, a stack delta
-and effect pills", walks `EXECUTABLE_OPCODES` and fails the build if any opcode lacks `help`, has no
-resolvable stack delta, or produces effect pills that disagree with that delta. It also rejects an
-explanation that does not end in a period, contains `undefined` or a `?`, or falls back to generic
-filler. Adding a dispatch arm without step 4 therefore fails the suite rather than shipping a blank
-card.
+and effect pills", walks `EXECUTABLE_OPCODES` together with the forms the `wide` prefix mints and
+fails the build if any of them lacks `help`, has no resolvable stack delta, or produces effect pills
+that disagree with that delta. It also rejects an explanation that does not end in a period,
+contains `undefined` or a `?`, or falls back to generic filler. Adding a dispatch arm without step 4
+therefore fails the suite instead of shipping a blank card.
 
 `docs/adr/` does not update itself. If the addition moves a boundary rather than filling one in (a
 new kind of value on the operand stack, a second class file, anything the existing ADRs argued

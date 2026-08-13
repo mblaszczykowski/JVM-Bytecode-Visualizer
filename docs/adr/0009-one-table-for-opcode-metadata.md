@@ -1,6 +1,8 @@
-# ADR-0009: One table is the authority for what an instruction means
+# ADR-0009: One table for an instruction's metadata
 
-- **Status:** Accepted
+- **Status:** Accepted, and amended on 2026-08-13: the table is looked up by the base mnemonic
+  derived from the opcode, so the forms the `wide` prefix mints reach a row, and the test that
+  enforces this record walks those forms too.
 - **Date:** 2026-08-10
 
 ## Context
@@ -24,8 +26,9 @@ their intersection. A fifth set of hand-maintained parallel tables was the wrong
 
 ## Decision
 
-`OPCODE_NOTES` in `web/src/services/derivations.ts` is the authority for everything the teaching
-layer says about an instruction. One row per mnemonic:
+`OPCODE_NOTES` in `web/src/services/derivations.ts` is the one table the teaching layer reads for an
+instruction's metadata: the sentence that names it, the kind of value it pushes, whether it moves a
+call frame, and how to resolve a stack effect the disassembler could not fix. One row per mnemonic:
 
 ```ts
 export interface OpcodeNote {
@@ -45,11 +48,25 @@ survives as a nine-line function that reads the disassembler's table and falls b
 `OPERAND_ADDRESSING` stays as a second, smaller table, because operand naming and heap addressing
 apply to twelve instructions and defaults cover the rest.
 
+Most of the prose is not in the table. `help` is
+the mnemonic tooltip everywhere it appears, and it is the Next card's sentence only when no
+`explain*` function in the same module produces something more concrete. Over the 92 executable
+opcodes that is three of them: `nop`, `aconst_null` and `arraylength` read their sentence off
+`help`, and the other 89 come from a hand-written `explain*` arm that can name the values in front
+of it. [`adding-an-opcode.md`](../adding-an-opcode.md) describes the same split from the other side.
+
+The lookup is by base mnemonic. `baseMnemonicOf(instruction)` takes the mnemonic from the opcode
+byte and not from the decoded instruction, so the five forms the `wide` prefix mints (`iload_w`,
+`istore_w`, `aload_w`, `astore_w`, `iinc_w`) find the row of the instruction they widen. They used
+to find no row at all: a blank tooltip, and a Next card that fell through to the generic filler.
+
 The rows are made to hold by a test rather than by review.
-`web/src/services/derivations.test.ts` walks `EXECUTABLE_OPCODES` and fails the build if any opcode
-lacks help, has no resolvable stack delta, or produces effect pills that disagree with that delta.
-It also rejects an explanation that does not end in a period, that contains `undefined` or a `?`, or
-that is the generic fallback. A dispatch arm added without a row therefore fails the suite.
+`web/src/services/derivations.test.ts` walks `EXECUTABLE_OPCODES` together with the widened forms,
+97 in all, and fails the build if any of them lacks help, has no resolvable stack delta, or produces
+effect pills that disagree with that delta. It also rejects an explanation that does not end in a
+period, that contains `undefined` or a `?`, or that is the generic fallback. A dispatch arm added
+without a row therefore fails the suite, and so does a widened form the base mnemonic does not
+reach.
 
 ## Consequences
 
@@ -57,8 +74,7 @@ that is the generic fallback. A dispatch arm added without a row therefore fails
 
 - Adding an instruction is four hand edits rather than seven, and the doc that says so
   ([`adding-an-opcode.md`](../adding-an-opcode.md)) can be checked against the code.
-- The failure mode moved from "a reader sees a blank card" to "the build fails", which is the trade
-  every other gate in this repository makes.
+- The failure mode moved from "a reader sees a blank card" to "the build fails".
 - The defaults carry their weight: most rows are one string, because most instructions push an `int`
   and move no frame.
 
@@ -66,8 +82,8 @@ that is the generic fallback. A dispatch arm added without a row therefore fails
 
 - One more table that has to stay in step with `EXECUTABLE_OPCODES`. The test is what makes that
   survivable, and the test is now load-bearing.
-- The prose is written by hand, ninety times. That is real work and it does not scale to the full
-  instruction set.
+- The prose is written by hand, ninety-two times, and the `explain*` arms on top of it. That is real
+  work and it does not scale to the full instruction set.
 
 ## Alternatives considered
 

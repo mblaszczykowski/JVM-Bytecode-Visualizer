@@ -37,8 +37,9 @@ The residual risks of `javac` itself are mitigated explicitly:
 - Bounded concurrency. A compilation costs a whole JVM, so the number in flight is capped; a
   saturated service answers 503 with `Retry-After` instead of queueing requests that each hold a
   process.
-- Source ≤ 64 KiB, refused before the request body is buffered; an empty user class path;
-  `--release 21`.
+- Two size caps, at different points. A request body over 256 KiB is refused on `Content-Length`
+  before it is buffered; a source over 64 KiB is refused by `SourceValidator` once the body has been
+  read, before javac is invoked. An empty user class path, and `--release 21`.
 - Rate limiting, 10 requests per minute per IP. This is the control that actually bounds abuse,
   along with the concurrency cap and the size caps.
 - CORS restricted to the frontend origin. This one is worth stating precisely, because it is easy to

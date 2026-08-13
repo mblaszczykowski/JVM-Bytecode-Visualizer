@@ -8,8 +8,8 @@
 ## Context
 
 ADR-0001 accepted one cost explicitly: "execution starts with a delay equal to the entire run
-(milliseconds for the MVP)". That held while the step limit was 20 000. It stopped holding when the
-UI grew a "Raise the limit" action that goes to 500 000: the case where the reader asks for a longer
+(milliseconds for the MVP)". That held while the step limit was 20,000. It stopped holding when the
+UI grew a "Raise the limit" action that goes to 500,000: the case where the reader asks for a longer
 run is exactly the case where the tab stops responding, including the control that would let them
 change their mind.
 
@@ -21,13 +21,13 @@ the obvious design turns out to be wrong in a way only measurement reveals.
 
 ## The measurement
 
-A 500 000-step run, measured on V8:
+A 500,000-step run, measured on V8:
 
 |                                                |          |
 | ---------------------------------------------- | -------- |
 | `execute()` itself                             | 404 ms   |
-| Serialising the history into one `postMessage` | 1 443 ms |
-| Deserialising it on the receiving side         | 2 591 ms |
+| Serialising the history into one `postMessage` | 1,443 ms |
+| Deserialising it on the receiving side         | 2,591 ms |
 | Heap held by the history in the worker         | 274 MB   |
 | Heap held by the same history after transfer   | ~610 MB  |
 
@@ -35,23 +35,26 @@ Two conclusions follow, and the second is the one that matters.
 
 Structural sharing survives the boundary. The structured clone algorithm preserves object identity
 through its memory map: 36 distinct `Instruction` objects arrive as 36, and the bottom frame shared
-by every snapshot arrives shared. What does not survive is `Object.freeze` and the compactness that
+by every snapshot arrives shared. That memory map is per `postMessage`, so with the batching decided
+below the sharing holds inside a batch and not across them, and one instruction shared by a whole
+100,000-snapshot history arrives as 50 copies, one per batch, which is the part of the sharing
+traded for interleaving. What does not survive is `Object.freeze` and the compactness that
 came with it: a deserialised graph costs 2.2× the heap of the one it was cloned from.
 
 A worker that posts the history whole is slower than no worker at all. Deserialisation runs on the
-receiving thread, so the naive design moves a 404 ms block off the main thread and puts a 2 591 ms
+receiving thread, so the naive design moves a 404 ms block off the main thread and puts a 2,591 ms
 one back on it. It makes the freeze roughly six times worse while appearing, in the source, to fix
 it.
 
 ## Decision
 
-Execution runs in a dedicated worker per run, and the history is streamed back in batches of 2 000
+Execution runs in a dedicated worker per run, and the history is streamed back in batches of 2,000
 snapshots instead of posted as one value.
 
 Batching is cheaper in total, 1.9 s against 3.9 s, because V8's back-reference table degrades worse
 than linearly on a graph of that size. That is not the reason for it. The reason is that it splits
 the receiving cost into tasks the browser can interleave with painting and input. Measured on the
-built application in Chromium, uploading a class and raising the limit to 500 000 steps:
+built application in Chromium, uploading a class and raising the limit to 500,000 steps:
 
 |                             | wall clock | longest main-thread stall | frames painted |
 | --------------------------- | ---------- | ------------------------- | -------------- |
@@ -61,8 +64,8 @@ built application in Chromium, uploading a class and raising the limit to 500 00
 The run takes longer in wall-clock terms and the page stays alive throughout, which is the trade
 this decision makes.
 
-The residual ~100 ms gaps were attributed by measurement: raising the batch size to 100 000 turns
-them into five gaps of ~230 ms, which identifies those as deserialisation, while 2 000 and 500
+The residual ~100 ms gaps were attributed by measurement: raising the batch size to 100,000 turns
+them into five gaps of ~230 ms, which identifies those as deserialisation, while 2,000 and 500
 produce identical ~100 ms gaps. Those are V8 major-GC pauses as the received history grows the heap
 toward 600 MB. Batching has removed deserialisation from the profile; what remains is the 2.2×
 memory tax.

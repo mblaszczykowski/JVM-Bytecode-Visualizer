@@ -24,7 +24,7 @@ flowchart TD
     shim["run-program.worker.ts<br/>message wiring"]
     shim --> protocol
   end
-  subgraph app["web/src/services: application layer, 23 modules"]
+  subgraph app["web/src/services: application layer, 24 modules"]
     program["program.ts, program-view.ts<br/>parse, disassemble, listings"]
     runner["program-runner.ts<br/>inline or worker, cancellation"]
     derive["derivations.ts, timeline.ts, constructs.ts<br/>what the panels explain"]
@@ -57,8 +57,8 @@ notice.
 
 ## Execution is recorded ahead of time
 
-The obvious design for a step debugger is an interpreter the UI calls once per step. This project
-does the opposite: `execute(classFile, options)` runs the entire program synchronously and returns
+A step debugger is usually an interpreter the UI calls once per step. Here the whole run happens
+first: `execute(classFile, options)` runs the entire program synchronously and returns
 an `ExecutionResult` holding an array of frozen `Snapshot` values, one per executed instruction,
 capturing the state _before_ that instruction runs, closed by a terminal snapshot with an empty call
 stack.
@@ -80,7 +80,7 @@ calls `execute()`, then hands the history back in `snapshots` messages of `SNAPS
 not travel twice. Batching is what keeps the receiving thread interleaved with painting; posting a
 500,000-step history as one message costs more than not using a worker at all, which is the
 measurement ADR-0006 records. Anything that escapes `execute()` and is not a `VmFault` comes back as
-a `failed` message rather than an unhandled worker error.
+a `failed` message instead of an unhandled worker error.
 
 Cancellation belongs to the worker. `execute()` has no abort hook and never yields,
 so the only way to stop a run in flight is `worker.terminate()`, which `workerRunner` calls on
@@ -140,7 +140,7 @@ a response from the compile service.
    and `Double` entries occupy two slots with the second left `null`. Every tag JVMS §4.4 defines is
    read into typed indices and values, including `MethodHandle`, `MethodType`, `Dynamic`,
    `InvokeDynamic`, `Module` and `Package`, so the pool panel can resolve any of them. A tag the
-   specification does not define is a `unknown-constant-tag` error rather than a skipped run of
+   specification does not define is an `unknown-constant-tag` error rather than a skipped run of
    bytes, because its length is not knowable. Unknown _attributes_ are skipped by
    `attribute_length`, which is what lets a modern `javac` emit `StackMapTable`, `NestMembers` and
    friends without the parser knowing them. `Utf8` entries are decoded as modified UTF-8, and an
@@ -153,7 +153,7 @@ a response from the compile service.
    only to say that running it would stop the program. That is what lets a class this machine will
    never execute still read like `javap -c`. The two switches arrive with their jump tables in
    `Instruction.switchTargets`, and `wide` is folded into the instruction it widens instead of
-   listed separately, which is the representation javap prints. `truncatedAtOffset` is left for
+   listed separately, which is the representation javap prints. `undecodedFromOffset` is left for
    bytes that genuinely have no instruction boundary after them (a reserved or unassigned opcode, an
    operand cut off by the end of `code[]`, a switch table that does not fit), and is rendered as a
    "not decoded" row.
@@ -232,8 +232,7 @@ Three properties shape everything above it:
   was never allocated, stops the run with the `NullPointerException` a real JVM would raise. Every
   instruction that dereferences goes through the same check, so `getfield`, `putfield` and
   `invokevirtual` on a null receiver behave like `iaload` on one. The UI can therefore render a
-  reference as what it points at, `int[5]@0`,
-  rather than as a bare number that means nothing on its own.
+  reference as what it points at, `int[5]@0`, and not as a bare number.
 - It is append-only. Nothing is freed and handles are never reused, so there is no collector and no
   question about what a handle in an old snapshot refers to. That is what makes the frozen view
   cheap: `freeze()` re-copies only the arrays whose per-array version moved and hands back the
@@ -277,22 +276,22 @@ where a run stopped. `VmFaultDetail` is what the interpreter throws internally; 
 in-flight exception value and is the one kind that cannot reach a caller, because it either finds a
 handler or is converted to `uncaught-exception`. That leaves fourteen:
 
-| Kind                        | Carries                          | Raised by                                                              |
-| --------------------------- | -------------------------------- | ---------------------------------------------------------------------- |
-| `unsupported-opcode`        | `mnemonic`                       | an opcode outside `EXECUTABLE_OPCODES`, or a byte that does not decode |
-| `division-by-zero`          |                                  | `idiv`, `irem`, and the `Math` division externals                      |
-| `unsupported-call`          | `target`                         | a call this machine cannot resolve, including `new` of another class   |
-| `invalid-state`             | `message`                        | operand stack underflow, an unset local, a value of the wrong kind     |
-| `stack-overflow`            | `limit`                          | call depth past `maxCallDepth` (1,500)                                 |
-| `bad-branch-target`         | `mnemonic`, `target`             | a jump that does not land on an instruction boundary                   |
-| `array-index-out-of-bounds` | `index`, `length`                | `iaload`, `iastore`                                                    |
-| `negative-array-size`       | `size`                           | `newarray` with a negative count                                       |
-| `null-reference`            |                                  | any dereference of a handle that names no cell                         |
-| `unsupported-array-type`    | `typeName`                       | `newarray` for an element type other than `int`                        |
-| `out-of-memory`             | `resource`, `requested`, `limit` | the live heap or the recording budget, see below                       |
-| `unsupported-field`         | `target`                         | `getstatic`, `getfield` or `putfield` on a member with no model        |
-| `unsupported-constant`      | `target`                         | `ldc` of a pool entry that is neither an `int` nor a `String`          |
-| `uncaught-exception`        | `className`, `label`             | a thrown exception that unwound every frame without finding a handler  |
+| Kind                        | Carries                          | Raised by                                                                    |
+| --------------------------- | -------------------------------- | ---------------------------------------------------------------------------- |
+| `unsupported-opcode`        | `mnemonic`                       | an opcode outside `EXECUTABLE_OPCODES`, or a byte that does not decode       |
+| `division-by-zero`          |                                  | `idiv`, `irem`, and the `Math` division externals                            |
+| `unsupported-call`          | `target`                         | a call this machine cannot resolve, including `new` of another class         |
+| `invalid-state`             | `message`                        | operand stack underflow, an unset local, a value of the wrong kind           |
+| `stack-overflow`            | `limit`                          | call depth past `maxCallDepth` (1,500)                                       |
+| `bad-branch-target`         | `mnemonic`, `target`             | a jump or an exception handler that does not land on an instruction boundary |
+| `array-index-out-of-bounds` | `index`, `length`                | `iaload`, `iastore`                                                          |
+| `negative-array-size`       | `size`                           | `newarray` with a negative count                                             |
+| `null-reference`            |                                  | any dereference of a handle that names no cell                               |
+| `unsupported-array-type`    | `typeName`                       | `newarray` for an element type other than `int`                              |
+| `out-of-memory`             | `resource`, `requested`, `limit` | the live heap or the recording budget, see below                             |
+| `unsupported-field`         | `target`                         | `getstatic`, `getfield` or `putfield` on a member with no model              |
+| `unsupported-constant`      | `target`                         | `ldc` of a pool entry that is neither an `int` nor a `String`                |
+| `uncaught-exception`        | `className`, `label`             | a thrown exception that unwound every frame without finding a handler        |
 
 `out-of-memory` names which bound it hit. `resource: 'heap'` is the live one, `MAX_HEAP_ELEMENTS`
 (8,000,000 elements, never reclaimed because the heap is append-only). `resource: 'history'` is
@@ -305,13 +304,15 @@ Three of the `VmError` kinds exist because the interpreter has no bytecode verif
 run off its own rails. `stack-overflow` stops the run at `DEFAULT_MAX_CALL_DEPTH` (1,500 frames) and
 borrows the wording of a real `StackOverflowError`, so recursion without a reachable base case is
 named for what it is instead of being reported as a step limit, and it stops long before the history
-exhausts the browser tab. `bad-branch-target` rejects a jump that does not land on the first byte of
-an instruction of the same method (JVMS §4.9.1); it is checked once when a method is prepared, so a
-target inside another instruction's operands is named at the branch instead of surfacing later as
-whatever byte the pc happened to hit. `invalid-state` covers the rest: an empty operand stack at
-`iadd`, a read from an uninitialised slot, or a reference used where an `int` belongs, which is the
-kind check described under the heap, the verifier's work done at the instruction instead of ahead
-of the method (JVMS §4.10).
+exhausts the browser tab. `bad-branch-target` rejects any offset the machine can jump to that does
+not land on the first byte of an instruction of the same method (JVMS §4.9.1): the target of a
+branch or a switch, and the `handler_pc` of an `exception_table` row, which control reaches without
+any instruction pointing at it. All of them are checked once when a method is prepared, so a target
+inside another instruction's operands is named at the branch or the handler that names it instead of
+surfacing later as whatever byte the pc happened to hit. `invalid-state` covers the rest: an empty
+operand stack at `iadd`, a read from an uninitialised slot, or a reference used where an `int`
+belongs, which is the kind check described under the heap, the verifier's work done at the
+instruction instead of ahead of the method (JVMS §4.10).
 
 The kinds that correspond to a runtime exception are worded as that exception:
 `ArithmeticException: / by zero` for `division-by-zero`, and `ArrayIndexOutOfBoundsException`,
@@ -343,8 +344,11 @@ instruction families on the welcome screen are the executable opcodes grouped by
 instructions are not all executable yet. An opcode that gains an implementation therefore joins its
 family and drops off the gap list with no file to edit, and the welcome screen cannot claim
 something the dispatch `switch` does not do. Only the naming is editorial, plus one note that no
-opcode can express: that `invokestatic` resolves against the uploaded class alone, which is the one
-sentence there someone has to keep true by hand.
+opcode can express: `CALL_SCOPE_NOTE` says that a call has to resolve inside the uploaded class or
+inside the small slice of the standard library the externals table models, which is `System.out`
+printing and the `Math` helpers. That sentence is the one someone has to keep true by hand. It used
+to say that `invokestatic` resolves against the uploaded class alone, which the bundled `Collatz`
+example contradicts: it prints every term through `System.out.println`.
 
 ## The compile service
 
@@ -362,7 +366,7 @@ POST /api/compile  { "source": "public class Foo { … }" }
       both carry Retry-After: 5
 ```
 
-A failure answers `{ error, message }` where `error` is one of `empty-source`, `no-public-class`,
+A failure answers `{ error, message }` where `error` is one of `no-public-class`,
 `source-too-large`, `invalid-request`, `rate-limit-exceeded`, `compiler-busy`,
 `compiler-unavailable`, `internal-error` or `request-error`, plus a code derived from the HTTP
 status name for a status nothing maps explicitly (a 405 answers `method-not-allowed`). A compile
@@ -372,7 +376,7 @@ that times out is not a failure of the service: the watchdog kills the child and
 Those responses are committed as fixtures under `server/src/test/resources/contract/`, one JSON
 document per case holding the status, the headers that matter and the body. The server's tests
 assert it produces them and the web client's tests parse them, so the two ends of the contract are
-checked against the same bytes rather than against each other's assumptions.
+checked against the same bytes and not against each other's assumptions.
 
 The pipeline is `CompileController` → `CompileService` → `SourceValidator` → `ForkedCompiler`, and
 the compilation itself happens one process further out.
@@ -495,7 +499,7 @@ simply does not have that tab ([ADR-0004](adr/0004-backend-as-progressive-enhanc
 
 ## Testing strategy
 
-Four layers, each answering a different question.
+Five layers, each answering a different question.
 
 ### Differential: does this agree with a real JVM?
 
@@ -521,6 +525,16 @@ from `javap -c`, including resolved branch targets. The full dump is committed a
 `web/src/core/classfile/__fixtures__/Factorial.javap.txt` so a reviewer can check the numbers
 without running anything.
 
+### Breadth: does this open what is actually out there?
+
+`web/corpus/fetch-corpus.mjs` downloads ten Maven Central libraries, pinned by SHA-1, and
+`corpus.test.ts` parses all 8,053 class files in them on every CI run, asserting that none throws
+and that every method's instructions decode. The scan is committed as `web/corpus/scan.json`, so a
+change in what the machine can read shows up as a diff in the figures rather than as a number
+somebody has to re-measure. The jars themselves are not committed. The guard that stops the job
+passing on an empty download is gated on `CORPUS_REQUIRED`, which only the corpus job sets, because
+the other jobs never fetch it.
+
 ### End to end: does the product work?
 
 Playwright drives the production bundle, not the dev server: `playwright.config.ts` builds
@@ -530,14 +544,13 @@ verify that every code row keeps the 26px rhythm the design depends on, and conf
 file leaves the application usable. The spec covering the compile service skips itself unless
 `PLAYWRIGHT_COMPILE_API_URL` is set, which keeps the default run green without a backend.
 
-Underneath all of it: 1,348 unit and component tests across 78 files, and a coverage threshold of
+Underneath all of it: 1,402 unit and component tests across 79 files, and a coverage threshold of
 90% lines, branches and functions on `web/src/core/**` that CI enforces. The threshold is measured
 per file (`perFile: true` in `web/vite.config.ts`), so one thoroughly tested module cannot carry a
 neglected one.
 
-The server has its own gate, in `server/pom.xml`: JaCoCo checks `compiler`, `config` and `service`
-per package at 0.85 line and 0.75 branch coverage, against 93 tests. The three packages sit at 87.0%
-/ 82.8%, 90.2% / 76.9% and 97.1% / 88.9%. `api` is left out of the gate on purpose. Its branch
-coverage is 58.8%, largely `ResponseEntityExceptionHandler` arms for statuses this service cannot
-produce, and including it would mean setting a shared minimum low enough to stop the other three
-from meaning anything.
+The server has its own gate, in `server/pom.xml`: JaCoCo checks `api`, `compiler`, `config` and
+`service` per package at 0.85 line and 0.75 branch coverage, against 101 tests. The four packages
+sit at 95.7% / 81.8%, 87.6% / 82.8%, 92.8% / 85.2% and 96.9% / 85.7%. `api` used to be outside the
+gate at 58.8% branch coverage. A test for the malformed-JSON branch of `ApiExceptionHandler`, and
+the removal of one arm no request could reach, put it over the same minimum as the other three.

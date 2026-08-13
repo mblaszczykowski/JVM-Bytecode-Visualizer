@@ -49,9 +49,8 @@ stepping backwards needs no undo logic.
 The optional compile service compiles source to bytecode in memory with `javax.tools.JavaCompiler`
 and returns the bytes. It never loads a class, never runs what it compiled, never writes to disk, and
 javac runs in a short-lived child JVM killed outright at the deadline. The compiled bytecode executes
-on the client, in the same interpreter that handles uploads, which keeps remote code execution out of
-the threat model instead of sandboxing it
-([ADR-0003](docs/adr/0003-backend-compiles-never-executes.md)).
+on the client, in the same interpreter that handles uploads, so remote code execution stays out of
+the threat model ([ADR-0003](docs/adr/0003-backend-compiles-never-executes.md)).
 
 ```mermaid
 flowchart LR
@@ -98,26 +97,27 @@ The interpreter is the part that has to be right, so it is pinned from four dire
   tables of both switch instructions compared against javap's own arms. The full dump is committed
   next to the fixture (`web/src/core/classfile/__fixtures__/Factorial.javap.txt`), so a reviewer
   needs no JDK.
-- A corpus nobody here wrote. 8,053 class files from ten Maven Central libraries, built by `javac`,
+- A corpus of third-party code. 8,053 class files from ten Maven Central libraries, built by `javac`,
   `kotlinc` and `scalac`, parsed and disassembled with zero failures on every CI run. Its figures are
   committed to `web/corpus/scan.json` and the suite fails if a scan disagrees with them. It also
   measures the interpreter's reach; see [Scope and limitations](#scope-and-limitations).
 
-Under that: 1,348 unit and component tests across 78 files, a Playwright suite that replays a
-recursive program end to end, scrubs into the recursion, opens a class with no entry point in the
-explorer and rejects a non-class file, and a second end-to-end job running the editor against the
-compile service built from its own Dockerfile. Coverage thresholds are CI-enforced: `web/src/core/**`
-must stay at 90% lines, branches and functions, measured per file rather than in aggregate, in
-`web/vite.config.ts`. The server has its own gate in `server/pom.xml`: 0.85 line and 0.75 branch
-coverage per package on `compiler`, `config` and `service`, against 93 tests, which today sit at
-87.0/82.8, 90.2/76.9 and 97.1/88.9. The `api` package is left out of it on purpose, because its
-branch coverage is the handler arms for statuses this service cannot produce and gating it would mean
-a shared minimum too low to constrain the other three.
+Under that: 1,402 unit and component tests across 79 files, a Playwright suite that replays a
+recursive program end to end, scrubs into the recursion, checks that the interpreter really runs in a
+worker, opens a class with no entry point in the explorer and rejects a non-class file, and a second
+end-to-end job running the editor against the compile service built from its own Dockerfile. Two more
+specs guard the accessibility tree and the design system: `web/tests/e2e/a11y.spec.ts` runs axe at
+`moderate` and above over several states in both palettes, and `web/tests/e2e/theme.spec.ts` measures
+AA contrast for the text steps against the surfaces in both palettes and checks that every
+`--color-*` token the stylesheet declares resolves. Coverage thresholds are CI-enforced: `web/src/core/**` must stay at 90% lines, branches and
+functions, measured per file rather than in aggregate, in `web/vite.config.ts`. The server has its own
+gate in `server/pom.xml`: 0.85 line and 0.75 branch coverage per package on `api`, `compiler`, `config`
+and `service`, against 101 tests, which today sit at 95.7/81.8, 87.6/82.8, 92.8/85.2 and 96.9/85.7.
 
 ## Performance
 
-Recording every step is what this design pays for its replay, so the cost is measured and the
-measurements are budgets that fail a build when they move.
+Recording every step is what this design pays for its replay, so the cost is measured. The structural
+counts are budgets that fail a build when they move; the throughput figure is a one-off measurement.
 
 - ~600,000 steps a second: a 20,007-step counting loop parsed, disassembled, executed and recorded in
   33 ms. Measured under Node 20 on one core with `vitest`, on a development machine rather than a
@@ -127,31 +127,34 @@ measurements are budgets that fail a build when they move.
   would produce 142,911: 88.9× fewer. That reuse is what makes
   [ADR-0001](docs/adr/0001-snapshot-history.md) affordable, and
   `web/src/core/interpreter/performance.test.ts` pins all three counts exactly, so a change to the
-  sharing shows up as a diff rather than as a slow drift.
+  sharing shows up as a diff.
 - The history has a ceiling: 8M live heap elements and 24M recorded ones, both surfaced as
   `OutOfMemoryError` exactly as a real JVM would, so a program that asks for more stops with its
-  history intact. The recording ceiling is shared by the heap, the console and the interned external
-  objects, so a print-heavy run reaches it too.
+  history intact. The recording ceiling is shared by the heap, the console and the external objects,
+  so a print-heavy run reaches it too, as does a loop that throws: each throw allocates its own
+  exception object, so two catches of the same kind never see the same one.
 - So does the bundle. `npm run size -w web` fails when a shipped chunk outgrows its gzipped budget or
   a static asset outgrows its raw one, and CI runs it after the build.
 
 ```
-✓ index.js                   99.0 kB gzip / 108 kB  the application itself
+✓ index.js                  100.0 kB gzip / 108 kB  the application itself
 ✓ react.js                   42.2 kB gzip /  48 kB  react + react-dom
 ✓ motion.js                  44.1 kB gzip /  50 kB  framer-motion
 ✓ index.css                   8.5 kB gzip /  14 kB  the whole stylesheet
-✓ run-program.worker.js      12.3 kB gzip /  16 kB  parser + interpreter
+✓ run-program.worker.js      12.4 kB gzip /  16 kB  parser + interpreter
 ✓ og-image.jpg              134.8 kB raw  / 160 kB  the social card
 ✓ favicon.svg                 0.7 kB raw  /   4 kB  the tab icon
 ```
 
-`index.js` grew from a 95 kB budget to 108 kB, and it is worth saying what bought the 13 kB: ninety
-opcode explanations that did not exist before, full constant pool resolution so every tag renders and
-cross-links, the compile service's error copy, and the shared button and dialog primitives. Raising a
-budget is a normal thing to do; doing it without saying what arrived is not.
+The `index.js` budget went from 95 kB to 108 kB while the bundle grew about 9.5 kB, to the 100.0 kB
+above, which leaves 8 kB of headroom. What the application carries beyond the parser and the
+disassembler: an explanation for every opcode in the executable subset, full constant pool resolution
+so every tag renders and cross-links, the glossary, the compile service's error copy, and the shared
+button and dialog primitives.
 
-Timing on a shared CI runner is not evidence, so only the wall-clock figure is a smoke ceiling. The
-assertions that matter are about shape: frames shared, budgets enforced, nothing quadratic.
+Timing on a shared CI runner is not evidence, so no test asserts a duration.
+`web/src/core/interpreter/performance.test.ts` asserts counts: how many snapshots a run produces, how
+many frame objects those snapshots share, and that a flat run costs one frame per step.
 
 ## Deployment
 
@@ -204,7 +207,7 @@ because a library that writes class files is full of the format's own corners.
 
 `npm run test:corpus -w web` puts every class file through the same parse → disassemble path the
 application uses, on every change. The figures are committed to `web/corpus/scan.json` and the suite
-fails if a scan disagrees with them, so the numbers below are checked rather than remembered:
+fails if a scan disagrees with them, so the numbers below are checked on every run:
 
 | Over 10 jars from Maven Central       |                |
 | ------------------------------------- | -------------- |
@@ -220,7 +223,7 @@ contiguous, and nothing here is compiled for Java 17.
 
 Execution is the narrower claim, and the same corpus measures it. 91.5% of those 1.17 million
 instructions are ones the interpreter implements, but a method replays only if _every_ instruction in
-it runs, so the number that matters is counted per method: **65.2% of the 88,604 methods (57,732 of
+it runs, so the number that matters is counted per method: **65.2% of the 88,604 methods (57,734 of
 them) consist entirely of implemented instructions.**
 
 The most common instruction still outside the subset is `invokeinterface`, and behind it sit the
@@ -231,8 +234,8 @@ missing class file rather than a missing instruction: `new` and `invokespecial` 
 
 A separate limit decides whether a file replays at all: a run needs a static method it can enter, and
 only one of the 8,053 has a `main`, which is why the explorer matters as much as the transport. A
-file that does not replay is not a dead end: parsing, the constant pool, the method table and the
-full listing do not depend on execution, and a run that stops midway keeps the history it recorded.
+file that does not replay still opens: parsing, the constant pool, the method table and the full
+listing do not depend on execution, and a run that stops midway keeps the history it recorded.
 
 | In the Java source                                                                                                        | In the bytecode                                         | What the application does                                                                                                                                                                                             |
 | ------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -250,7 +253,7 @@ The parts that hold regardless of which file is loaded:
   small heap, plus opaque tokens for the few external members it recognises. No
   `long`/`float`/`double`, no second class file, no inheritance beyond `Object`, no interfaces, no
   static state, no threads, no lambdas, no bytecode verification.
-- The executable subset is 90 opcodes. `EXECUTABLE_OPCODES` in
+- The executable subset is 92 opcodes. `EXECUTABLE_OPCODES` in
   `web/src/core/interpreter/interpreter.ts` is the definitive list, built from the `Op` table the
   dispatch switch uses, and the welcome screen states it at runtime so it cannot drift. Grouped as
   JVMS §6.5 lays them out:
@@ -258,7 +261,8 @@ The parts that hold regardless of which file is loaded:
     `ldc_w`
   - loads and stores: `iload`, `aload` and their `_0`–`_3` forms, `istore`, `astore` and theirs,
     `iaload`, `iastore`, `iinc`
-  - stack: `pop`, `pop2`, `dup`, `dup_x1`, `dup2`, `dup2_x1`, `swap`
+  - stack: the whole family, `pop`, `pop2`, `dup`, `dup_x1`, `dup_x2`, `dup2`, `dup2_x1`, `dup2_x2`
+    and `swap`, since every value this machine holds occupies one slot
   - arithmetic: `iadd`, `isub`, `imul`, `idiv`, `irem`, `ineg`, the shifts `ishl`/`ishr`/`iushr`,
     the bitwise `iand`/`ior`/`ixor`, and the `i2b`/`i2c`/`i2s` narrowings
   - control flow: the `if<cond>`, `if_icmp<cond>` and `if_acmp<cond>` families, `ifnull`,
@@ -274,8 +278,8 @@ The parts that hold regardless of which file is loaded:
 - Objects of the loaded class run: `new`, the constructor, instance methods and instance fields.
   Shape is fixed at allocation from the class's own field table, each field starts at its
   descriptor's default, and the heap panel draws the fields by name as the run writes them. A null
-  receiver at `getfield`, `putfield` or `invokevirtual` raises `NullPointerException` the way a real
-  JVM does ([ADR-0008](docs/adr/0008-objects-of-the-loaded-class.md)).
+  reference at `getfield`, `putfield`, `invokevirtual` or `athrow` raises `NullPointerException` the
+  way a real JVM does ([ADR-0008](docs/adr/0008-objects-of-the-loaded-class.md)).
 - Decoding is wider than execution: every assigned opcode below `0xca` is fully decoded (mnemonic,
   operands, branch targets, switch tables) whether or not the interpreter runs it, so `getfield #3`
   reads as `getfield #3 // Field Counter.value:I` in a class that never executes. Decoding stops only
@@ -396,9 +400,11 @@ and raising `REQUIRED_JDK_FEATURE` in `web/fixtures/jdk.mjs` and the fixtures jo
 npm run screenshots -w web
 ```
 
-Builds the app, serves `dist/`, and drives Chromium through each state in this README, addressing
-every shot by deep link so the same command reproduces the same images. Run it after any visual
-change, so the README never describes an interface that no longer exists.
+Builds the app, serves `dist/`, and drives Chromium through six states: the five shots in this README
+and the error banner in [`docs/architecture.md`](docs/architecture.md). Four are addressed by deep
+link, the welcome screen loads `/`, and the error banner comes from uploading a file that is not a
+class, so the same command reproduces the same images. Run it after any visual change, so the README
+never describes an interface that no longer exists.
 
 ## Design decisions
 
@@ -442,11 +448,11 @@ error taxonomy.
   The corpus measurement chose this over `long`/`double`: three of the four most common instructions
   the interpreter could not run were one feature.
 
-- [ADR-0009: One table is the authority for what an instruction means](docs/adr/0009-one-table-for-opcode-metadata.md).
+- [ADR-0009: One table for an instruction's metadata](docs/adr/0009-one-table-for-opcode-metadata.md).
   The explanation, the pushed kind, the frame effect and the varying stack delta live in one row per
   opcode, with a test over `EXECUTABLE_OPCODES` that fails the build if a row is missing.
 - [ADR-0010: Security headers for the published page](docs/adr/0010-security-headers-for-the-page.md).
-  What each CSP directive is for, why `frame-ancestors *` is deliberate, and what the sha256 in
+  What each CSP directive is for, why `frame-ancestors *` is open, and what the sha256 in
   `script-src` is pinned to.
 
 `web/eslint.config.js` enforces the ADR-0001 boundary: no imports of React, the DOM or the

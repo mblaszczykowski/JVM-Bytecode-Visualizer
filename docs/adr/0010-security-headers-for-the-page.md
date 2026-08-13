@@ -48,7 +48,7 @@ Five of the CSP directives are decisions rather than defaults.
   this is an acceptable thing to couple.
 - `style-src 'self' 'unsafe-inline'` is required. React writes `style` attributes, and framer-motion writes
   them on every animation frame. Neither can be hashed, because the values change per frame. This is
-  the weakest directive here and it is a property of the rendering stack rather than a choice.
+  the weakest directive here, and it follows from the rendering stack.
 - `connect-src 'self' https:` is broad on purpose. The compile service and the telemetry endpoint are both build-time
   configuration (`VITE_COMPILE_API_URL`, `VITE_TELEMETRY_URL`) pointing at an origin this file
   cannot know. Naming them would mean regenerating `vercel.json` per deployment. `https:` at least
@@ -57,16 +57,18 @@ Five of the CSP directives are decisions rather than defaults.
   have covered it in every browser.
 
 Production source maps are emitted as `sourcemap: 'hidden'` in `web/vite.config.ts`: the `.map`
-files are built and uploaded, and no `sourceMappingURL` comment points at them. Telemetry can
-symbolicate a stack trace, and a browser never fetches them.
+files are built and uploaded, and no `sourceMappingURL` comment points at them, so a browser never
+fetches one and devtools open on the shipped bundle. They exist so that a frame from a production
+build can be read back to source by loading the map by hand. Nothing does that automatically:
+`web/src/services/telemetry.ts` sends an error name and two counters, never a stack and never a
+message, and `telemetry.test.ts` pins the exact set of keys a report may carry.
 
 ## Consequences
 
 **Positive**
 
-- The two things that look like gaps, `frame-ancestors *` and the missing `X-Frame-Options`, are on
-  the record as intentional, so the next person to run a header scanner has an answer rather than a
-  ticket.
+- The two things a header scanner flags, `frame-ancestors *` and the missing `X-Frame-Options`, are
+  on the record as intentional, with the reason written down.
 - The inline theme script is allowed by hash, so `script-src` stays free of `'unsafe-inline'`, which
   is the directive that actually matters for a page that parses untrusted input.
 - Nothing about this depends on Vercel. The same headers on any static host produce the same page.
@@ -74,8 +76,8 @@ symbolicate a stack trace, and a browser never fetches them.
 **Negative / costs**
 
 - The hash is a hand-maintained coupling between `vercel.json` and `web/index.html`, and nothing
-  fails a build when it drifts. The failure is visible (a theme flash) and cheap, which is why it was
-  accepted rather than automated.
+  fails a build when it drifts. The failure is visible (a theme flash) and cheap, which is why it
+  has not been automated.
 - `style-src 'unsafe-inline'` is a real weakening, and it cannot be removed while framer-motion
   animates inline styles.
 - `connect-src https:` is broad. It bounds the scheme and nothing else.

@@ -2,8 +2,14 @@
 
 - **Status:** Accepted. The costs recorded below are amended by
   [ADR-0006](0006-execution-in-a-worker.md) (2026-08-01), which moves the run off the main thread
-  and carries the benchmark this record asked for. The recording model (execute ahead of time,
-  replay by index) stands as written.
+  and carries the benchmark this record asked for. One cost below is no longer paid at all:
+  "Memory: a full copy of the frame stack per step" is not what a run costs today.
+  `SnapshotWriter` reuses the frozen frame it last emitted at each depth, and the heap reuses each
+  frozen array whose version did not move, so a frame is copied once per change instead of once per
+  step. `web/src/core/interpreter/performance.test.ts` pins that on a 200-deep recursion at 1,608
+  frame objects against the 142,911 a per-step copy would allocate. That also settles part of the
+  deferred alternative at the end of this record: sharing by version, with no persistent data
+  structures. The recording model (execute ahead of time, replay by index) stands as written.
 - **Date:** 2026-07-16
 
 ## Context
@@ -19,7 +25,7 @@ executes one instruction on demand, has three drawbacks:
    outside, and the state "between" steps leaks into components.
 3. Scrubbing (jumping to step N) has no sensible implementation without a full history.
 
-Programs within the MVP scope are small: a 20 000 step limit, `int`s only, no heap, and a frame
+Programs within the MVP scope are small: a 20,000 step limit, `int`s only, no heap, and a frame
 holds a few dozen bytes of data.
 
 ## Decision
@@ -49,7 +55,7 @@ knows nothing about React or the DOM; the boundary is enforced by an ESLint rule
 
 **Negative / costs**
 
-- Memory: a full copy of the frame stack per step. With a 20 000 step limit and small frames this is
+- Memory: a full copy of the frame stack per step. With a 20,000 step limit and small frames this is
   an accepted cost; no optimisation before measurement.
 - Programs with long loops end as `kind: 'step-limit'` instead of running "forever"; the UI has to
   say so explicitly.

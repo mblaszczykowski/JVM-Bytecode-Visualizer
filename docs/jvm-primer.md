@@ -37,8 +37,8 @@ being executed (JVMS §2.5.1). Everything else is the operand stack and the loca
 Two consequences show up immediately in the **Bytecode** panel:
 
 1. Instructions are tiny. `iadd` is one byte with no operands at all: it does not need to say where
-   its inputs are, because "the top of the stack" is the only answer available. 150 of the 205
-   opcodes in the JVM's table take no operand bytes at all.
+   its inputs are, because "the top of the stack" is the only answer available. 150 of the 202
+   assigned opcodes take no operand bytes at all.
 2. The type is in the mnemonic. `iadd` adds two `int`s, `dadd` adds two `double`s, `ladd` adds two
    `long`s (JVMS §2.11.1). The stack does not carry types at run time; the compiler picks the typed
    opcode and a separate verification pass proves before execution that the types line up (JVMS

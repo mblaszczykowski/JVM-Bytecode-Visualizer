@@ -97,8 +97,8 @@ Prerequisites: [flyctl](https://fly.io/docs/flyctl/install/) and an account.
 
    The response should be `200` with `"success": true`, and the headers must include
    `access-control-allow-origin`. A missing CORS header means `COMPILE_SERVICE_ALLOWED_ORIGIN` does
-   not match the browser's origin exactly: scheme, host and port all count, and a trailing slash
-   breaks the match.
+   not match the browser's origin: scheme, host and port all have to be the same. A trailing slash
+   is the one difference that does not matter, because Spring's `CorsConfiguration` trims it.
 
 ### Environment
 
@@ -127,11 +127,12 @@ compiling.
 ### What the API answers on a failure
 
 Every failure leaves as `{ error, message }`. The `error` values the service names are
-`empty-source`, `no-public-class`, `source-too-large`, `invalid-request`, `rate-limit-exceeded`,
-`compiler-busy`, `compiler-unavailable`, `internal-error` and `request-error`. Anything Spring
-answers that nothing maps explicitly gets a code derived from the HTTP status name, so a 405 reads
-`method-not-allowed` and a 415 `unsupported-media-type`; the shape stays the same either way, which
-is what the client's schema depends on.
+`no-public-class`, `source-too-large`, `invalid-request`, `rate-limit-exceeded`, `compiler-busy`,
+`compiler-unavailable`, `internal-error` and `request-error`. Anything Spring answers that nothing
+maps explicitly gets a code derived from the HTTP status name, so a 405 reads `method-not-allowed`
+and a 415 `unsupported-media-type`; the shape stays the same either way, which is what the client's
+schema depends on. A blank source is one of the `invalid-request` cases: `@NotBlank` on the request
+DTO rejects it before the service runs.
 
 Two of these are worth knowing when reading logs. `compiler-busy` means every compile slot was
 taken and is pure backpressure. `compiler-unavailable` means the child JVM could not be run at all,
@@ -272,7 +273,7 @@ Nothing here is deployed yet, so these are the values a first deploy has to supp
 
 | File                          | Placeholder                                                       | Replace with                                                                                                                                                                                                                                                                                         |
 | ----------------------------- | ----------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `README.md`                   | _no demo link yet_                                                | A `> Live demo: <url>` line under the first screenshot, once there is a Vercel URL to point at. This is the largest single gap in the project: everything else can be read, and this one is clicked.                                                                                                 |
+| `README.md`                   | _no demo link yet_                                                | A `> Live demo: <url>` line under the first screenshot, once there is a Vercel URL to point at.                                                                                                                                                                                                      |
 | `README.md`                   | _no CI badges yet_                                                | Workflow badges, once the repository has a GitHub owner and name: `[![web](https://github.com/<owner>/<repo>/actions/workflows/web.yml/badge.svg)](…)`, and the same for `server`, `e2e`, `docs` and `codeql`. The repository has no git remote yet, so there is no owner or name to write.          |
 | `web/index.html`              | `<meta property="og:image" content="/og-image.jpg" />`            | An absolute `https://<domain>/og-image.jpg`. The asset itself is done: `web/public/og-image.jpg` is a 1200x750 JPEG of about 135 KB, served from the deployment root and inside a budget the size check enforces. Only the domain is missing, and link previews do not resolve a root-relative path. |
 | `server/fly.toml`             | `app = "CHANGE-ME-compile-service"`                               | The name reserved with `fly apps create`.                                                                                                                                                                                                                                                            |
