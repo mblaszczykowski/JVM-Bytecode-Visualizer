@@ -57,7 +57,8 @@ export function CompileEditor({
   return (
     <section
       ref={editorRef}
-      role="region"
+      role="dialog"
+      aria-modal="true"
       aria-label="Java editor"
       data-testid="compile-editor"
       className="col-span-full row-span-full flex min-h-0 flex-col rounded-panel bg-panel shadow-panel"

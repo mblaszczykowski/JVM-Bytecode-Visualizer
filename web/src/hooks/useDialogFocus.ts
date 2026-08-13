@@ -24,6 +24,8 @@ export interface DialogFocusOptions {
   readonly initialFocus?: RefObject<HTMLElement | null> | undefined;
 }
 
+const openDialogs: RefObject<HTMLElement | null>[] = [];
+
 export function useDialogFocus(
   ref: RefObject<HTMLElement | null>,
   onClose: () => void,
@@ -47,6 +49,20 @@ export function useDialogFocus(
     if (!active) {
       return;
     }
+    openDialogs.push(ref);
+
+    return () => {
+      const index = openDialogs.lastIndexOf(ref);
+      if (index !== -1) {
+        openDialogs.splice(index, 1);
+      }
+    };
+  }, [active, ref]);
+
+  useEffect(() => {
+    if (!active) {
+      return;
+    }
 
     function handleKeyDown(event: KeyboardEvent): void {
       const dialog = ref.current;
@@ -55,6 +71,9 @@ export function useDialogFocus(
       }
 
       if (event.key === 'Escape') {
+        if (openDialogs.at(-1) !== ref) {
+          return;
+        }
         event.stopPropagation();
         onClose();
         return;

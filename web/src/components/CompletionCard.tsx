@@ -1,6 +1,7 @@
 import type { ExternalValue, HeapObject } from '../core/interpreter';
 import type { RunSummary } from '../services/program';
 
+import { NO_EXTERNALS, NO_HEAP } from './empty';
 import { HeapArrayRow, HeapInstanceRow } from './HeapRows';
 import { Panel } from './Panel';
 
@@ -23,10 +24,6 @@ function Figure({ label, value }: FigureProps) {
     </div>
   );
 }
-
-const NO_HEAP: readonly HeapObject[] = [];
-
-const NO_EXTERNALS: readonly ExternalValue[] = [];
 
 export function CompletionCard({
   summary,

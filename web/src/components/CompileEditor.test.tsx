@@ -124,6 +124,15 @@ describe('CompileEditor', () => {
     opener.remove();
   });
 
+  it('is a modal dialog, which is what keeping Tab inside itself makes it', () => {
+    renderEditor();
+
+    expect(screen.getByRole('dialog', { name: 'Java editor' })).toHaveAttribute(
+      'aria-modal',
+      'true',
+    );
+  });
+
   it('keeps Tab inside itself, so the toolbar behind it stays out of reach', () => {
     renderEditor();
 

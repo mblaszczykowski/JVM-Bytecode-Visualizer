@@ -289,6 +289,45 @@ describe('running an example', () => {
   });
 });
 
+const SOURCE_TAB = 'Source: the Java this class was compiled from';
+const CLASS_TAB = 'Class: the structure of the class file itself';
+
+function leftPanelTabs(): HTMLElement {
+  return screen.getByRole('group', { name: 'Left panel' });
+}
+
+describe('switching the left panel between the source and the class file', () => {
+  it('carries the single switch across to the panel it opens', async () => {
+    stubFetch(exampleRoutes());
+    await openFactorial();
+
+    expect(screen.getByRole('region', { name: 'Source' })).toContainElement(leftPanelTabs());
+
+    fireEvent.click(within(leftPanelTabs()).getByRole('button', { name: CLASS_TAB }));
+
+    expect(screen.getByRole('region', { name: 'Class file' })).toContainElement(leftPanelTabs());
+    expect(within(leftPanelTabs()).getByRole('button', { name: CLASS_TAB })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+
+    fireEvent.click(within(leftPanelTabs()).getByRole('button', { name: SOURCE_TAB }));
+
+    expect(screen.getByRole('region', { name: 'Source' })).toContainElement(leftPanelTabs());
+  });
+
+  it('leaves the focus on the switch a keyboard reader just used', async () => {
+    stubFetch(exampleRoutes());
+    await openFactorial();
+
+    const classTab = within(leftPanelTabs()).getByRole('button', { name: CLASS_TAB });
+    classTab.focus();
+    fireEvent.click(classTab);
+
+    expect(within(leftPanelTabs()).getByRole('button', { name: CLASS_TAB })).toHaveFocus();
+  });
+});
+
 function stallingRunner(settled: number, cancellable = true): ProgramRunner {
   let runs = 0;
   return {
@@ -498,6 +537,21 @@ describe('uploads', () => {
 
     expect(screen.queryByTestId('error-banner')).not.toBeInTheDocument();
     expect(screen.getAllByTestId('welcome-example').length).toBe(exampleCount());
+  });
+
+  it('reports the same rejection again when the same file is opened twice', async () => {
+    stubFetch(exampleRoutes());
+    await openApp();
+    const notes = () => uploadFile('notes.txt', new TextEncoder().encode('just some text'));
+
+    chooseFile(notes());
+    await screen.findByTestId('error-banner');
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss this message' }));
+    expect(screen.queryByTestId('error-banner')).not.toBeInTheDocument();
+
+    chooseFile(notes());
+
+    expect(await screen.findByTestId('error-banner')).toHaveTextContent('Not a .class file');
   });
 
   it('rejects a file over the size limit', async () => {
@@ -815,6 +869,25 @@ describe('the compile editor', () => {
     expect(screen.getByTestId('compile-editor')).toBeInTheDocument();
     expect(screen.getByLabelText('Java source')).toHaveValue(GCD_SOURCE);
     expect(screen.getByTestId('compiler-health')).toHaveAttribute('data-status', 'offline');
+  });
+
+  it('says the service is still unreachable on the next attempt, once dismissed', async () => {
+    stubFetch({ ...exampleRoutes(), [HEALTH_URL]: healthy });
+    await openApp(COMPILE_API);
+
+    await writeAndCompile();
+    expect(await screen.findByTestId('error-banner')).toHaveTextContent(
+      'Could not reach the compile service',
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss this message' }));
+    expect(screen.queryByTestId('error-banner')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Compile' }));
+
+    expect(await screen.findByTestId('error-banner')).toHaveTextContent(
+      'Could not reach the compile service',
+    );
   });
 
   it('drops a compile answer that lands after the editor is closed', async () => {

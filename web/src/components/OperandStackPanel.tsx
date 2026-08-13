@@ -5,6 +5,7 @@ import { describeValue } from '../services/derivations';
 
 import { useRowNavigation } from '../hooks/useRowNavigation';
 
+import { NO_EXTERNALS, NO_HEAP } from './empty';
 import { OriginButton } from './OriginButton';
 import { EmptyState, Panel } from './Panel';
 import { ReferenceChip } from './ui/ReferenceChip';
@@ -21,10 +22,6 @@ interface OperandStackPanelProps {
 const BASE_LINE = 'h-px flex-1 bg-line';
 
 const LABEL_COLUMN = 'w-[30px] shrink-0 text-legend tracking-[0.1em]';
-
-const NO_HEAP: readonly HeapObject[] = [];
-
-const NO_EXTERNALS: readonly ExternalValue[] = [];
 
 export function OperandStackPanel({
   frame,

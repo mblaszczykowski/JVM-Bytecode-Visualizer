@@ -1,15 +1,13 @@
-import { motion, useReducedMotion } from 'framer-motion';
-
 import type { ArrayObject, ExternalValue, HeapObject, InstanceObject } from '../core/interpreter';
 import { describeValue } from '../services/derivations';
 import { objectLabel, type HeapFocus } from '../services/heap-view';
 
+import { NO_EXTERNALS, NO_HEAP } from './empty';
 import { Pill } from './ui/Pill';
+import { PulseOverlay } from './ui/PulseOverlay';
 
 const CELL =
   'relative isolate flex h-[26px] items-center justify-center rounded-code font-mono text-code';
-
-const PULSE = 'pointer-events-none absolute inset-0 -z-10 bg-accent-fill';
 
 interface HeapArrayRowProps {
   readonly array: ArrayObject;
@@ -19,8 +17,6 @@ interface HeapArrayRowProps {
 }
 
 export function HeapArrayRow({ array, handle, focus, pulses }: HeapArrayRowProps) {
-  const reduced = useReducedMotion() ?? false;
-
   return (
     <li data-testid="heap-array" data-handle={handle} className="px-0.5">
       <div className="flex items-baseline gap-2 pb-1.5">
@@ -51,17 +47,7 @@ export function HeapArrayRow({ array, handle, focus, pulses }: HeapArrayRowProps
                   isFocused ? 'now-row text-accent-text' : 'bg-raised text-fg-2'
                 }`}
               >
-                {pulse === 0 ? null : (
-                  <motion.span
-                    key={pulse}
-                    data-testid="heap-pulse"
-                    aria-hidden="true"
-                    initial={{ opacity: 1 }}
-                    animate={{ opacity: 0 }}
-                    transition={{ duration: reduced ? 0 : 0.4, ease: 'easeOut' }}
-                    className={`${PULSE} rounded-code`}
-                  />
-                )}
+                <PulseOverlay pulse={pulse} testId="heap-pulse" className="rounded-code" />
                 {value}
               </span>
               <span
@@ -87,10 +73,6 @@ interface HeapInstanceRowProps {
   readonly pulses?: readonly number[] | undefined;
 }
 
-const NO_HEAP: readonly HeapObject[] = [];
-
-const NO_EXTERNALS: readonly ExternalValue[] = [];
-
 export function HeapInstanceRow({
   instance,
   handle,
@@ -98,8 +80,6 @@ export function HeapInstanceRow({
   externals = NO_EXTERNALS,
   pulses,
 }: HeapInstanceRowProps) {
-  const reduced = useReducedMotion() ?? false;
-
   return (
     <li data-testid="heap-instance" data-handle={handle} className="px-0.5">
       <div className="flex items-baseline gap-2 pb-1.5">
@@ -121,17 +101,7 @@ export function HeapInstanceRow({
               data-field={field.name}
               className={`${CELL} justify-between gap-3 bg-raised px-2 text-fg-2`}
             >
-              {pulse === 0 ? null : (
-                <motion.span
-                  key={pulse}
-                  data-testid="heap-pulse"
-                  aria-hidden="true"
-                  initial={{ opacity: 1 }}
-                  animate={{ opacity: 0 }}
-                  transition={{ duration: reduced ? 0 : 0.4, ease: 'easeOut' }}
-                  className={`${PULSE} rounded-code`}
-                />
-              )}
+              <PulseOverlay pulse={pulse} testId="heap-pulse" className="rounded-code" />
               <span className="truncate text-fg-3">{field.name}</span>
               <span>{describeValue(field.kind, field.value, heap, externals)}</span>
             </li>

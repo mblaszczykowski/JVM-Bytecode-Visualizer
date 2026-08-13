@@ -1,12 +1,11 @@
 import type { ReactNode } from 'react';
 
-export type PillTone = 'neutral' | 'accent' | 'error' | 'warn';
+type PillTone = 'neutral' | 'accent' | 'error';
 
 const TONE: Record<PillTone, string> = {
   neutral: 'bg-raised text-fg-3',
   accent: 'bg-accent-fill text-accent-text',
   error: 'bg-error-wash text-error',
-  warn: 'bg-warn-wash text-warn',
 };
 
 interface PillProps {

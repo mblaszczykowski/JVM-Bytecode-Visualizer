@@ -62,7 +62,14 @@ describe('Toolbar', () => {
     renderToolbar('online');
 
     expect(screen.getByTestId('compiler-health')).toHaveAttribute('data-status', 'online');
-    expect(screen.getByText('Compiler')).toBeInTheDocument();
+    expect(screen.getByTestId('compiler-health')).toHaveTextContent('Compiler service reachable');
+  });
+
+  it('reads the health out rather than leaving it to the colour of the dot', () => {
+    renderToolbar('offline');
+
+    expect(screen.getByTestId('compiler-health')).toHaveAttribute('data-status', 'offline');
+    expect(screen.getByTestId('compiler-health')).toHaveTextContent('Compiler service unreachable');
   });
 
   it('offers the editor only when there is a compiler behind it', () => {

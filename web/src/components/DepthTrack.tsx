@@ -16,7 +16,6 @@ interface DepthTrackProps {
   readonly stepIndex: number;
   readonly onSeek: (index: number) => void;
   readonly label: string;
-  readonly className?: string;
 }
 
 const MAX_BARS = 220;
@@ -91,7 +90,6 @@ export function DepthTrack({
   stepIndex,
   onSeek,
   label,
-  className = '',
 }: DepthTrackProps) {
   const buckets = useMemo(() => stepBucketsOf(depths.length, MAX_BARS), [depths.length]);
   const bars = useMemo(() => bucketDepths(depths, buckets), [depths, buckets]);
@@ -120,7 +118,7 @@ export function DepthTrack({
   }
 
   return (
-    <div className={`focus-ring-within relative h-11 grow rounded-row md:h-[34px] ${className}`}>
+    <div className="focus-ring-within relative h-11 grow rounded-row md:h-[34px]">
       {hasMarks ? (
         <div
           aria-hidden="true"

@@ -3,6 +3,7 @@ import { useState } from 'react';
 import type { ExternalValue, HeapObject, StackFrame } from '../core/interpreter';
 import { cellValuesOf, heapFocusOf, type HeapFocus } from '../services/heap-view';
 
+import { NO_EXTERNALS } from './empty';
 import { HeapArrayRow, HeapInstanceRow } from './HeapRows';
 import { Panel } from './Panel';
 
@@ -79,8 +80,6 @@ function HeapObjectRow({ object, handle, heap, externals, focus, pulses }: HeapO
     />
   );
 }
-
-const NO_EXTERNALS: readonly ExternalValue[] = [];
 
 export function HeapPanel({ heap, frame, externals = NO_EXTERNALS, mnemonic }: HeapPanelProps) {
   const pulses = usePulses(heap);

@@ -164,6 +164,9 @@ export function App({
   const [linkedLine, setLinkedLine] = useState<number | undefined>(undefined);
   const [dismissed, setDismissed] = useState<string | undefined>(undefined);
 
+  const structureTabsRef = useRef<HTMLDivElement>(null);
+  const keepTabFocus = useRef(false);
+
   const tokenRef = useRef(0);
   const issueToken = (): number => {
     tokenRef.current += 1;
@@ -234,6 +237,7 @@ export function App({
     setSelectedConstant(undefined);
     setLinkedLine(undefined);
     setStructureChoice(undefined);
+    setDismissed(undefined);
 
     const state = await settle(() =>
       load({
@@ -299,6 +303,7 @@ export function App({
       return;
     }
     const token = issueToken();
+    setDismissed(undefined);
     dispatch({ kind: 'compile-started', token });
 
     const result = await compile(compileApiUrl, draft);
@@ -513,15 +518,30 @@ export function App({
     setDismissed(raised?.message);
   };
 
+  useEffect(() => {
+    if (!keepTabFocus.current) {
+      return;
+    }
+    keepTabFocus.current = false;
+    structureTabsRef.current?.querySelector<HTMLElement>('[aria-pressed="true"]')?.focus();
+  });
+
+  const showStructure = (view: StructureView) => {
+    keepTabFocus.current =
+      view !== structureView &&
+      (structureTabsRef.current?.contains(document.activeElement) ?? false);
+    selectPanel(view);
+  };
+
   const structureTabs = (
-    <SegmentedControl label="Left panel" className="-my-0.5 p-0.5">
+    <SegmentedControl label="Left panel" groupRef={structureTabsRef} className="-my-0.5 p-0.5">
       {STRUCTURE_VIEWS.map(({ id, label, name }) => (
         <Segment
           key={id}
           label={name}
           selected={structureView === id}
           onClick={() => {
-            selectPanel(id);
+            showStructure(id);
           }}
           className="px-2 py-0.5 text-label"
         >
@@ -664,7 +684,7 @@ export function App({
             linkedLine={linkedLine}
             onLinkedLineChange={setLinkedLine}
             animateHighlight={smoothHighlight}
-            titleControl={structureTabs}
+            titleControl={structureView === 'source' ? structureTabs : undefined}
             className={structureVisibilityOf('source', visiblePanel, structureView)}
           />
           <ClassPanel
@@ -676,7 +696,7 @@ export function App({
             entryMethod={program.entry}
             selectedConstant={selectedConstant}
             onSelectConstant={setSelectedConstant}
-            titleControl={structureTabs}
+            titleControl={structureView === 'class' ? structureTabs : undefined}
             className={structureVisibilityOf('class', visiblePanel, structureView)}
           />
           <BytecodePanel

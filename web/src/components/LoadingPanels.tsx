@@ -25,7 +25,7 @@ function SkeletonPanel({ seed, raised = false, className = '', children }: Skele
         {Array.from({ length: FILL_ROWS }, (_, index) => (
           <div
             key={index}
-            className="shrink-0 animate-pulse rounded-code bg-raised"
+            className="shrink-0 rounded-code bg-raised motion-safe:animate-pulse"
             style={{ height: ROW_HEIGHT, width: `${String(42 + (((index + seed) * 17) % 52))}%` }}
           />
         ))}

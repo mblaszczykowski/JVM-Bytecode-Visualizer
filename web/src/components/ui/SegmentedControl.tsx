@@ -1,14 +1,21 @@
-import type { ReactNode } from 'react';
+import type { ReactNode, RefObject } from 'react';
 
 interface SegmentedControlProps {
   readonly label: string;
+  readonly groupRef?: RefObject<HTMLDivElement> | undefined;
   readonly className?: string;
   readonly children: ReactNode;
 }
 
-export function SegmentedControl({ label, className = 'p-0.5', children }: SegmentedControlProps) {
+export function SegmentedControl({
+  label,
+  groupRef,
+  className = 'p-0.5',
+  children,
+}: SegmentedControlProps) {
   return (
     <div
+      ref={groupRef}
       role="group"
       aria-label={label}
       className={`inline-flex shrink-0 items-center gap-0.5 rounded-control bg-sunken shadow-control-inset ${className}`}

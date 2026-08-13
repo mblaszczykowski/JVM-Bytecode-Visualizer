@@ -1,12 +1,13 @@
-import { motion, useReducedMotion } from 'framer-motion';
 import { useState } from 'react';
 
 import type { ExternalValue, HeapObject, StackFrame } from '../core/interpreter';
 import { useRowNavigation } from '../hooks/useRowNavigation';
 import { describeValue } from '../services/derivations';
 
+import { NO_EXTERNALS, NO_HEAP } from './empty';
 import { OriginButton } from './OriginButton';
 import { EmptyState, Panel } from './Panel';
+import { PulseOverlay } from './ui/PulseOverlay';
 import { ReferenceChip } from './ui/ReferenceChip';
 
 interface LocalsPanelProps {
@@ -23,10 +24,6 @@ const UNINITIALISED = '·';
 type Locals = readonly (number | undefined)[];
 
 const NO_LOCALS: Locals = [];
-
-const NO_HEAP: readonly HeapObject[] = [];
-
-const NO_EXTERNALS: readonly ExternalValue[] = [];
 
 interface Tracked {
   readonly frameIndex: number;
@@ -66,7 +63,6 @@ export function LocalsPanel({
   externals = NO_EXTERNALS,
   onSeekToStep,
 }: LocalsPanelProps) {
-  const reduced = useReducedMotion() ?? false;
   const pulses = usePulses(frameIndex, frame?.locals ?? NO_LOCALS);
 
   const traceable = (frame?.locals ?? NO_LOCALS)
@@ -122,16 +118,7 @@ export function LocalsPanel({
                   isInitialised ? 'bg-raised' : 'shadow-row-outline'
                 }`}
               >
-                {pulse === 0 ? null : (
-                  <motion.span
-                    key={pulse}
-                    aria-hidden="true"
-                    initial={{ opacity: 1 }}
-                    animate={{ opacity: 0 }}
-                    transition={{ duration: reduced ? 0 : 0.4, ease: 'easeOut' }}
-                    className="pointer-events-none absolute inset-0 -z-10 rounded-row bg-accent-fill"
-                  />
-                )}
+                <PulseOverlay pulse={pulse} className="rounded-row" />
                 <span className="w-3 shrink-0 font-mono text-micro text-fg-3">{slot}</span>
                 <span className={isInitialised ? 'text-fg-2' : 'text-fg-3'}>{name}</span>
                 {isInitialised && kind !== 'external' ? (

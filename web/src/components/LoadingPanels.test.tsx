@@ -27,6 +27,15 @@ describe('LoadingPanels', () => {
     expect(onCancel).toHaveBeenCalledOnce();
   });
 
+  it('holds the skeleton still for a reader who asked for less motion', () => {
+    render(<LoadingPanels label="Loading Factorial" />);
+
+    expect(document.querySelectorAll('.animate-pulse')).toHaveLength(0);
+    expect(
+      document.querySelectorAll(String.raw`.motion-safe\:animate-pulse`).length,
+    ).toBeGreaterThan(0);
+  });
+
   it('counts the steps out as they arrive, so a long handover looks alive', () => {
     render(<LoadingPanels label="Re-running with 500,000 steps" steps={125_000} />);
 

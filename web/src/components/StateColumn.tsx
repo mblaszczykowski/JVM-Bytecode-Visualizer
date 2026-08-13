@@ -7,6 +7,7 @@ import type { RunSummary } from '../services/program';
 import { CallStackPanel } from './CallStackPanel';
 import { CompletionCard } from './CompletionCard';
 import { ConsolePanel } from './ConsolePanel';
+import { NO_EXTERNALS, NO_HEAP } from './empty';
 import { HeapPanel } from './HeapPanel';
 import { LocalsPanel } from './LocalsPanel';
 import { OperandStackPanel } from './OperandStackPanel';
@@ -35,10 +36,6 @@ function Hairline() {
     />
   );
 }
-
-const NO_HEAP: readonly HeapObject[] = [];
-
-const NO_EXTERNALS: readonly ExternalValue[] = [];
 
 const SECTION = 'flex min-h-[84px] flex-col md:min-w-0 md:flex-1 lg:flex-initial';
 

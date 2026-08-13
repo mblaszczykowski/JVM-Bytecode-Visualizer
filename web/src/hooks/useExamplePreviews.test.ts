@@ -1,7 +1,13 @@
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { exampleRoutes, statusResponse, stubFetch } from '../services/__fixtures__/fake-fetch';
+import { readExampleBytes } from '../services/__fixtures__/example-files';
+import {
+  exampleRoutes,
+  okResponse,
+  statusResponse,
+  stubFetch,
+} from '../services/__fixtures__/fake-fetch';
 import { exampleUrl } from '../services/examples';
 import type { ExampleEntry } from '../services/manifest';
 
@@ -17,6 +23,18 @@ const FACTORIAL: ExampleEntry = {
   entryMethod: 'main',
   resultVariable: 'result',
   expectedResult: 24,
+};
+
+const GCD: ExampleEntry = {
+  id: 'gcd',
+  title: 'GCD: while loop and remainder',
+  tagline: "Euclid's loop on (1071, 462) = 21.",
+  description: "Euclid's algorithm for (1071, 462) = 21.",
+  classFile: 'Gcd.class',
+  sourceFile: 'Gcd.java',
+  entryMethod: 'main',
+  resultVariable: 'result',
+  expectedResult: 21,
 };
 
 const NO_ENTRIES: readonly ExampleEntry[] = [];
@@ -62,14 +80,28 @@ describe('useExamplePreviews', () => {
     });
   });
 
-  it('drops a late answer once it has been unmounted', async () => {
-    stubFetch(exampleRoutes());
-    const entries = [FACTORIAL];
-    const { result, unmount } = renderHook(() => useExamplePreviews(entries));
+  it('drops the answer to a superseded list when it lands late', async () => {
+    let land: (response: Response) => void = () => undefined;
+    const heldFactorial = new Promise<Response>((resolve) => {
+      land = resolve;
+    });
+    stubFetch({ ...exampleRoutes(), [exampleUrl('Factorial.class')]: () => heldFactorial });
 
-    unmount();
-    await Promise.resolve();
+    const { result, rerender } = renderHook(
+      ({ entries }: { entries: readonly ExampleEntry[] }) => useExamplePreviews(entries),
+      { initialProps: { entries: [FACTORIAL] } },
+    );
 
-    expect(result.current.size).toBe(0);
+    rerender({ entries: [GCD] });
+    await waitFor(() => {
+      expect([...result.current.keys()]).toEqual(['gcd']);
+    });
+
+    await act(async () => {
+      land(okResponse({ bytes: readExampleBytes('Factorial.class') }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect([...result.current.keys()]).toEqual(['gcd']);
   });
 });
