@@ -1,9 +1,11 @@
 # ADR-0005: A heap that holds `int` arrays and nothing else
 
-- **Status:** Accepted. The sentence below that the heap "holds fixed-length arrays of `int` and no
-  other object" is superseded by [ADR-0008](0008-objects-of-the-loaded-class.md) (2026-08-04), which
-  takes the exit path named at the end of this record. Everything else here (handles, kind tags, the
-  append-only heap, the frozen view) stands as written and is what objects were built on.
+- **Status:** Accepted. Two sentences below are superseded by
+  [ADR-0008](0008-objects-of-the-loaded-class.md) (2026-08-04), which takes the exit path named at
+  the end of this record: that the heap "holds fixed-length arrays of `int` and no other object",
+  and that array parameters and array returns are out. A descriptor may now carry any reference
+  type, arrays included. Everything else here (handles, kind tags, the append-only heap, the frozen
+  view) stands as written and is what objects were built on.
 - **Date:** 2026-07-30
 - **Amends:** [ADR-0002](0002-int-only-mvp-without-heap.md), the "no heap" half of that decision,
   along the exit path it named.

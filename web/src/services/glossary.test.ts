@@ -89,7 +89,10 @@ describe('glossary', () => {
 
   it('counts the operand-free instructions out of the opcode table', () => {
     const assigned = [...OPCODES.values()].filter((info) => info.kind !== 'reserved');
-    const bare = assigned.filter((info) => info.operands.length === 0);
+    const bare = assigned.filter(
+      (info) =>
+        (info.kind === 'supported' || info.kind === 'unsupported') && info.operandBytes === 0,
+    );
 
     expect(glossaryEntry('opcode').paragraphs[0]).toContain(
       `${String(bare.length)} of the ${String(assigned.length)} assigned opcodes take no operand bytes`,

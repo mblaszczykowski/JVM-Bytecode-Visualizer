@@ -13,8 +13,8 @@ public final class BubbleSort {
     /**
      * Sorts a fixed five-element array in place and reports its smallest element.
      *
-     * <p>Only {@code int} parameters and an {@code int}/{@code void} return type are supported, so
-     * the array is built here rather than passed in, and the caller gets back one element of it.
+     * <p>The example programs are restricted to {@code int} and {@code BubbleSort} in a descriptor,
+     * so the array is built here rather than passed in, and the caller gets back one element of it.
      *
      * @return {@code a[0]} after sorting, i.e. the minimum of the array, 1; the unsorted array
      *     starts with 5, so the value shows the sort ran

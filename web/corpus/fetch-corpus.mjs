@@ -62,7 +62,7 @@ const CORPUS = [
   {
     path: 'org/apache/commons/commons-collections4/4.4/commons-collections4-4.4.jar',
     sha1: '62ebe7544cb7164d87e0637a2a6a2bdc981395e8',
-    why: 'old: compiled for Java 6, class file major version 50',
+    why: 'a Signature attribute on 97% of its classes, the highest in the set',
   },
 ];
 
