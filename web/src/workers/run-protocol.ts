@@ -6,6 +6,7 @@ export const SNAPSHOTS_PER_MESSAGE = 2_000;
 export interface RunCommand {
   readonly classFile: ClassFile;
   readonly entryMethod: string;
+  readonly entryDescriptor?: string;
   readonly maxSteps: number;
 }
 
@@ -29,6 +30,7 @@ export function runAndStream(command: RunCommand, post: (event: RunEvent) => voi
   try {
     result = execute(command.classFile, {
       entryMethod: command.entryMethod,
+      entryDescriptor: command.entryDescriptor,
       maxSteps: command.maxSteps,
     });
   } catch (error) {

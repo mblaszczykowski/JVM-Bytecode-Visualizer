@@ -89,7 +89,7 @@ export function execute(classFile: ClassFile, options: ExecuteOptions = {}): Exe
   const maxSteps = atLeastOne(options.maxSteps, DEFAULT_MAX_STEPS);
   const entryName = options.entryMethod ?? DEFAULT_ENTRY_METHOD;
 
-  const entry = findEntryMethod(classFile, entryName);
+  const entry = findEntryMethod(classFile, entryName, options.entryDescriptor);
   if (entry === undefined) {
     return {
       kind: 'vm-error',
@@ -1139,10 +1139,16 @@ export interface EntryPoint {
 export function findEntryMethod(
   classFile: ClassFile,
   name: string = DEFAULT_ENTRY_METHOD,
+  descriptor?: string,
 ): EntryPoint | undefined {
   for (const method of classFile.methods) {
     const { code } = method;
-    if (method.name === name && code !== undefined && isEntryMethod(method)) {
+    if (
+      method.name === name &&
+      (descriptor === undefined || method.descriptor === descriptor) &&
+      code !== undefined &&
+      isEntryMethod(method)
+    ) {
       return { method, code };
     }
   }

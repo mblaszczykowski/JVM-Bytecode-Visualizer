@@ -444,9 +444,7 @@ export function App({
     if (program === undefined) {
       return;
     }
-    void startLoad(`Running ${method.name}`, (context) =>
-      runFromState(program, method.name, context),
-    );
+    void startLoad(`Running ${method.name}`, (context) => runFromState(program, method, context));
   };
 
   const followConstantFromListing = (index: number) => {

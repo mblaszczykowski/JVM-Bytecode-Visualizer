@@ -113,6 +113,7 @@ export type ExecutionResult =
 
 export interface ExecuteOptions {
   readonly entryMethod?: string;
+  readonly entryDescriptor?: string | undefined;
   readonly maxSteps?: number;
   readonly maxCallDepth?: number;
 }

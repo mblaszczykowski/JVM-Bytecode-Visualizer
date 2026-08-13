@@ -370,6 +370,27 @@ describe('entry points beyond main', () => {
     expect(chosen.outcome).toEqual({ kind: 'completed', returnValue: 2 });
   });
 
+  it('runs the overload the descriptor names, not the first of that name', () => {
+    const classFile = syntheticClass({
+      methods: [
+        { name: 'main', descriptor: '([Ljava/lang/String;)V', code: [0xb1] },
+        { name: 'main', descriptor: '()I', code: [0x08, 0xac] },
+      ],
+    });
+
+    const byName = buildProgram({ origin: UPLOAD, classFile, entryMethod: 'main' });
+    const byDescriptor = buildProgram({
+      origin: UPLOAD,
+      classFile,
+      entryMethod: 'main',
+      entryDescriptor: '()I',
+    });
+
+    expect(byName.entry?.descriptor).toBe('([Ljava/lang/String;)V');
+    expect(byDescriptor.entry?.descriptor).toBe('()I');
+    expect(byDescriptor.outcome).toEqual({ kind: 'completed', returnValue: 5 });
+  });
+
   it('never opens on the class initialiser, but keeps it runnable on request', () => {
     const classFile = syntheticClass({
       methods: [

@@ -214,21 +214,26 @@ export function rerunState(
   maxSteps: number,
   context: LoadContext = INLINE_LOAD,
 ): Promise<AppState> {
-  return rebuiltState(program, maxSteps, program.entry?.name, context);
+  return rebuiltState(program, maxSteps, program.entry, context);
+}
+
+export interface EntryChoice {
+  readonly name: string;
+  readonly descriptor: string;
 }
 
 export function runFromState(
   program: LoadedProgram,
-  entryMethod: string,
+  entry: EntryChoice,
   context: LoadContext = INLINE_LOAD,
 ): Promise<AppState> {
-  return rebuiltState(program, program.maxSteps, entryMethod, context);
+  return rebuiltState(program, program.maxSteps, entry, context);
 }
 
 function rebuiltState(
   program: LoadedProgram,
   maxSteps: number,
-  entryMethod: string | undefined,
+  entry: EntryChoice | undefined,
   context: LoadContext,
 ): Promise<AppState> {
   return settled(
@@ -239,7 +244,8 @@ function rebuiltState(
           classFile: program.classFile,
           source: sourceOf(program),
           maxSteps,
-          entryMethod,
+          entryMethod: entry?.name,
+          entryDescriptor: entry?.descriptor,
         },
         context,
       ),

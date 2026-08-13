@@ -41,6 +41,7 @@ export const inlineRunner: ProgramRunner = {
     }
     return execute(command.classFile, {
       entryMethod: command.entryMethod,
+      entryDescriptor: command.entryDescriptor,
       maxSteps: command.maxSteps,
     });
   },

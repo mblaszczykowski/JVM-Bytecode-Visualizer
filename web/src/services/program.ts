@@ -87,6 +87,7 @@ export interface BuildProgramInput {
   readonly source?: ProgramSource | undefined;
   readonly maxSteps?: number | undefined;
   readonly entryMethod?: string | undefined;
+  readonly entryDescriptor?: string | undefined;
   readonly run?: ExecutionResult | undefined;
 }
 
@@ -104,12 +105,19 @@ export function buildProgram({
   source,
   maxSteps = DEFAULT_MAX_STEPS,
   entryMethod,
+  entryDescriptor,
   run,
 }: BuildProgramInput): LoadedProgram {
-  const entry = chooseEntry(classFile, entryMethod);
+  const entry = chooseEntry(classFile, entryMethod, entryDescriptor);
   const result =
     run ??
-    (entry === undefined ? undefined : execute(classFile, { entryMethod: entry.name, maxSteps }));
+    (entry === undefined
+      ? undefined
+      : execute(classFile, {
+          entryMethod: entry.name,
+          entryDescriptor: entry.descriptor,
+          maxSteps,
+        }));
   const executed = executedOffsets(result?.snapshots ?? NO_SNAPSHOTS);
 
   const methods = classFile.methods.map<MethodListing>((method) => {
@@ -153,7 +161,7 @@ export async function runProgram(
   input: BuildProgramInput,
   context: LoadContext,
 ): Promise<LoadedProgram> {
-  const entry = chooseEntry(input.classFile, input.entryMethod);
+  const entry = chooseEntry(input.classFile, input.entryMethod, input.entryDescriptor);
   if (entry === undefined) {
     return buildProgram(input);
   }
@@ -162,6 +170,7 @@ export async function runProgram(
     {
       classFile: input.classFile,
       entryMethod: entry.name,
+      entryDescriptor: entry.descriptor,
       maxSteps: input.maxSteps ?? DEFAULT_MAX_STEPS,
     },
     context,
@@ -184,10 +193,20 @@ function notRunnableReasonOf(method: MethodInfo): NotRunnableReason | undefined 
   return isEntryMethod(method) ? undefined : 'descriptor';
 }
 
-function chooseEntry(classFile: ClassFile, requested: string | undefined): MethodInfo | undefined {
+function chooseEntry(
+  classFile: ClassFile,
+  requested: string | undefined,
+  descriptor?: string,
+): MethodInfo | undefined {
   const runnable = classFile.methods.filter((method) => notRunnableReasonOf(method) === undefined);
   return (
-    (requested === undefined ? undefined : runnable.find((method) => method.name === requested)) ??
+    (requested === undefined
+      ? undefined
+      : runnable.find(
+          (method) =>
+            method.name === requested &&
+            (descriptor === undefined || method.descriptor === descriptor),
+        )) ??
     runnable.find((method) => method.name === DEFAULT_ENTRY_METHOD) ??
     runnable.find((method) => method.name !== CLASS_INITIALISER)
   );

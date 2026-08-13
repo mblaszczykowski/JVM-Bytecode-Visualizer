@@ -31,12 +31,13 @@ import {
   type AppAction,
   type AppModel,
   type AppState,
+  type EntryChoice,
 } from './app-state';
 import { COMPILER_BUSY, type CompileDiagnostic, type CompileResult } from './compile-client';
 import { describeAppError, type AppError } from './errors';
 import { exampleUrl } from './examples';
 import type { ExampleEntry, ExampleManifest } from './manifest';
-import { buildProgram } from './program';
+import { buildProgram, type LoadedProgram } from './program';
 import { isRunCancelled, RunCancelled, type ProgramRunner } from './program-runner';
 
 function factorialEntry(): ExampleEntry {
@@ -45,6 +46,14 @@ function factorialEntry(): ExampleEntry {
     throw new Error('the manifest is empty');
   }
   return entry;
+}
+
+function countMethod(program: LoadedProgram): EntryChoice {
+  const method = program.methods.find((candidate) => candidate.name === 'count');
+  if (method === undefined) {
+    throw new Error('Counter.class has no count method');
+  }
+  return method;
 }
 
 afterEach(() => {
@@ -246,7 +255,7 @@ describe('running another method', () => {
     });
     expect(program.entry?.name).toBe('count');
 
-    const state = await runFromState(program, 'count');
+    const state = await runFromState(program, countMethod(program));
 
     expect(state.status).toBe('ready');
     expect(programOf(state)?.entry?.name).toBe('count');
@@ -401,7 +410,7 @@ describe('raising the step limit', () => {
       run: () => Promise.reject(new Error('the worker died')),
     };
 
-    expect(programOf(await runFromState(program, 'count', { runner }))).toBe(program);
+    expect(programOf(await runFromState(program, countMethod(program), { runner }))).toBe(program);
   });
 
   it('re-runs an example without downloading it again', async () => {
