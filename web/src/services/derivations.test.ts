@@ -554,8 +554,7 @@ describe('printing to the console', () => {
 
     expect(summaryOf(program, 'getstatic').effects).toEqual([{ label: 'push ref' }]);
     expect(summaryOf(program, 'getstatic').explanation).toBe(
-      'Pushes the value of the static field java/lang/System.out. This machine knows System.out ' +
-        'and no other static field.',
+      'Pushes a reference to System.out onto the operand stack.',
     );
   });
 
@@ -623,7 +622,11 @@ describe('value labels', () => {
 describe('object instructions', () => {
   const pool = new ConstantPoolBuilder();
   const fieldref = pool.fieldref('Synthetic', 'value', 'I');
+  const foreignFieldref = pool.fieldref('Other', 'value', 'I');
+  const ownStatic = pool.fieldref('Synthetic', 'counter', 'I');
+  const systemOut = pool.fieldref('java/lang/System', 'out', 'Ljava/io/PrintStream;');
   const classIndex = pool.classEntry('Synthetic');
+  const foreignClassIndex = pool.classEntry('java/lang/StringBuilder');
   const ownConstructor = pool.methodref('Synthetic', '<init>', '(I)V');
   const objectConstructor = pool.methodref('java/lang/Object', '<init>', '()V');
   const baseConstructor = pool.methodref('Base', '<init>', '()V');
@@ -703,6 +706,42 @@ describe('object instructions', () => {
 
     expect(summary.effects).toEqual([{ label: 'pop 2' }]);
     expect(summary.explanation).toBe('Stores 7 in the field value of Synthetic@0.');
+  });
+
+  it('says an allocation of another class stops the run rather than promising a reference', () => {
+    const summary = summaryAt(0xbb, 'new', [foreignClassIndex], [], []);
+
+    expect(summary.explanation).toBe(
+      'Allocates a java/lang/StringBuilder, which is outside this machine: it allocates ' +
+        'instances of Synthetic, the loaded class, and of nothing else, so running it stops ' +
+        'the program here.',
+    );
+  });
+
+  it('refuses a field of another class rather than matching one of its own by name', () => {
+    const read = summaryAt(0xb4, 'getfield', [foreignFieldref], [0], ['ref']);
+    const write = summaryAt(0xb5, 'putfield', [foreignFieldref], [0, 7], ['ref', 'int']);
+    const expected =
+      'Reaches the field Other.value, which is outside this machine: a field resolves only on ' +
+      'the loaded class, so running it stops the program here.';
+
+    expect(read.explanation).toBe(expected);
+    expect(write.explanation).toBe(expected);
+  });
+
+  it('says a static field the machine does not know stops the run rather than pushing', () => {
+    const summary = summaryAt(0xb2, 'getstatic', [ownStatic], [], []);
+
+    expect(summary.explanation).toBe(
+      'Reads the static field Synthetic.counter, which is outside this machine: it knows ' +
+        'System.out and no other static field, so running it stops the program here.',
+    );
+  });
+
+  it('pushes the one static field the machine does know', () => {
+    const summary = summaryAt(0xb2, 'getstatic', [systemOut], [], []);
+
+    expect(summary.explanation).toBe('Pushes a reference to System.out onto the operand stack.');
   });
 
   it('opens a frame for a constructor declared by the loaded class', () => {

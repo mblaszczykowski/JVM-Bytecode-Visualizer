@@ -22,7 +22,7 @@ export {
   type ValueKind,
   type VmError,
 } from './types';
-export { EXTERNAL_METHODS, memberKey, type ExternalMethod } from './externals';
+export { EXTERNAL_FIELDS, EXTERNAL_METHODS, memberKey, type ExternalMethod } from './externals';
 export { NULL_REFERENCE } from './heap';
 export {
   i2b,

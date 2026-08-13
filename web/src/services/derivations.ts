@@ -9,6 +9,7 @@ import {
 } from '../core/classfile';
 import { arrayTypeName, lookupOpcode, T_INT, type Instruction } from '../core/disassembler';
 import {
+  EXTERNAL_FIELDS,
   EXTERNAL_METHODS,
   i2b,
   i2c,
@@ -843,7 +844,7 @@ function explainArithmetic(context: ExplainContext): string | undefined {
     return `Pops two values and pushes their ${mnemonic} result.`;
   }
   if ((mnemonic === 'idiv' || mnemonic === 'irem') && top === 0) {
-    return `Pops ${String(below)} and ${String(top)}: dividing by zero, which stops the run with an ArithmeticException.`;
+    return `Pops ${String(top)} and ${String(below)}: dividing by zero, which stops the run with an ArithmeticException.`;
   }
   return `Pops ${String(top)} and ${String(below)} and pushes ${String(below)} ${arithmetic.symbol} ${String(top)} = ${String(arithmetic.apply(below, top))}.`;
 }
@@ -1034,9 +1035,13 @@ function explainObject(context: ExplainContext): string | undefined {
 
   if (mnemonic === 'getstatic') {
     const member = memberOf(instruction, pool);
-    return member === undefined
-      ? undefined
-      : `Pushes the value of the static field ${member.owner}.${member.name}. This machine knows System.out and no other static field.`;
+    if (member === undefined) {
+      return undefined;
+    }
+    const known = EXTERNAL_FIELDS.get(memberKey(member.owner, member.name, member.descriptor));
+    return known === undefined
+      ? `Reads the static field ${member.owner}.${member.name}, which is outside this machine: it knows ${knownStaticFields()} and no other static field, so running it stops the program here.`
+      : `Pushes a reference to ${known.label} onto the operand stack.`;
   }
 
   if (mnemonic === 'getfield') {
@@ -1044,7 +1049,10 @@ function explainObject(context: ExplainContext): string | undefined {
     if (member === undefined) {
       return undefined;
     }
-    const held = fieldText(context, 1, member.name);
+    if (member.owner !== context.classFile.thisClassName) {
+      return foreignFieldText(member);
+    }
+    const held = fieldText(context, 1, member);
     return held === undefined
       ? `Pops an object reference and pushes its field ${member.name}.`
       : `Pops the reference to ${stackText(context, 1, 'ref')} and pushes its field ${member.name}, currently ${held}.`;
@@ -1052,17 +1060,23 @@ function explainObject(context: ExplainContext): string | undefined {
 
   if (mnemonic === 'putfield') {
     const member = memberOf(instruction, pool);
-    return member === undefined
-      ? undefined
-      : `Stores ${stackText(context, 1)} in the field ${member.name} of ${stackText(context, 2, 'ref')}.`;
+    if (member === undefined) {
+      return undefined;
+    }
+    return member.owner === context.classFile.thisClassName
+      ? `Stores ${stackText(context, 1)} in the field ${member.name} of ${stackText(context, 2, 'ref')}.`
+      : foreignFieldText(member);
   }
 
   if (mnemonic === 'new') {
     const index = constantPoolIndexOf(instruction);
     const name = index === undefined ? undefined : className(pool, index);
-    return name === undefined
-      ? undefined
-      : `Allocates a ${name} with every field at its default value and pushes the reference. Its constructor has not run yet; that is the invokespecial that follows.`;
+    if (name === undefined) {
+      return undefined;
+    }
+    return name === context.classFile.thisClassName
+      ? `Allocates a ${name} with every field at its default value and pushes the reference. Its constructor has not run yet; that is the invokespecial that follows.`
+      : `Allocates a ${name}, which is outside this machine: it allocates instances of ${context.classFile.thisClassName}, the loaded class, and of nothing else, so running it stops the program here.`;
   }
 
   if (mnemonic === 'athrow') {
@@ -1072,13 +1086,21 @@ function explainObject(context: ExplainContext): string | undefined {
   return undefined;
 }
 
-function fieldText(context: ExplainContext, depth: number, name: string): string | undefined {
+function knownStaticFields(): string {
+  return [...EXTERNAL_FIELDS.values()].map((value) => value.label).join(', ');
+}
+
+function foreignFieldText(member: Member): string {
+  return `Reaches the field ${member.owner}.${member.name}, which is outside this machine: a field resolves only on the loaded class, so running it stops the program here.`;
+}
+
+function fieldText(context: ExplainContext, depth: number, member: Member): string | undefined {
   const held = referenceAt(context, depth);
   const object = held.value === undefined ? undefined : context.heap[held.value];
-  if (object?.kind !== 'instance') {
+  if (object?.kind !== 'instance' || object.className !== member.owner) {
     return undefined;
   }
-  const field = object.fields.find((candidate) => candidate.name === name);
+  const field = object.fields.find((candidate) => candidate.name === member.name);
   return field === undefined
     ? undefined
     : describeValue(field.kind, field.value, context.heap, context.externals);
