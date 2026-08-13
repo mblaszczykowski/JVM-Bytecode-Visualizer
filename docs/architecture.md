@@ -547,7 +547,7 @@ verify that every code row keeps the 26px rhythm the design depends on, and conf
 file leaves the application usable. The spec covering the compile service skips itself unless
 `PLAYWRIGHT_COMPILE_API_URL` is set, which keeps the default run green without a backend.
 
-Underneath all of it: 1,441 unit and component tests across 82 files, and a coverage threshold of
+Underneath all of it: 1,453 unit and component tests across 82 files, and a coverage threshold of
 90% lines, branches and functions on `web/src/core/**` that CI enforces. The threshold is measured
 per file (`perFile: true` in `web/vite.config.ts`), so one thoroughly tested module cannot carry a
 neglected one.

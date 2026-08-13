@@ -102,7 +102,7 @@ The interpreter is the part that has to be right, so it is pinned from four dire
   committed to `web/corpus/scan.json` and the suite fails if a scan disagrees with them. It also
   measures the interpreter's reach; see [Scope and limitations](#scope-and-limitations).
 
-Under that: 1,441 unit and component tests across 82 files, a Playwright suite that replays a
+Under that: 1,453 unit and component tests across 82 files, a Playwright suite that replays a
 recursive program end to end, scrubs into the recursion, checks that the interpreter really runs in a
 worker, opens a class with no entry point in the explorer and rejects a non-class file, and a second
 end-to-end job running the editor against the compile service built from its own Dockerfile. Two more
