@@ -54,6 +54,12 @@ const WORKER_FORBIDDEN_IMPORTS = [
   },
 ];
 
+const NO_DOM_GLOBALS = ['window', 'document', 'localStorage'].map((name) => ({
+  name,
+  message:
+    'No DOM here: src/core is plain TypeScript (ADR-0001) and a worker has no window (ADR-0006). Take what you need as an argument from the layer that does have a DOM.',
+}));
+
 const BANNED_CLASSNAMES = [
   {
     pattern: String.raw`(?:text|bg|border|decoration|fill|stroke|ring|divide|shadow)-white\/`,
@@ -65,12 +71,12 @@ const BANNED_CLASSNAMES = [
     message: 'Use bg-scrim for dialog scrims; nothing else in this interface is pure black.',
   },
   {
-    pattern: String.raw`\brounded-full\b`,
+    pattern: String.raw`\brounded-(?:[trblxyse]{1,2}-)?full\b`,
     message:
       'Radii are 10/8/6/6/5/4 (rounded-panel / -card / -row / -control / -code / -chip). rounded-full is allowed only on something genuinely circular; disable this line and say which.',
   },
   {
-    pattern: String.raw`\brounded-(?:\[|sm|md|lg|xl|2xl|3xl|4xl)`,
+    pattern: String.raw`\brounded-(?:[trblxyse]{1,2}-)?(?:\[|sm|md|lg|xl|2xl|3xl|4xl)`,
     message:
       'Every radius is a token: rounded-panel / -card / -row / -control / -code / -chip. Add one to the @theme block in src/index.css rather than an arbitrary or Tailwind-default radius.',
   },
@@ -195,12 +201,7 @@ export default tseslint.config(
     files: ['src/core/**/*.ts'],
     rules: {
       '@typescript-eslint/no-restricted-imports': ['error', { patterns: CORE_FORBIDDEN_IMPORTS }],
-      'no-restricted-globals': [
-        'error',
-        { name: 'window', message: 'src/core must not touch the DOM (ADR-0001).' },
-        { name: 'document', message: 'src/core must not touch the DOM (ADR-0001).' },
-        { name: 'localStorage', message: 'src/core must not touch the DOM (ADR-0001).' },
-      ],
+      'no-restricted-globals': ['error', ...NO_DOM_GLOBALS],
     },
   },
 
@@ -218,6 +219,10 @@ export default tseslint.config(
     files: ['src/workers/**/*.ts'],
     rules: {
       '@typescript-eslint/no-restricted-imports': ['error', { patterns: WORKER_FORBIDDEN_IMPORTS }],
+      // The DOM lib is in scope here and these tests run under jsdom, so a DOM reference would
+      // otherwise typecheck and pass, then throw in the real worker. The worker's own globals
+      // (self, postMessage, addEventListener) are not restricted.
+      'no-restricted-globals': ['error', ...NO_DOM_GLOBALS],
     },
   },
 

@@ -14,6 +14,9 @@
     "noEmit": true,
 
     "strict": true,
+    // The build scripts are plain .mjs under checkJs, so turning this on asks for a JSDoc @param
+    // on nearly every helper in them (about 70 parameters today). The rest of strict still
+    // applies, and none of this code is shipped to the browser.
     "noImplicitAny": false,
     "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": true,

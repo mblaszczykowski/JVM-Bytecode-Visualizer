@@ -76,7 +76,7 @@ export function BranchGutter({ instructions, currentIndex, hoveredIndex }: Branc
               data-testid="branch-arc"
               data-from-index={arc.fromIndex}
               data-to-index={arc.toIndex}
-              className="absolute left-[10px] w-[11px] rounded-l-[5px] border border-r-0 border-line-strong"
+              className="absolute left-[10px] w-[11px] rounded-l-code border border-r-0 border-line-strong"
               style={{
                 top: (first + 0.5) * ROW_HEIGHT,
                 height: span * ROW_HEIGHT,
