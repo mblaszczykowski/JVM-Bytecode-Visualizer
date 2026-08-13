@@ -7,12 +7,15 @@ on:
       - 'web/**'
       - 'package.json'
       - 'package-lock.json'
+      # The deployment config builds and serves web/, so a change to it belongs to this gate.
+      - 'vercel.json'
       - '.github/workflows/web.yml'
   pull_request:
     paths:
       - 'web/**'
       - 'package.json'
       - 'package-lock.json'
+      - 'vercel.json'
       - '.github/workflows/web.yml'
 
 permissions:
@@ -81,8 +84,12 @@ jobs:
       - name: Fetch the corpus
         run: npm run corpus -w web
 
+      # CORPUS_REQUIRED turns the "the corpus is unpacked" assertion from a skip into a failure.
+      # Only this job fetches the corpus, so only this job may demand it.
       - name: Scan it
         run: npm run test:corpus -w web
+        env:
+          CORPUS_REQUIRED: '1'
 
   fixtures:
     name: fixtures match the JDK

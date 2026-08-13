@@ -30,7 +30,7 @@ function corpusFiles(): readonly string[] {
 
 const files = corpusFiles();
 const hasCorpus = files.length > 0;
-const onCi = process.env.CI !== undefined && process.env.CI !== '';
+const corpusRequired = process.env.CORPUS_REQUIRED === '1';
 
 function bytesOf(path: string): ArrayBuffer {
   const buffer = readFileSync(path);
@@ -172,7 +172,7 @@ function summaryOf(scan: Scan): unknown {
   };
 }
 
-it.skipIf(!onCi)(
+it.skipIf(!corpusRequired)(
   'is unpacked before the suite runs, so a green job cannot mean an empty scan',
   () => {
     expect(files.length).toBeGreaterThan(5_000);
