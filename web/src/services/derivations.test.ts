@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
-import { ConstantTag, parseClassFile } from '../core/classfile';
-import { lookupOpcode, T_INT, type SupportedOpcode } from '../core/disassembler';
+import { ConstantTag, parseClassFile, type ConstantPool } from '../core/classfile';
+import { lookupOpcode, T_INT, type OperandSpec } from '../core/disassembler';
+import { WIDENED_FORMS } from '../core/disassembler/opcodes';
 import {
   EXECUTABLE_OPCODES,
   type ExternalValue,
@@ -17,6 +18,7 @@ import {
 
 import { readExampleBytes, readExampleText } from './__fixtures__/example-files';
 import {
+  baseMnemonicOf,
   constantPoolComments,
   constantPoolIndexOf,
   describeNextInstruction,
@@ -113,6 +115,25 @@ describe('next instruction summary', () => {
       'Pushes local 0 (n = 4) onto the operand stack.',
     );
     expect(summaryOf(program, 'istore_1').explanation).toBe('Pops 24 into local slot 1 (result).');
+  });
+
+  it('counts a negative increment down rather than up', () => {
+    const program = buildProgram({
+      origin: { kind: 'upload', fileName: 'Countdown.class' },
+      classFile: syntheticClass({
+        methods: [
+          {
+            name: 'main',
+            descriptor: '([Ljava/lang/String;)V',
+            code: [0x05, 0x3b, 0x84, 0x00, 0xff, 0xb1],
+          },
+        ],
+      }),
+    });
+
+    expect(summaryOf(program, 'iinc').explanation).toBe(
+      'Subtracts 1 from local 0 (slot 0 = 2) in place, without touching the operand stack.',
+    );
   });
 
   it('spells out a comparison and its branch target', () => {
@@ -497,6 +518,26 @@ describe('constant pool', () => {
     expect(resolveConstant(pool.build(), handle)).toBeUndefined();
   });
 
+  it('refuses a MethodHandle that names itself, rather than following it forever', () => {
+    const pool: ConstantPool = [
+      null,
+      { tag: ConstantTag.MethodHandle, referenceKind: 6, referenceIndex: 1 },
+    ];
+
+    expect(resolveConstant(pool, 1)).toBeUndefined();
+  });
+
+  it('refuses a pair of MethodHandles that name each other', () => {
+    const pool: ConstantPool = [
+      null,
+      { tag: ConstantTag.MethodHandle, referenceKind: 6, referenceIndex: 2 },
+      { tag: ConstantTag.MethodHandle, referenceKind: 6, referenceIndex: 1 },
+    ];
+
+    expect(resolveConstant(pool, 1)).toBeUndefined();
+    expect(resolveConstant(pool, 2)).toBeUndefined();
+  });
+
   it('comments an interface call the way javap does', () => {
     const pool = new ConstantPoolBuilder();
     const interfaceMethod = pool.raw({
@@ -774,10 +815,18 @@ describe('object instructions', () => {
   const classIndex = pool.classEntry('Synthetic');
   const ownConstructor = pool.methodref('Synthetic', '<init>', '(I)V');
   const objectConstructor = pool.methodref('java/lang/Object', '<init>', '()V');
+  const baseConstructor = pool.methodref('Base', '<init>', '()V');
   const mathMax = pool.methodref('java/lang/Math', 'max', '(II)I');
+  const countsLongs = pool.methodref('Synthetic', 'count', '(J)V');
+  const withoutCode = pool.methodref('Synthetic', 'stub', '()I');
   const classFile = syntheticClass({
     pool,
-    methods: [{ name: 'main', descriptor: '()V', code: [0xb1] }],
+    methods: [
+      { name: 'main', descriptor: '()V', code: [0xb1] },
+      { name: '<init>', descriptor: '(I)V', code: [0xb1] },
+      { name: 'count', descriptor: '(J)V', code: [0xb1] },
+      { name: 'stub', descriptor: '()I' },
+    ],
   });
 
   const heap: readonly HeapObject[] = [
@@ -865,6 +914,31 @@ describe('object instructions', () => {
     );
   });
 
+  it('promises no frame for a call the interpreter refuses to enter', () => {
+    const wide = summaryAt(0xb8, 'invokestatic', [countsLongs], [0, 0], ['int', 'int']);
+    const codeless = summaryAt(0xb8, 'invokestatic', [withoutCode], [], []);
+    const refused =
+      ' which this machine cannot enter: a frame opens only for a method the loaded class ' +
+      'declares, with a Code attribute and a descriptor of ints and references, so running it ' +
+      'stops the program here.';
+
+    expect(wide.effects).toEqual([{ label: 'pop 2' }]);
+    expect(wide.explanation).toBe(`Calls Synthetic.count(J)V,${refused}`);
+    expect(codeless.effects).toEqual([{ label: 'push int' }]);
+    expect(codeless.explanation).toBe(`Calls Synthetic.stub()I,${refused}`);
+  });
+
+  it('reserves the do-nothing constructor for the one class that has it', () => {
+    const summary = summaryAt(0xb7, 'invokespecial', [baseConstructor], [0], ['ref']);
+
+    expect(summary.effects).toEqual([{ label: 'pop 1' }]);
+    expect(summary.explanation).toBe(
+      'Calls Base.<init>()V, which is outside this machine: everything has to resolve inside ' +
+        'the loaded class or the standard-library calls it knows, so running it stops the ' +
+        'program here.',
+    );
+  });
+
   it('does not promise a frame for a static call the machine answers itself', () => {
     const summary = summaryAt(0xb8, 'invokestatic', [mathMax], [4, 9], ['int', 'int']);
 
@@ -923,9 +997,34 @@ describe('the opcode table', () => {
     methods: [{ name: 'main', descriptor: '()V', code: [0xb1] }],
   });
 
-  function probeOf(opcode: number, info: SupportedOpcode): Snapshot {
-    const poolIndex = poolIndices[POOL_ROLES[info.mnemonic] ?? 'integer'];
-    const operands = info.operands.map((spec) => {
+  interface Form {
+    readonly opcode: number;
+    readonly mnemonic: string;
+    readonly operands: readonly OperandSpec[];
+  }
+
+  function executableForms(): readonly Form[] {
+    const forms: Form[] = [];
+    for (const opcode of EXECUTABLE_OPCODES) {
+      const info = lookupOpcode(opcode);
+      if (info?.kind !== 'supported') {
+        throw new Error(
+          `opcode 0x${opcode.toString(16)} is executable but carries no stack effect`,
+        );
+      }
+      forms.push({ opcode, mnemonic: info.mnemonic, operands: info.operands });
+
+      const widened = WIDENED_FORMS.get(opcode);
+      if (widened !== undefined && !widened.unsupported) {
+        forms.push({ opcode, mnemonic: widened.mnemonic, operands: widened.operands });
+      }
+    }
+    return forms;
+  }
+
+  function probeOf(form: Form): Snapshot {
+    const poolIndex = poolIndices[POOL_ROLES[form.mnemonic] ?? 'integer'];
+    const operands = form.operands.map((spec) => {
       if (spec.role === 'constant-pool-index') {
         return poolIndex;
       }
@@ -934,8 +1033,8 @@ describe('the opcode table', () => {
       }
       return spec.role === 'local-index' ? 0 : 1;
     });
-    const branches = info.operands.some((spec) => spec.role === 'branch-offset');
-    const switches = info.mnemonic === 'tableswitch' || info.mnemonic === 'lookupswitch';
+    const branches = form.operands.some((spec) => spec.role === 'branch-offset');
+    const switches = form.mnemonic === 'tableswitch' || form.mnemonic === 'lookupswitch';
     const frame: StackFrame = {
       methodName: 'main',
       methodDescriptor: '()V',
@@ -950,8 +1049,8 @@ describe('the opcode table', () => {
       callStack: [frame],
       currentInstruction: {
         offset: 0,
-        opcode,
-        mnemonic: info.mnemonic,
+        opcode: form.opcode,
+        mnemonic: form.mnemonic,
         operands,
         ...(branches ? { branchTarget: 8 } : {}),
         ...(switches
@@ -971,21 +1070,16 @@ describe('the opcode table', () => {
   const PILL = /^(pop \d+|pop frame|push frame|push (int|ref)|push \d+ (int|ref)s)$/;
 
   it('gives every executable instruction help, a stack delta and effect pills', () => {
-    for (const opcode of EXECUTABLE_OPCODES) {
-      const info = lookupOpcode(opcode);
-      if (info?.kind !== 'supported') {
-        throw new Error(
-          `opcode 0x${opcode.toString(16)} is executable but carries no stack effect`,
-        );
-      }
-      const { mnemonic } = info;
-      const snapshot = probeOf(opcode, info);
+    for (const form of executableForms()) {
+      const { mnemonic } = form;
+      const snapshot = probeOf(form);
       const instruction = snapshot.currentInstruction;
       if (instruction === undefined) {
         throw new Error(`no probe instruction for ${mnemonic}`);
       }
+      const base = baseMnemonicOf(instruction);
 
-      expect(explainMnemonic(mnemonic), mnemonic).toBeDefined();
+      expect(explainMnemonic(base), mnemonic).toBeDefined();
 
       const delta = stackDeltaOf(instruction, classFile.constantPool);
       expect(delta, mnemonic).toBeDefined();
@@ -1006,9 +1100,18 @@ describe('the opcode table', () => {
         mnemonic,
       ).toBe((delta?.pops ?? 0) > 0);
       expect(labels.length === 0, mnemonic).toBe(
-        delta?.pops === 0 && delta.pushes === 0 && OPCODE_NOTES[mnemonic]?.frame === undefined,
+        delta?.pops === 0 && delta.pushes === 0 && OPCODE_NOTES[base]?.frame === undefined,
       );
     }
+  });
+
+  it('probes the forms the wide prefix mints as well as the narrow ones', () => {
+    const mnemonics = executableForms().map((form) => form.mnemonic);
+
+    expect(mnemonics).toEqual(
+      expect.arrayContaining(['iload_w', 'istore_w', 'aload_w', 'astore_w', 'iinc_w']),
+    );
+    expect(new Set(mnemonics).size).toBe(mnemonics.length);
   });
 
   it('keeps the operand roles and the heap addressing of an instruction in step', () => {

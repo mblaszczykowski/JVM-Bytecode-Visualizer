@@ -1,7 +1,20 @@
 import { describe, expect, it } from 'vitest';
 
-import { ClassFileError } from '../core/classfile';
-import type { VmError } from '../core/interpreter';
+import { AccessFlag, ClassFileError, type FieldInfo } from '../core/classfile';
+import {
+  execute,
+  EXTERNAL_METHODS,
+  memberKey,
+  type ExecutionResult,
+  type VmError,
+} from '../core/interpreter';
+import { expectCompleted, expectVmError } from '../core/interpreter/__fixtures__/expect-execution';
+import {
+  ConstantPoolBuilder,
+  syntheticClass,
+  SYNTHETIC_CLASS_NAME,
+  type SyntheticMethod,
+} from '../core/interpreter/__fixtures__/synthetic-class';
 
 import { COMPILER_BUSY } from './compile-client';
 import {
@@ -56,23 +69,6 @@ const CASES: readonly {
       'Unsupported instruction: invokevirtual (pc 23, method main). This interpreter implements ' +
       'the int-only subset of the JVM instruction set, and invokevirtual is outside it. The ' +
       'history up to this point is still playable.',
-  },
-  {
-    name: 'call outside the executed class',
-    error: {
-      kind: 'vm',
-      error: {
-        kind: 'unsupported-call',
-        target: 'java/lang/Math.max(II)I',
-        offset: 7,
-        methodName: 'main',
-      },
-    },
-    severity: 'error',
-    message:
-      'Unsupported call: java/lang/Math.max(II)I (pc 7, method main). This interpreter resolves ' +
-      'calls inside the class it is executing only, and only to its static int methods. There ' +
-      'is no Java library behind it. The history up to this point is still playable.',
   },
   {
     name: 'division by zero',
@@ -168,13 +164,6 @@ const CASES: readonly {
       'NegativeArraySizeException: -1 (pc 4, method main). An array cannot be created with a negative length.',
   },
   {
-    name: 'array access through a null reference',
-    error: { kind: 'vm', error: { kind: 'null-reference', offset: 12, methodName: 'sum' } },
-    severity: 'error',
-    message:
-      'NullPointerException: the reference is null (pc 12, method sum). There is no array behind it to read, write or measure.',
-  },
-  {
     name: 'array of a type this interpreter has no heap for',
     error: {
       kind: 'vm',
@@ -244,24 +233,6 @@ const CASES: readonly {
       'The history up to this point is still playable.',
   },
   {
-    name: 'a field this machine has no object behind',
-    error: {
-      kind: 'vm',
-      error: {
-        kind: 'unsupported-field',
-        target: 'java/lang/System.in:Ljava/io/InputStream;',
-        offset: 3,
-        methodName: 'main',
-      },
-    },
-    severity: 'error',
-    message:
-      'Unsupported field: java/lang/System.in:Ljava/io/InputStream; (pc 3, method main). This ' +
-      'interpreter models a short list of external members (System.out among them) and no ' +
-      'instance state at all, so there is no object here to read the field from. The history ' +
-      'up to this point is still playable.',
-  },
-  {
     name: 'a pooled constant with no value this machine can hold',
     error: {
       kind: 'vm',
@@ -329,6 +300,71 @@ const CASES: readonly {
   },
 ];
 
+const VALUE_FIELD: FieldInfo = { name: 'value', descriptor: 'I', accessFlags: AccessFlag.Public };
+
+const CONSTRUCTOR: SyntheticMethod = {
+  name: '<init>',
+  descriptor: '()V',
+  code: [0xb1],
+  accessFlags: AccessFlag.Public,
+};
+
+const SIZE: SyntheticMethod = {
+  name: 'size',
+  descriptor: '()I',
+  code: [0x03, 0xac],
+  accessFlags: AccessFlag.Public,
+};
+
+function u2(index: number): readonly number[] {
+  return [(index >> 8) & 0xff, index & 0xff];
+}
+
+function run(
+  pool: ConstantPoolBuilder,
+  code: readonly number[],
+  methods: readonly SyntheticMethod[] = [],
+): ExecutionResult {
+  return execute(
+    syntheticClass({
+      pool,
+      fields: [VALUE_FIELD],
+      methods: [{ name: 'main', descriptor: '()I', code }, ...methods],
+    }),
+  );
+}
+
+function bannerFor(error: VmError): string {
+  return describeAppError({ kind: 'vm', error }).message;
+}
+
+function callOutsideTheLoadedClass(): VmError {
+  const pool = new ConstantPoolBuilder();
+  return expectVmError(
+    run(pool, [0xb8, ...u2(pool.methodref('java/lang/Math', 'max', '(JJ)J')), 0xac]),
+  );
+}
+
+function fieldOfAnotherClass(): VmError {
+  const pool = new ConstantPoolBuilder();
+  return expectVmError(
+    run(pool, [0x01, 0xb4, ...u2(pool.fieldref('java/awt/Point', 'x', 'I')), 0xac]),
+  );
+}
+
+function fieldReadThroughNull(): VmError {
+  const pool = new ConstantPoolBuilder();
+  return expectVmError(
+    run(pool, [0x01, 0xb4, ...u2(pool.fieldref(SYNTHETIC_CLASS_NAME, 'value', 'I')), 0xac]),
+  );
+}
+
+const RAISED_BY_A_RUN: readonly VmError[] = [
+  callOutsideTheLoadedClass(),
+  fieldReadThroughNull(),
+  fieldOfAnotherClass(),
+];
+
 describe('error messages', () => {
   it.each(CASES)('$name', ({ error, severity, message }) => {
     const presentation = describeAppError(error);
@@ -338,9 +374,12 @@ describe('error messages', () => {
   });
 
   it('names the offending instruction and method for every VM error kind', () => {
-    const covered = CASES.filter((testCase) => testCase.error.kind === 'vm').map(
-      (testCase) => (testCase.error as { error: VmError }).error.kind,
-    );
+    const covered = [
+      ...CASES.filter((testCase) => testCase.error.kind === 'vm').map(
+        (testCase) => (testCase.error as { error: VmError }).error.kind,
+      ),
+      ...RAISED_BY_A_RUN.map((error) => error.kind),
+    ];
 
     expect(new Set(covered)).toEqual(new Set(Object.keys(VM_ERROR_KINDS)));
   });
@@ -362,6 +401,196 @@ const VM_ERROR_KINDS: Readonly<Record<VmError['kind'], true>> = {
   'unsupported-field': true,
   'unsupported-constant': true,
 };
+
+const MODELLED_CALLS: readonly { readonly key: string; readonly named: string }[] = [
+  { key: memberKey('java/lang/Math', 'max', '(II)I'), named: 'Math.max' },
+  { key: memberKey('java/lang/Math', 'min', '(II)I'), named: 'Math.min' },
+  { key: memberKey('java/lang/Math', 'abs', '(I)I'), named: 'Math.abs' },
+  { key: memberKey('java/lang/Math', 'floorDiv', '(II)I'), named: 'Math.floorDiv' },
+  { key: memberKey('java/lang/Math', 'floorMod', '(II)I'), named: 'Math.floorMod' },
+  { key: memberKey('java/io/PrintStream', 'print', '(I)V'), named: 'print' },
+  { key: memberKey('java/io/PrintStream', 'println', '(I)V'), named: 'println' },
+];
+
+describe('the banner for a call this machine cannot resolve', () => {
+  it('names the target, the instruction and the method of the call that stopped the run', () => {
+    const error = callOutsideTheLoadedClass();
+    const presentation = describeAppError({ kind: 'vm', error });
+
+    expect(error.kind).toBe('unsupported-call');
+    expect(presentation.severity).toBe('error');
+    expect(presentation.message).toContain('Unsupported call: java/lang/Math.max(JJ)J');
+    expect(presentation.message).toContain(
+      `(pc ${String(error.offset)}, method ${error.methodName})`,
+    );
+  });
+
+  it('covers allocating another class, which stops in the same place', () => {
+    const pool = new ConstantPoolBuilder();
+    const error = expectVmError(
+      run(pool, [0xbb, ...u2(pool.classEntry('java/util/ArrayList')), 0x57, 0x03, 0xac]),
+    );
+    const message = bannerFor(error);
+
+    expect(error.kind).toBe('unsupported-call');
+    expect(message).toContain('Unsupported call: new java/util/ArrayList');
+    expect(message).toContain('allocations');
+  });
+
+  it('offers only standard-library methods this machine really models', () => {
+    const message = bannerFor(callOutsideTheLoadedClass());
+
+    for (const { key, named } of MODELLED_CALLS) {
+      expect(EXTERNAL_METHODS.has(key), key).toBe(true);
+      expect(message).toContain(named);
+    }
+  });
+
+  it('is not raised for the modelled calls it offers: Math.max and println', () => {
+    const pool = new ConstantPoolBuilder();
+    const result = run(pool, [
+      ...[0xb2, ...u2(pool.fieldref('java/lang/System', 'out', 'Ljava/io/PrintStream;'))],
+      ...[0x10, 7, 0xb6, ...u2(pool.methodref('java/io/PrintStream', 'println', '(I)V'))],
+      ...[0x04, 0x10, 9, 0xb8, ...u2(pool.methodref('java/lang/Math', 'max', '(II)I'))],
+      0xac,
+    ]);
+
+    const completed = expectCompleted(result);
+    expect(completed.returnValue).toBe(9);
+    expect(completed.snapshots.at(-1)?.consoleOutput).toEqual(['7']);
+  });
+
+  it('is not raised for a constructor or an instance method, which it offers too', () => {
+    const pool = new ConstantPoolBuilder();
+    const value = pool.fieldref(SYNTHETIC_CLASS_NAME, 'value', 'I');
+    const result = run(
+      pool,
+      [
+        ...[0xbb, ...u2(pool.classEntry(SYNTHETIC_CLASS_NAME)), 0x59],
+        ...[0xb7, ...u2(pool.methodref(SYNTHETIC_CLASS_NAME, '<init>', '()V'))],
+        ...[0x59, 0x10, 9, 0xb5, ...u2(value)],
+        ...[0xb6, ...u2(pool.methodref(SYNTHETIC_CLASS_NAME, 'readValue', '()I'))],
+        0xac,
+      ],
+      [
+        CONSTRUCTOR,
+        {
+          name: 'readValue',
+          descriptor: '()I',
+          accessFlags: AccessFlag.Public,
+          code: [0x2a, 0xb4, ...u2(value), 0xac],
+        },
+      ],
+    );
+
+    expect(expectCompleted(result).returnValue).toBe(9);
+  });
+});
+
+const DEREFERENCES: readonly {
+  readonly site: string;
+  readonly promise: string;
+  readonly code: (pool: ConstantPoolBuilder) => readonly number[];
+  readonly methods?: readonly SyntheticMethod[];
+}[] = [
+  {
+    site: 'reading a field',
+    promise: 'no field to read or write',
+    code: (pool) => [0x01, 0xb4, ...u2(pool.fieldref(SYNTHETIC_CLASS_NAME, 'value', 'I')), 0xac],
+  },
+  {
+    site: 'writing a field',
+    promise: 'no field to read or write',
+    code: (pool) => [
+      ...[0x01, 0x04, 0xb5, ...u2(pool.fieldref(SYNTHETIC_CLASS_NAME, 'value', 'I'))],
+      ...[0x03, 0xac],
+    ],
+  },
+  {
+    site: 'indexing an array',
+    promise: 'no array to index or measure',
+    code: () => [0x01, 0x03, 0x2e, 0xac],
+  },
+  {
+    site: 'measuring an array',
+    promise: 'no array to index or measure',
+    code: () => [0x01, 0xbe, 0xac],
+  },
+  {
+    site: 'calling a method',
+    promise: 'no method to call',
+    code: (pool) => [0x01, 0xb6, ...u2(pool.methodref(SYNTHETIC_CLASS_NAME, 'size', '()I')), 0xac],
+    methods: [SIZE],
+  },
+];
+
+describe('the NullPointerException banner', () => {
+  it.each(DEREFERENCES)('covers $site through a null reference', ({ promise, code, methods }) => {
+    const pool = new ConstantPoolBuilder();
+    const error = expectVmError(run(pool, code(pool), methods));
+    const message = bannerFor(error);
+
+    expect(error.kind).toBe('null-reference');
+    expect(message).toContain(
+      `NullPointerException: the reference is null (pc ${String(error.offset)}, method main)`,
+    );
+    expect(message).toContain(promise);
+  });
+});
+
+describe('the banner for a field this machine cannot reach', () => {
+  it('names the field of the other class that stopped the run', () => {
+    const error = fieldOfAnotherClass();
+    const presentation = describeAppError({ kind: 'vm', error });
+
+    expect(error.kind).toBe('unsupported-field');
+    expect(presentation.severity).toBe('error');
+    expect(presentation.message).toContain('Unsupported field: java/awt/Point.x:I');
+    expect(presentation.message).toContain(
+      `(pc ${String(error.offset)}, method ${error.methodName})`,
+    );
+  });
+
+  it('is not raised for a field the loaded class declares, which it offers instead', () => {
+    const pool = new ConstantPoolBuilder();
+    const value = pool.fieldref(SYNTHETIC_CLASS_NAME, 'value', 'I');
+    const result = run(
+      pool,
+      [
+        ...[0xbb, ...u2(pool.classEntry(SYNTHETIC_CLASS_NAME)), 0x59],
+        ...[0xb7, ...u2(pool.methodref(SYNTHETIC_CLASS_NAME, '<init>', '()V'))],
+        ...[0x59, 0x10, 4, 0xb5, ...u2(value)],
+        ...[0xb4, ...u2(value), 0xac],
+      ],
+      [CONSTRUCTOR],
+    );
+
+    expect(expectCompleted(result).returnValue).toBe(4);
+    expect(bannerFor(fieldOfAnotherClass())).toContain('the loaded class declares');
+  });
+
+  it('is not raised for System.out, the standard-library static it names', () => {
+    const pool = new ConstantPoolBuilder();
+    const out = pool.fieldref('java/lang/System', 'out', 'Ljava/io/PrintStream;');
+    const result = run(pool, [0xb2, ...u2(out), 0x57, 0x03, 0xac]);
+
+    expect(expectCompleted(result).returnValue).toBe(0);
+    expect(bannerFor(fieldOfAnotherClass())).toContain('System.out');
+  });
+
+  it('is raised for a static this machine does not model', () => {
+    const pool = new ConstantPoolBuilder();
+    const error = expectVmError(
+      run(pool, [
+        ...[0xb2, ...u2(pool.fieldref('java/lang/System', 'in', 'Ljava/io/InputStream;'))],
+        ...[0x57, 0x03, 0xac],
+      ]),
+    );
+
+    expect(error.kind).toBe('unsupported-field');
+    expect(bannerFor(error)).toContain('java/lang/System.in:Ljava/io/InputStream;');
+  });
+});
 
 describe('toAppError', () => {
   it('keeps the typed detail of a class file error', () => {

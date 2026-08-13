@@ -23,7 +23,6 @@ import {
   loadUploadState,
   MAX_STEP_LIMIT,
   MAX_UPLOAD_BYTES,
-  MAX_UPLOAD_LABEL,
   programOf,
   raisedStepLimit,
   rerunState,
@@ -451,19 +450,6 @@ describe('parsing a class file straight from bytes', () => {
     const classFile = parseClassFile(readExampleBytes('Factorial.class'));
 
     expect(classFile.thisClassName).toBe('Factorial');
-  });
-});
-
-describe('the upload limit', () => {
-  it('is written for the reader from the same number the loader enforces', () => {
-    const { message } = describeAppError({
-      kind: 'file-too-large',
-      fileName: 'Huge.class',
-      bytes: MAX_UPLOAD_BYTES + 1,
-      limit: MAX_UPLOAD_BYTES,
-    });
-
-    expect(message).toContain(`the upload limit is ${MAX_UPLOAD_LABEL}`);
   });
 });
 

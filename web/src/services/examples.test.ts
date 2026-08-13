@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { exampleRoutes, okResponse, statusResponse, stubFetch } from './__fixtures__/fake-fetch';
 import { readExampleManifest } from './__fixtures__/example-files';
 import {
+  EXAMPLE_TIMEOUT_MS,
   exampleUrl,
   fetchExampleManifest,
   fetchExampleResources,
@@ -35,8 +36,23 @@ async function detailOf(load: () => Promise<unknown>) {
   throw new Error('expected the load to fail');
 }
 
+function stubHangingFetch() {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(
+      (_input: unknown, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => {
+            reject(new DOMException('The operation was aborted.', 'AbortError'));
+          });
+        }),
+    ),
+  );
+}
+
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 
 describe('example URLs', () => {
@@ -127,6 +143,29 @@ describe('fetchExampleManifest', () => {
   });
 });
 
+describe('a download that never answers', () => {
+  it.each([
+    { name: 'the manifest', load: fetchExampleManifest, url: MANIFEST_URL },
+    {
+      name: 'an example',
+      load: () => fetchExampleResources(factorialEntry()),
+      url: exampleUrl(factorialEntry().classFile),
+    },
+  ])('gives up on $name rather than leaving the screen loading', async ({ load, url }) => {
+    vi.useFakeTimers();
+    stubHangingFetch();
+
+    const pending = detailOf(load);
+    await vi.advanceTimersByTimeAsync(EXAMPLE_TIMEOUT_MS);
+
+    expect((await pending).detail).toEqual({
+      kind: 'network',
+      url,
+      reason: `no answer within ${String(EXAMPLE_TIMEOUT_MS / 1000)} s`,
+    });
+  });
+});
+
 describe('the routes a test serves the examples over', () => {
   it('serves the manifest it was given, and the files that manifest names', async () => {
     const entry = factorialEntry();
@@ -146,6 +185,13 @@ describe('the routes a test serves the examples over', () => {
 
   it('serves no files at all for a manifest that is not one', () => {
     expect(Object.keys(exampleRoutes({ version: 2, examples: [] }))).toEqual([MANIFEST_URL]);
+  });
+
+  it('serves a body that can be read once, as a real Response can', async () => {
+    const response = okResponse({ json: { version: 1 } });
+
+    await expect(response.json()).resolves.toEqual({ version: 1 });
+    await expect(response.json()).rejects.toThrow(TypeError);
   });
 });
 

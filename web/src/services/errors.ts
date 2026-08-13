@@ -154,7 +154,7 @@ function describeVmError(error: VmError): string {
     case 'unsupported-opcode':
       return `Unsupported instruction: ${error.mnemonic} ${at}. This interpreter implements the int-only subset of the JVM instruction set, and ${error.mnemonic} is outside it. ${historyStands}`;
     case 'unsupported-call':
-      return `Unsupported call: ${error.target} ${at}. This interpreter resolves calls inside the class it is executing only, and only to its static int methods. There is no Java library behind it. ${historyStands}`;
+      return `Unsupported call: ${error.target} ${at}. This interpreter resolves calls and allocations against the class it loaded, static and instance methods alike, and against a short list of standard-library methods: the int forms of Math.max, Math.min, Math.abs, Math.floorDiv and Math.floorMod, and print and println on System.out. Anything else would need a second class file, and there is none. ${historyStands}`;
     case 'division-by-zero':
       return `ArithmeticException: / by zero ${at}.`;
     case 'invalid-state':
@@ -178,7 +178,7 @@ function describeVmError(error: VmError): string {
     case 'negative-array-size':
       return `NegativeArraySizeException: ${String(error.size)} ${at}. An array cannot be created with a negative length.`;
     case 'null-reference':
-      return `NullPointerException: the reference is null ${at}. There is no array behind it to read, write or measure.`;
+      return `NullPointerException: the reference is null ${at}. There is nothing behind it: no field to read or write, no array to index or measure, and no method to call.`;
     case 'unsupported-array-type':
       return `Unsupported array type: ${error.typeName} ${at}. This interpreter only allocates int arrays.`;
     case 'out-of-memory':
@@ -190,7 +190,7 @@ function describeVmError(error: VmError): string {
         ` ${historyStands}`
       );
     case 'unsupported-field':
-      return `Unsupported field: ${error.target} ${at}. This interpreter models a short list of external members (System.out among them) and no instance state at all, so there is no object here to read the field from. ${historyStands}`;
+      return `Unsupported field: ${error.target} ${at}. The fields this machine holds are the ones the loaded class declares, plus a short list of standard-library statics (System.out among them). There is no second class file to give any other field a shape. ${historyStands}`;
     case 'unsupported-constant':
       return `Unsupported constant: ${error.target} ${at}. ldc pushes the int and String entries of the constant pool here; the other constant kinds have no value this machine can hold. ${historyStands}`;
     case 'uncaught-exception':
@@ -212,7 +212,7 @@ export function toAppError(error: unknown): AppError {
   return { kind: 'unexpected', reason: error instanceof Error ? error.message : String(error) };
 }
 
-function formatBytes(bytes: number): string {
+export function formatBytes(bytes: number): string {
   const kib = bytes / 1024;
   if (kib < 1) {
     return `${String(bytes)} B`;

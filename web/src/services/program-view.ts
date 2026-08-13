@@ -2,6 +2,7 @@ import type { Snapshot, StackFrame } from '../core/interpreter';
 
 import { constructsFor, type Construct } from './constructs';
 import {
+  baseMnemonicOf,
   describeNextInstruction,
   describeOperandRoles,
   constantPoolComments,
@@ -78,7 +79,7 @@ export function mnemonicHelpFor(listing: MethodListing | undefined): ReadonlyMap
   }
   const help = new Map<string, string>();
   for (const instruction of listing.instructions) {
-    const explanation = explainMnemonic(instruction.mnemonic);
+    const explanation = explainMnemonic(baseMnemonicOf(instruction));
     if (explanation !== undefined) {
       help.set(instruction.mnemonic, explanation);
     }
@@ -118,7 +119,12 @@ export function listingViewOf(
   return {
     deadOffsets: listing.executedOffsets.size === 0 ? undefined : deadOffsetsOf(listing),
     comments: constantPoolComments(listing, program.classFile),
-    constructs: constructsFor(listing.instructions, program.classFile.constantPool, listing.name),
+    constructs: constructsFor(
+      listing.instructions,
+      program.classFile.constantPool,
+      listing.name,
+      program.classFile.thisClassName,
+    ),
     sourceLineForOffset: sourceLinesForOffsets(listing),
     mnemonicHelp: mnemonicHelpFor(listing),
     stepForOffset: firstStepByOffset(program.snapshots, listing),

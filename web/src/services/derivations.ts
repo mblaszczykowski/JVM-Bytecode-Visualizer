@@ -1,4 +1,5 @@
 import {
+  constantTagName,
   ConstantTag,
   isClassFileError,
   parseFieldDescriptor,
@@ -27,6 +28,7 @@ import {
   ixor,
   memberKey,
   NULL_REFERENCE,
+  opensFrame,
   type ArrayObject,
   type ExternalValue,
   type HeapObject,
@@ -35,6 +37,7 @@ import {
   type ValueKind,
 } from '../core/interpreter';
 
+import { objectLabel } from './heap-view';
 import type { MethodListing } from './program';
 
 export interface EffectPill {
@@ -109,7 +112,7 @@ export function describeValue(
   switch (kind) {
     case 'ref': {
       const object = heap[value];
-      return object === undefined ? 'null' : `${objectName(object)}@${String(value)}`;
+      return object === undefined ? 'null' : objectLabel(object, value);
     }
     case 'external':
       return externals[value]?.label ?? 'an unknown object';
@@ -117,10 +120,6 @@ export function describeValue(
     case undefined:
       return String(value);
   }
-}
-
-function objectName(object: HeapObject): string {
-  return object.kind === 'int-array' ? `int[${String(object.length)}]` : object.className;
 }
 
 export function describeOperandRoles(
@@ -232,7 +231,7 @@ export function resolveConstant(pool: ConstantPool, index: number): ResolvedCons
     return undefined;
   }
 
-  const tagName = TAG_NAMES.get(entry.tag) ?? `tag ${String(entry.tag)}`;
+  const tagName = tagNameOf(entry.tag);
   const link = (text: string, comment: string): ResolvedConstant => ({
     index,
     tagName,
@@ -273,7 +272,11 @@ export function resolveConstant(pool: ConstantPool, index: number): ResolvedCons
       return link(entry.value, `// ${entry.value}`);
     case ConstantTag.MethodHandle: {
       const kind = REFERENCE_KINDS.get(entry.referenceKind);
-      const referenced = resolveConstant(pool, entry.referenceIndex);
+      const target = pool[entry.referenceIndex] ?? undefined;
+      const referenced =
+        target !== undefined && MEMBER_KINDS.has(target.tag)
+          ? resolveConstant(pool, entry.referenceIndex)
+          : undefined;
       if (kind === undefined || referenced === undefined) {
         return undefined;
       }
@@ -338,12 +341,12 @@ const REFERENCE_KINDS: ReadonlyMap<number, string> = new Map([
   [9, 'REF_invokeInterface'],
 ]);
 
-const TAG_NAMES: ReadonlyMap<number, string> = new Map(
-  Object.entries(ConstantTag).map(([name, tag]) => [tag, name]),
-);
-
 export function tagNameOf(tag: number): string {
-  return TAG_NAMES.get(tag) ?? `tag ${String(tag)}`;
+  return constantTagName(tag) ?? `tag ${String(tag)}`;
+}
+
+export function baseMnemonicOf(instruction: Instruction): string {
+  return lookupOpcode(instruction.opcode)?.mnemonic ?? instruction.mnemonic;
 }
 
 export function constantPoolIndexOf(instruction: Instruction): number | undefined {
@@ -371,7 +374,7 @@ export function stackDeltaOf(instruction: Instruction, pool: ConstantPool): Stac
   if (info.stackEffect.kind === 'fixed') {
     return { pops: info.stackEffect.pops, pushes: info.stackEffect.pushes };
   }
-  return OPCODE_NOTES[instruction.mnemonic]?.varies?.(instruction, pool);
+  return OPCODE_NOTES[baseMnemonicOf(instruction)]?.varies?.(instruction, pool);
 }
 
 function effectsOf(context: ExplainContext): readonly EffectPill[] {
@@ -384,12 +387,12 @@ function effectsOf(context: ExplainContext): readonly EffectPill[] {
     return [];
   }
 
-  const note = OPCODE_NOTES[instruction.mnemonic];
+  const note = OPCODE_NOTES[baseMnemonicOf(instruction)];
   const pushed = pushedKindOf(context);
   if (note?.frame === 'return') {
     return [...popPills(delta.pops), { label: 'pop frame' }, ...pushPills(delta.pops, pushed)];
   }
-  if (note?.frame === 'call' && calleeRunsInThisClass(context)) {
+  if (note?.frame === 'call' && calleeOpensFrame(context)) {
     return [...popPills(delta.pops), { label: 'push frame' }];
   }
   return [...popPills(delta.pops), ...pushPills(delta.pushes, pushed)];
@@ -407,7 +410,7 @@ function pushPills(count: number, pushed: string): readonly EffectPill[] {
 }
 
 function pushedKindOf(context: ExplainContext): PushedKind {
-  const pushed = OPCODE_NOTES[context.instruction.mnemonic]?.pushedKind;
+  const pushed = OPCODE_NOTES[baseMnemonicOf(context.instruction)]?.pushedKind;
   if (pushed === 'descriptor') {
     return descriptorKindOf(context.instruction, context.classFile.constantPool);
   }
@@ -573,6 +576,13 @@ const NOTES: readonly (readonly [string, OpcodeNote])[] = [
     },
   ],
   [
+    'dup_x2',
+    {
+      help: 'Duplicates the top value and inserts the copy below the two values under it.',
+      pushedKind: 'stack-top',
+    },
+  ],
+  [
     'dup2',
     { help: 'Duplicates the top two values, keeping their order.', pushedKind: 'stack-top' },
   ],
@@ -580,6 +590,13 @@ const NOTES: readonly (readonly [string, OpcodeNote])[] = [
     'dup2_x1',
     {
       help: 'Duplicates the top two values and inserts the copies below the third value.',
+      pushedKind: 'stack-top',
+    },
+  ],
+  [
+    'dup2_x2',
+    {
+      help: 'Duplicates the top two values and inserts the copies below the two under them.',
       pushedKind: 'stack-top',
     },
   ],
@@ -810,19 +827,31 @@ export function explainMnemonic(mnemonic: string): string | undefined {
   return OPCODE_NOTES[mnemonic]?.help;
 }
 
-const COMPARISON: Readonly<Record<string, string>> = {
-  if_icmpeq: '=',
-  if_icmpne: '≠',
-  if_icmplt: '<',
-  if_icmpge: '≥',
-  if_icmpgt: '>',
-  if_icmple: '≤',
-  ifeq: '=',
-  ifne: '≠',
-  iflt: '<',
-  ifge: '≥',
-  ifgt: '>',
-  ifle: '≤',
+interface Comparison {
+  readonly symbol: string;
+  readonly holds: (left: number, right: number) => boolean;
+}
+
+const EQUAL: Comparison = { symbol: '=', holds: (left, right) => left === right };
+const NOT_EQUAL: Comparison = { symbol: '≠', holds: (left, right) => left !== right };
+const LESS: Comparison = { symbol: '<', holds: (left, right) => left < right };
+const AT_LEAST: Comparison = { symbol: '≥', holds: (left, right) => left >= right };
+const GREATER: Comparison = { symbol: '>', holds: (left, right) => left > right };
+const AT_MOST: Comparison = { symbol: '≤', holds: (left, right) => left <= right };
+
+const COMPARISON: Readonly<Record<string, Comparison>> = {
+  if_icmpeq: EQUAL,
+  if_icmpne: NOT_EQUAL,
+  if_icmplt: LESS,
+  if_icmpge: AT_LEAST,
+  if_icmpgt: GREATER,
+  if_icmple: AT_MOST,
+  ifeq: EQUAL,
+  ifne: NOT_EQUAL,
+  iflt: LESS,
+  ifge: AT_LEAST,
+  ifgt: GREATER,
+  ifle: AT_MOST,
 };
 
 const ARITHMETIC: Readonly<
@@ -850,12 +879,13 @@ const NARROWING: Readonly<
 };
 
 function explain(context: ExplainContext): string {
-  const { mnemonic } = context.instruction;
+  const { instruction } = context;
 
-  if (lookupOpcode(context.instruction.opcode)?.kind !== 'supported') {
-    return `${mnemonic} is outside the supported instruction subset; running it stops the program here.`;
+  if (lookupOpcode(instruction.opcode)?.kind !== 'supported') {
+    return `${instruction.mnemonic} is outside the supported instruction subset; running it stops the program here.`;
   }
 
+  const mnemonic = baseMnemonicOf(instruction);
   return (
     explainArray(context) ??
     explainLocals(context) ??
@@ -871,7 +901,7 @@ function explain(context: ExplainContext): string {
 
 function explainLocals(context: ExplainContext): string | undefined {
   const { instruction, frame } = context;
-  const { mnemonic } = instruction;
+  const mnemonic = baseMnemonicOf(instruction);
 
   if (mnemonic.startsWith('iload')) {
     const slot = slotOf(instruction);
@@ -901,11 +931,12 @@ function explainLocals(context: ExplainContext): string | undefined {
     return `Pops the reference to ${stackText(context, 1, 'ref')} into local slot ${String(slot)} (${storedName(context, slot)}).`;
   }
 
-  if (mnemonic === 'iinc') {
+  if (mnemonic.startsWith('iinc')) {
     const slot = instruction.operands[0] ?? 0;
     const delta = instruction.operands[1] ?? 0;
-    const verb = delta < 0 ? 'Subtracts' : 'Adds';
-    return `${verb} ${String(Math.abs(delta))} to local ${String(slot)} (${describeSlot(context, slot)}) in place, without touching the operand stack.`;
+    const change = delta < 0 ? 'Subtracts' : 'Adds';
+    const preposition = delta < 0 ? 'from' : 'to';
+    return `${change} ${String(Math.abs(delta))} ${preposition} local ${String(slot)} (${describeSlot(context, slot)}) in place, without touching the operand stack.`;
   }
 
   return undefined;
@@ -924,10 +955,14 @@ function explainStack(context: ExplainContext): string | undefined {
       return `Duplicates ${top} on top of the operand stack.`;
     case 'dup_x1':
       return `Duplicates ${top} and inserts the copy below ${below}.`;
+    case 'dup_x2':
+      return `Duplicates ${top} and inserts the copy below ${stackText(context, 3)}.`;
     case 'dup2':
       return `Duplicates ${below} and ${top}, leaving both pairs on the operand stack.`;
     case 'dup2_x1':
       return `Duplicates ${below} and ${top} and inserts the copies below ${stackText(context, 3)}.`;
+    case 'dup2_x2':
+      return `Duplicates ${below} and ${top} and inserts the copies below ${stackText(context, 4)}.`;
     case 'swap':
       return `Exchanges ${top} and ${below} on top of the operand stack.`;
     default:
@@ -972,14 +1007,16 @@ function explainBranch(context: ExplainContext): string | undefined {
   const top = frame.operandStack.at(-1);
   const below = frame.operandStack.at(-2);
 
-  const operator = COMPARISON[mnemonic];
-  if (operator !== undefined) {
+  const comparison = COMPARISON[mnemonic];
+  if (comparison !== undefined) {
     const comparesPair = mnemonic.startsWith('if_icmp');
     const left = comparesPair ? below : top;
     const right = comparesPair ? top : 0;
     const popped = comparesPair ? 'Pops both values' : 'Pops the top value';
-    const premise = `${popped} and compares ${valueText(left)} ${operator} ${valueText(right)}`;
-    return branchOutcome(context, premise, comparisonHolds(mnemonic, left, right));
+    const premise = `${popped} and compares ${valueText(left)} ${comparison.symbol} ${valueText(right)}`;
+    const holds =
+      left === undefined || right === undefined ? undefined : comparison.holds(left, right);
+    return branchOutcome(context, premise, holds);
   }
 
   if (mnemonic === 'ifnull' || mnemonic === 'ifnonnull') {
@@ -1071,7 +1108,7 @@ function explainCall(context: ExplainContext): string | undefined {
   if (mnemonic === 'return') {
     return `Discards the frame of ${frame.methodName} and returns nothing.`;
   }
-  if (OPCODE_NOTES[mnemonic]?.frame !== 'call') {
+  if (OPCODE_NOTES[baseMnemonicOf(instruction)]?.frame !== 'call') {
     return undefined;
   }
 
@@ -1087,7 +1124,7 @@ function explainCall(context: ExplainContext): string | undefined {
   const receiver =
     mnemonic === 'invokestatic' ? undefined : stackText(context, callee.arity + 1, 'ref');
 
-  if (owner === context.classFile.thisClassName) {
+  if (opensFrame(context.classFile, owner, callee.name, callee.descriptor)) {
     const resume = offsetAfter(context.listing, instruction.offset);
     const handover =
       resume === undefined
@@ -1104,17 +1141,21 @@ function explainCall(context: ExplainContext): string | undefined {
   }
 
   const target = `${owner}.${signature}`;
-  if (callee.name === CONSTRUCTOR && receiver !== undefined) {
+  if (owner === OBJECT_CLASS && callee.name === CONSTRUCTOR && receiver !== undefined) {
     return `Pops the reference to ${receiver} and calls ${target}, the constructor every chain of superclasses ends at; it does nothing, so the next instruction runs.`;
   }
   if (EXTERNAL_METHODS.has(memberKey(owner, callee.name, callee.descriptor))) {
     const receiverText = receiver === undefined ? '' : `the receiver ${receiver} and `;
     return `Pops ${popped}${receiverText}calls ${target}, one of the few standard-library methods this machine runs directly, without opening a frame.`;
   }
+  if (owner === context.classFile.thisClassName) {
+    return `Calls ${target}, which this machine cannot enter: a frame opens only for a method the loaded class declares, with a Code attribute and a descriptor of ints and references, so running it stops the program here.`;
+  }
   return `Calls ${target}, which is outside this machine: everything has to resolve inside the loaded class or the standard-library calls it knows, so running it stops the program here.`;
 }
 
 const CONSTRUCTOR = '<init>';
+const OBJECT_CLASS = 'java/lang/Object';
 
 function argumentTexts(context: ExplainContext, arity: number): readonly string[] {
   const texts: string[] = [];
@@ -1265,36 +1306,6 @@ function valueText(value: number | undefined): string {
   return value === undefined ? 'the top value' : String(value);
 }
 
-function comparisonHolds(
-  mnemonic: string,
-  left: number | undefined,
-  right: number | undefined,
-): boolean | undefined {
-  if (left === undefined || right === undefined) {
-    return undefined;
-  }
-  const operator = COMPARISON[mnemonic];
-  if (operator === '=') {
-    return left === right;
-  }
-  if (operator === '≠') {
-    return left !== right;
-  }
-  if (operator === '<') {
-    return left < right;
-  }
-  if (operator === '≥') {
-    return left >= right;
-  }
-  if (operator === '>') {
-    return left > right;
-  }
-  if (operator === '≤') {
-    return left <= right;
-  }
-  return undefined;
-}
-
 function offsetAfter(listing: MethodListing | undefined, offset: number): number | undefined {
   const index = listing?.indexByOffset.get(offset);
   return index === undefined ? undefined : listing?.instructions[index + 1]?.offset;
@@ -1376,9 +1387,11 @@ function calleeOf(instruction: Instruction, pool: ConstantPool): Callee | undefi
   return { name: member.name, descriptor: member.descriptor, ...parsed };
 }
 
-function calleeRunsInThisClass(context: ExplainContext): boolean {
+function calleeOpensFrame(context: ExplainContext): boolean {
+  const member = memberOf(context.instruction, context.classFile.constantPool);
   return (
-    ownerOf(context.instruction, context.classFile.constantPool) === context.classFile.thisClassName
+    member !== undefined &&
+    opensFrame(context.classFile, member.owner, member.name, member.descriptor)
   );
 }
 

@@ -130,8 +130,8 @@ const ENTRIES: Readonly<Record<GlossaryTermId, GlossaryEntry>> = {
     term: 'Opcode and mnemonic',
     question: 'What is an opcode?',
     paragraphs: [
-      'One byte names the operation, and the mnemonic is that byte written out. 150 of the 205 ' +
-        'opcodes in the table take no operand bytes at all: `iadd` never has to say where its ' +
+      'One byte names the operation, and the mnemonic is that byte written out. 150 of the 202 ' +
+        'assigned opcodes take no operand bytes at all: `iadd` never has to say where its ' +
         'inputs are, because they can only be the top of the operand stack.',
       'The type is in the mnemonic rather than in the values. `iadd` adds ints, `ladd` adds ' +
         'longs, `dadd` adds doubles (JVMS §2.11.1); the stack carries no types at run time, ' +

@@ -7,7 +7,7 @@ import {
   type CompileResult,
   type UnavailableReason,
 } from './compile-client';
-import { toAppError, type AppError, type CompileFailure } from './errors';
+import { formatBytes, toAppError, type AppError, type CompileFailure } from './errors';
 import { fetchExampleResources } from './examples';
 import type { ExampleEntry } from './manifest';
 import { runProgram, type LoadedProgram } from './program';
@@ -31,7 +31,7 @@ export type AppState =
 
 export const MAX_UPLOAD_BYTES = 512 * 1024;
 
-export const MAX_UPLOAD_LABEL = `${String(MAX_UPLOAD_BYTES / 1024)} KiB`;
+export const MAX_UPLOAD_LABEL = formatBytes(MAX_UPLOAD_BYTES);
 
 export const MAX_STEP_LIMIT = 500_000;
 
@@ -141,18 +141,20 @@ export async function loadExampleState(
   });
 }
 
+function oversizedState(fileName: string, bytes: number): AppState | undefined {
+  return bytes > MAX_UPLOAD_BYTES
+    ? failedState({ kind: 'file-too-large', fileName, bytes, limit: MAX_UPLOAD_BYTES })
+    : undefined;
+}
+
 export async function loadUploadState(
   file: File,
   maxSteps: number = DEFAULT_MAX_STEPS,
   context: LoadContext = INLINE_LOAD,
 ): Promise<AppState> {
-  if (file.size > MAX_UPLOAD_BYTES) {
-    return failedState({
-      kind: 'file-too-large',
-      fileName: file.name,
-      bytes: file.size,
-      limit: MAX_UPLOAD_BYTES,
-    });
+  const oversized = oversizedState(file.name, file.size);
+  if (oversized !== undefined) {
+    return oversized;
   }
 
   let bytes: ArrayBuffer;
@@ -184,20 +186,14 @@ export interface CompiledClass {
   readonly source: string;
 }
 
-export function loadCompiledState(
+export async function loadCompiledState(
   compiled: CompiledClass,
   maxSteps: number = DEFAULT_MAX_STEPS,
   context: LoadContext = INLINE_LOAD,
 ): Promise<AppState> {
-  if (compiled.classBytes.byteLength > MAX_UPLOAD_BYTES) {
-    return Promise.resolve(
-      failedState({
-        kind: 'file-too-large',
-        fileName: `${compiled.className}.class`,
-        bytes: compiled.classBytes.byteLength,
-        limit: MAX_UPLOAD_BYTES,
-      }),
-    );
+  const oversized = oversizedState(`${compiled.className}.class`, compiled.classBytes.byteLength);
+  if (oversized !== undefined) {
+    return oversized;
   }
 
   return settled(() =>

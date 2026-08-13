@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 const nonEmptyText = z.string().trim().min(1);
 
-export const exampleEntrySchema = z
+const exampleEntrySchema = z
   .object({
     id: z
       .string()

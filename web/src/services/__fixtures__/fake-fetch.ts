@@ -11,15 +11,40 @@ export interface FakeBody {
   readonly bytes?: ArrayBuffer;
 }
 
-export function okResponse(body: FakeBody): Response {
+interface FakeReaders {
+  readonly json: () => Promise<unknown>;
+  readonly text: () => Promise<string>;
+  readonly arrayBuffer: () => Promise<ArrayBuffer>;
+}
+
+function fakeResponse(status: number, headers: Headers, readers: FakeReaders): Response {
+  let consumed = false;
+  function once<T>(read: () => Promise<T>): () => Promise<T> {
+    return () => {
+      if (consumed) {
+        return Promise.reject(new TypeError('Body has already been read'));
+      }
+      consumed = true;
+      return read();
+    };
+  }
+
   return {
-    ok: true,
-    status: 200,
-    headers: new Headers(),
+    ok: status >= 200 && status < 300,
+    status,
+    headers,
+    json: once(readers.json),
+    text: once(readers.text),
+    arrayBuffer: once(readers.arrayBuffer),
+  } as unknown as Response;
+}
+
+export function okResponse(body: FakeBody): Response {
+  return fakeResponse(200, new Headers(), {
     json: () => Promise.resolve(body.json),
     text: () => Promise.resolve(body.text ?? ''),
     arrayBuffer: () => Promise.resolve(body.bytes ?? new ArrayBuffer(0)),
-  } as unknown as Response;
+  });
 }
 
 export function jsonResponse(
@@ -27,25 +52,19 @@ export function jsonResponse(
   json: unknown,
   headers?: Readonly<Record<string, string>>,
 ): Response {
-  return {
-    ok: status >= 200 && status < 300,
-    status,
-    headers: new Headers(headers),
+  return fakeResponse(status, new Headers(headers), {
     json: () => Promise.resolve(json),
     text: () => Promise.resolve(JSON.stringify(json)),
     arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)),
-  } as unknown as Response;
+  });
 }
 
 export function statusResponse(status: number): Response {
-  return {
-    ok: false,
-    status,
-    headers: new Headers(),
+  return fakeResponse(status, new Headers(), {
     json: () => Promise.reject(new Error('no body')),
     text: () => Promise.resolve(''),
     arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)),
-  } as unknown as Response;
+  });
 }
 
 export type FakeRoute = () => Response | Promise<Response>;

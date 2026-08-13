@@ -116,6 +116,16 @@ describe('feature gaps', () => {
     expect(titles).not.toContain('Exceptions, throw and try/catch');
     expect(CALL_SCOPE_NOTE).toContain('must resolve inside the uploaded class');
   });
+
+  it('names the standard-library slice the note claims, rather than denying it', () => {
+    for (const mnemonic of ['getstatic', 'invokevirtual', 'invokestatic']) {
+      expect(isExecutableMnemonic(mnemonic)).toBe(true);
+    }
+
+    expect(featureGaps().map((gap) => gap.title)).not.toContain('Printing to the console');
+    expect(CALL_SCOPE_NOTE).toContain('System.out');
+    expect(CALL_SCOPE_NOTE).toContain('Math');
+  });
 });
 
 describe('isExecutableMnemonic', () => {

@@ -1,3 +1,4 @@
+import { describeIssues, reasonOf } from './failure-reason';
 import { exampleManifestSchema, type ExampleEntry, type ExampleManifest } from './manifest';
 
 export type ExampleLoadDetail =
@@ -46,6 +47,10 @@ export function exampleUrl(fileName: string): string {
 
 export const MANIFEST_FILE = 'manifest.json';
 
+export const EXAMPLE_TIMEOUT_MS = 10_000;
+
+const TIMED_OUT = `no answer within ${String(EXAMPLE_TIMEOUT_MS / 1000)} s`;
+
 export async function fetchExampleManifest(): Promise<ExampleManifest> {
   const url = exampleUrl(MANIFEST_FILE);
   const response = await request(url);
@@ -62,7 +67,7 @@ export async function fetchExampleManifest(): Promise<ExampleManifest> {
     throw new ExampleLoadError({
       kind: 'invalid-manifest',
       url,
-      reason: describeIssues(parsed.error.issues),
+      reason: describeIssues(parsed.error.issues, 2),
     });
   }
   return parsed.data;
@@ -86,12 +91,24 @@ export function shortTitleOf(entry: ExampleEntry): string {
 }
 
 async function request(url: string): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => {
+    controller.abort();
+  }, EXAMPLE_TIMEOUT_MS);
+
   let response: Response;
   try {
-    response = await fetch(url);
+    response = await fetch(url, { signal: controller.signal });
   } catch (error) {
-    throw new ExampleLoadError({ kind: 'network', url, reason: reasonOf(error) });
+    throw new ExampleLoadError({
+      kind: 'network',
+      url,
+      reason: controller.signal.aborted ? TIMED_OUT : reasonOf(error),
+    });
+  } finally {
+    clearTimeout(timer);
   }
+
   if (!response.ok) {
     throw new ExampleLoadError({ kind: 'http', url, status: response.status });
   }
@@ -114,23 +131,4 @@ async function fetchText(url: string): Promise<string> {
   } catch (error) {
     throw new ExampleLoadError({ kind: 'network', url, reason: reasonOf(error) });
   }
-}
-
-function reasonOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
-interface SchemaIssue {
-  readonly path: readonly PropertyKey[];
-  readonly message: string;
-}
-
-function describeIssues(issues: readonly SchemaIssue[]): string {
-  return issues
-    .slice(0, 2)
-    .map((issue) => {
-      const path = issue.path.map((segment) => String(segment)).join('.');
-      return path === '' ? issue.message : `${path}: ${issue.message}`;
-    })
-    .join('; ');
 }

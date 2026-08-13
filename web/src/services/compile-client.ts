@@ -1,4 +1,6 @@
-import { z } from 'zod';
+import { z, type core } from 'zod';
+
+import { describeIssues, reasonOf } from './failure-reason';
 
 export type DiagnosticKind = 'error' | 'warning' | 'note';
 
@@ -238,20 +240,7 @@ function readConfiguredBaseUrl(): string | undefined {
   return trimmed === '' ? undefined : trimmed;
 }
 
-interface SchemaIssue {
-  readonly path: readonly PropertyKey[];
-  readonly message: string;
-}
-
-function firstIssueOf(issues: readonly SchemaIssue[]): string {
-  const issue = issues[0];
-  if (issue === undefined) {
-    return 'the payload does not match the compile response schema';
-  }
-  const path = issue.path.map((segment) => String(segment)).join('.');
-  return path === '' ? issue.message : `${path}: ${issue.message}`;
-}
-
-function reasonOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+function firstIssueOf(issues: readonly core.$ZodIssue[]): string {
+  const described = describeIssues(issues, 1);
+  return described === '' ? 'the payload does not match the compile response schema' : described;
 }

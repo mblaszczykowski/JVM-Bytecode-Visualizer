@@ -17,12 +17,13 @@ export function constructsFor(
   instructions: readonly Instruction[],
   pool: ConstantPool,
   methodName: string,
+  className: string,
 ): ReadonlyMap<number, Construct> {
   const found = new Map<number, Construct>();
 
   for (const [index, instruction] of instructions.entries()) {
     const construct =
-      fromConstantPool(instruction, pool, methodName, index) ??
+      fromConstantPool(instruction, pool, methodName, className, index) ??
       arrayInitialiser(instruction, instructions, index);
     if (construct !== undefined && !found.has(instruction.offset)) {
       found.set(instruction.offset, construct);
@@ -58,6 +59,7 @@ function fromConstantPool(
   instruction: Instruction,
   pool: ConstantPool,
   methodName: string,
+  className: string,
   index: number,
 ): Construct | undefined {
   const poolIndex = constantPoolIndexOf(instruction);
@@ -97,15 +99,17 @@ function fromConstantPool(
       detail: 'A null check the compiler inserted; nothing in the source asked for it.',
     };
   }
+  const owner = text.split('.')[0];
   if (
     methodName === '<init>' &&
     instruction.mnemonic === 'invokespecial' &&
     text.endsWith('.<init>:()V') &&
+    owner !== className &&
     index <= 1
   ) {
     return {
       label: 'super()',
-      detail: `Every constructor begins by calling its superclass constructor (JVMS §2.9.1). ${text.split('.')[0] ?? 'The superclass'} was never mentioned in the source.`,
+      detail: `Every constructor begins by calling its superclass constructor (JVMS §2.9.1). ${owner ?? 'The superclass'} was never mentioned in the source.`,
     };
   }
   if (text.includes('$assertionsDisabled')) {

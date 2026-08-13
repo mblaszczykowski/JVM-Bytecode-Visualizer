@@ -17,7 +17,12 @@ function methodOf(classFile: ClassFile, name: string): readonly Instruction[] {
 
 function labelsIn(fileName: string, methodName: string): readonly string[] {
   const classFile = parseClassFile(readExampleBytes(fileName));
-  const found = constructsFor(methodOf(classFile, methodName), classFile.constantPool, methodName);
+  const found = constructsFor(
+    methodOf(classFile, methodName),
+    classFile.constantPool,
+    methodName,
+    classFile.thisClassName,
+  );
   return [...found.values()].map((construct) => construct.label);
 }
 
@@ -37,7 +42,12 @@ describe('loops', () => {
   it('reports the head at the branch target rather than at the branch', () => {
     const classFile = parseClassFile(readExampleBytes('BubbleSort.class'));
     const instructions = methodOf(classFile, 'sortedMinimum');
-    const found = constructsFor(instructions, classFile.constantPool, 'sortedMinimum');
+    const found = constructsFor(
+      instructions,
+      classFile.constantPool,
+      'sortedMinimum',
+      classFile.thisClassName,
+    );
 
     const backward = instructions.filter(
       (instruction) =>
@@ -71,9 +81,27 @@ describe('string concatenation', () => {
     });
     const { instructions } = disassemble(Uint8Array.from([0xba, 0x00, concat, 0x00, 0x00]));
 
-    const found = constructsFor(instructions, pool.build(), 'main');
+    const found = constructsFor(instructions, pool.build(), 'main', 'Synthetic');
 
     expect([...found.values()].map((construct) => construct.label)).toEqual(['concat']);
+  });
+});
+
+describe('the constructor call javac inserts', () => {
+  function constructorConstructs(owner: string, className: string): readonly string[] {
+    const pool = new ConstantPoolBuilder();
+    const called = pool.methodref(owner, '<init>', '()V');
+    const { instructions } = disassemble(Uint8Array.from([0x2a, 0xb7, 0x00, called, 0xb1]));
+    const found = constructsFor(instructions, pool.build(), '<init>', className);
+    return [...found.values()].map((construct) => construct.label);
+  }
+
+  it('names the superclass constructor the source never wrote', () => {
+    expect(constructorConstructs('Base', 'Child')).toEqual(['super()']);
+  });
+
+  it('says nothing about this(), which the source did write', () => {
+    expect(constructorConstructs('Child', 'Child')).toEqual([]);
   });
 });
 
@@ -84,6 +112,7 @@ describe('what it refuses to say', () => {
       methodOf(classFile, 'factorial'),
       classFile.constantPool,
       'factorial',
+      classFile.thisClassName,
     );
 
     expect([...found.values()]).toEqual([]);
@@ -93,7 +122,7 @@ describe('what it refuses to say', () => {
     const classFile = parseClassFile(readExampleBytes('Factorial.class'));
     const instructions = methodOf(classFile, 'factorial');
 
-    expect(() => constructsFor(instructions, [], 'factorial')).not.toThrow();
+    expect(() => constructsFor(instructions, [], 'factorial', 'Factorial')).not.toThrow();
   });
 
   it('keeps a construct over a loop head when a row is both', () => {
@@ -102,6 +131,7 @@ describe('what it refuses to say', () => {
       methodOf(classFile, 'sortedMinimum'),
       classFile.constantPool,
       'sortedMinimum',
+      classFile.thisClassName,
     );
 
     expect(new Set(found.keys()).size).toBe(found.size);

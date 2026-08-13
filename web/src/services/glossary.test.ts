@@ -5,6 +5,8 @@ import { resolve } from 'node:path';
 import * as process from 'node:process';
 import { describe, expect, it } from 'vitest';
 
+import { OPCODES } from '../core/disassembler';
+
 import { GLOSSARY, glossaryEntry, glossaryTermForPanel, type GlossaryTermId } from './glossary';
 
 function primerText(): string {
@@ -83,6 +85,15 @@ describe('glossary', () => {
     }
     expect(glossaryTermForPanel('Console')).toBeUndefined();
     expect(glossaryTermForPanel('Heap')).toBeUndefined();
+  });
+
+  it('counts the operand-free instructions out of the opcode table', () => {
+    const assigned = [...OPCODES.values()].filter((info) => info.kind !== 'reserved');
+    const bare = assigned.filter((info) => info.operands.length === 0);
+
+    expect(glossaryEntry('opcode').paragraphs[0]).toContain(
+      `${String(bare.length)} of the ${String(assigned.length)} assigned opcodes take no operand bytes`,
+    );
   });
 
   it('asks a question a reader would ask, in the voice of the primer', () => {
