@@ -5,8 +5,7 @@
  * steps long before the widening conversion to {@code long}. That is a 64-bit value this machine
  * has no pair of slots for, so the instruction stops the run.
  *
- * <p>Compiled into this directory with:
- * {@code javac -g --release 21 -d web/tests/e2e/fixtures UnsupportedInstruction.java}
+ * <p>Rebuilt by fixtures/build-test-fixtures.mjs (javac -g --release 21) and byte-diffed in CI.
  */
 public final class UnsupportedInstruction {
 

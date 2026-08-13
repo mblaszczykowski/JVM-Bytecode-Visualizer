@@ -88,6 +88,26 @@ const FIXTURES = Object.freeze([
     javap: undefined,
     runs: true,
   },
+  // The end-to-end fixtures are loaded through the file input, so only the class file is read:
+  // no expected stdout, no javap dump. Counter and Library have no main to run at all.
+  {
+    className: 'Counter',
+    directory: 'tests/e2e/fixtures',
+    javap: undefined,
+    runs: false,
+  },
+  {
+    className: 'Library',
+    directory: 'tests/e2e/fixtures',
+    javap: undefined,
+    runs: false,
+  },
+  {
+    className: 'UnsupportedInstruction',
+    directory: 'tests/e2e/fixtures',
+    javap: undefined,
+    runs: false,
+  },
 ]);
 
 function sourcePath(fixture) {

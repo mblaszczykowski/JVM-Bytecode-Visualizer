@@ -8,6 +8,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "size": "node scripts/check-bundle-size.mjs",
+    "csp": "node scripts/check-csp-hash.mjs",
     "screenshots": "node scripts/capture-screenshots.mjs",
     "preview": "vite preview",
     "lint": "eslint .",

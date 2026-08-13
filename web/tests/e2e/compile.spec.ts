@@ -1,9 +1,7 @@
 import { expect, test } from '@playwright/test';
 
-test.skip(
-  () => process.env.PLAYWRIGHT_COMPILE_API_URL === undefined,
-  'needs a compile service: set PLAYWRIGHT_COMPILE_API_URL and VITE_COMPILE_API_URL',
-);
+const compileApiUrl = process.env.PLAYWRIGHT_COMPILE_API_URL ?? '';
+const serviceRequired = process.env.COMPILE_SERVICE_REQUIRED === '1';
 
 const BROKEN_SOURCE = `public class Broken {
     public static void main(String[] args) {
@@ -12,44 +10,63 @@ const BROKEN_SOURCE = `public class Broken {
 }
 `;
 
-test('writes a class, compiles it and replays the run', async ({ page }) => {
-  await page.goto('/');
+test('has a compile service to point at, so a green job cannot mean a skipped file', () => {
+  test.skip(!serviceRequired, 'no compile service was promised to this run');
 
-  await expect(page.getByTestId('compiler-health')).toHaveAttribute('data-status', 'online');
-  await page.getByRole('button', { name: 'Write Java…', exact: true }).click();
-
-  const editor = page.getByLabel('Java source');
-  await expect(editor).toHaveValue(/class FizzBuzz/);
-
-  await page.getByRole('button', { name: 'Compile' }).click();
-
-  await expect(page.getByTestId('step-counter')).toHaveText(/^step 1 \/ \d+$/);
-  await expect(page.getByTestId('compile-editor')).toHaveCount(0);
-
-  const source = page.getByRole('region', { name: 'Source' });
-  await expect(source).toContainText('FizzBuzz.java');
-  await expect(source).toContainText('switch (n % 15)');
-
-  await page.keyboard.press('ArrowRight');
-  await expect(page.getByTestId('step-counter')).toHaveText(/^step 2 \/ \d+$/);
-  await expect(page.getByTestId('current-instruction')).toContainText('istore_1');
-
-  await page.getByRole('slider', { name: 'Execution history position' }).press('End');
-  await page.getByRole('button', { name: 'Step back' }).click();
-  await expect(page.getByRole('region', { name: 'Locals' })).toContainText('result');
+  expect(
+    compileApiUrl,
+    'COMPILE_SERVICE_REQUIRED is set, so this run has to exercise the compile service, but ' +
+      'PLAYWRIGHT_COMPILE_API_URL is empty and every test below it would have skipped. The ' +
+      'compile-service job in .github/workflows/e2e.yml sets the three variables together: ' +
+      'COMPILE_SERVICE_REQUIRED, PLAYWRIGHT_COMPILE_API_URL and VITE_COMPILE_API_URL.',
+  ).not.toBe('');
 });
 
-test('points at the offending line when the source does not compile', async ({ page }) => {
-  await page.goto('/');
+test.describe('against a compile service', () => {
+  test.skip(
+    compileApiUrl === '',
+    'needs a compile service: set PLAYWRIGHT_COMPILE_API_URL and VITE_COMPILE_API_URL',
+  );
 
-  await page.getByRole('button', { name: 'Write Java…', exact: true }).click();
-  await page.getByLabel('Java source').fill(BROKEN_SOURCE);
-  await page.getByRole('button', { name: 'Compile' }).click();
+  test('writes a class, compiles it and replays the run', async ({ page }) => {
+    await page.goto('/');
 
-  const diagnostic = page.getByTestId('compile-diagnostic').first();
-  await expect(diagnostic).toHaveAttribute('data-kind', 'error');
-  await expect(diagnostic).toContainText("';' expected");
+    await expect(page.getByTestId('compiler-health')).toHaveAttribute('data-status', 'online');
+    await page.getByRole('button', { name: 'Write Java…', exact: true }).click();
 
-  await expect(page.getByTestId('error-banner')).toHaveCount(0);
-  await expect(page.getByLabel('Java source')).toHaveValue(BROKEN_SOURCE);
+    const editor = page.getByLabel('Java source');
+    await expect(editor).toHaveValue(/class FizzBuzz/);
+
+    await page.getByRole('button', { name: 'Compile' }).click();
+
+    await expect(page.getByTestId('step-counter')).toHaveText(/^step 1 \/ \d+$/);
+    await expect(page.getByTestId('compile-editor')).toHaveCount(0);
+
+    const source = page.getByRole('region', { name: 'Source' });
+    await expect(source).toContainText('FizzBuzz.java');
+    await expect(source).toContainText('switch (n % 15)');
+
+    await page.keyboard.press('ArrowRight');
+    await expect(page.getByTestId('step-counter')).toHaveText(/^step 2 \/ \d+$/);
+    await expect(page.getByTestId('current-instruction')).toContainText('istore_1');
+
+    await page.getByRole('slider', { name: 'Execution history position' }).press('End');
+    await page.getByRole('button', { name: 'Step back' }).click();
+    await expect(page.getByRole('region', { name: 'Locals' })).toContainText('result');
+  });
+
+  test('points at the offending line when the source does not compile', async ({ page }) => {
+    await page.goto('/');
+
+    await page.getByRole('button', { name: 'Write Java…', exact: true }).click();
+    await page.getByLabel('Java source').fill(BROKEN_SOURCE);
+    await page.getByRole('button', { name: 'Compile' }).click();
+
+    const diagnostic = page.getByTestId('compile-diagnostic').first();
+    await expect(diagnostic).toHaveAttribute('data-kind', 'error');
+    await expect(diagnostic).toContainText("';' expected");
+
+    await expect(page.getByTestId('error-banner')).toHaveCount(0);
+    await expect(page.getByLabel('Java source')).toHaveValue(BROKEN_SOURCE);
+  });
 });

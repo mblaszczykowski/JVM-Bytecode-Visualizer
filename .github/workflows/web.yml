@@ -49,6 +49,11 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      # vercel.json allows the inline theme script in web/index.html by sha256, and neither file
+      # can tell that the other moved. That is why vercel.json is in this workflow's path filter.
+      - name: Check the CSP hash against the inline script
+        run: npm run csp -w web
+
       - name: Test
         run: npm run test:coverage -w web
 
@@ -130,9 +135,11 @@ jobs:
             web/public/examples \
             web/src/core/classfile/__fixtures__ \
             web/src/core/disassembler/__fixtures__ \
-            web/src/core/interpreter/__fixtures__/programs
+            web/src/core/interpreter/__fixtures__/programs \
+            web/tests/e2e/fixtures
           git diff --cached --exit-code \
             web/public/examples \
             web/src/core/classfile/__fixtures__ \
             web/src/core/disassembler/__fixtures__ \
-            web/src/core/interpreter/__fixtures__/programs
+            web/src/core/interpreter/__fixtures__/programs \
+            web/tests/e2e/fixtures

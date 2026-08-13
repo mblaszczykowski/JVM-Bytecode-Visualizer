@@ -2,6 +2,8 @@
  * A utility class: static helpers, a private constructor and no `main`. Every helper takes
  * arguments, so this interpreter has no method it can enter. The fixture for a class file that
  * can only be read.
+ *
+ * Rebuilt by fixtures/build-test-fixtures.mjs (javac -g --release 21) and byte-diffed in CI.
  */
 public final class Library {
     private Library() {

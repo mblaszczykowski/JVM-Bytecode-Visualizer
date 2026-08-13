@@ -114,11 +114,15 @@ jobs:
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
 
+      # COMPILE_SERVICE_REQUIRED turns "no PLAYWRIGHT_COMPILE_API_URL" from a silent skip of the
+      # whole spec into a failure. This is the only job that starts the service, so it is the only
+      # one that may demand it.
       - name: Run the compile end-to-end tests
         run: npm run e2e -w web -- tests/e2e/compile.spec.ts
         env:
           VITE_COMPILE_API_URL: ${{ env.COMPILE_API_URL }}
           PLAYWRIGHT_COMPILE_API_URL: ${{ env.COMPILE_API_URL }}
+          COMPILE_SERVICE_REQUIRED: '1'
 
       - name: Compile service logs
         if: failure()

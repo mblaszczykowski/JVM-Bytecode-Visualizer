@@ -16,8 +16,8 @@ without touching it.
 | `server/`: the compile service | Fly.io          | [`server/Dockerfile`](../server/Dockerfile) | [`server/fly.toml`](../server/fly.toml) |
 
 Neither deploy is wired into CI. `.github/workflows/` runs five workflows (`web`, `server`, `e2e`,
-`codeql` and `docs`) covering lint, types, unit tests, the corpus, a fixture drift check, the
-Playwright suite, `mvn verify` and prose; the deploys are a Vercel git integration and a
+`codeql` and `docs`) covering lint, types, unit tests, the corpus, a fixture drift check, the CSP
+hash, the Playwright suite, `mvn verify` and prose; the deploys are a Vercel git integration and a
 `fly deploy` you run yourself.
 
 ## Frontend on Vercel
@@ -41,8 +41,10 @@ Playwright suite, `mvn verify` and prose; the deploys are a Vercel git integrati
    - The second sets the security headers on every response: `Content-Security-Policy`,
      `X-Content-Type-Options`, `Referrer-Policy` and `Permissions-Policy`. The CSP has one moving
      part: `script-src` carries a sha256 of the inline theme script in `web/index.html`, so editing
-     that script means recomputing the hash. [ADR-0010](adr/0010-security-headers-for-the-page.md)
-     covers what each directive is for and what breaks if it is wrong.
+     that script means recomputing the hash. `npm run csp -w web` compares the two and prints both
+     values when they disagree; CI runs it in the `web` workflow.
+     [ADR-0010](adr/0010-security-headers-for-the-page.md) covers what each directive is for and
+     what breaks if it is wrong.
 3. Node version: 20 or 22. The root `package.json` requires `node >= 20.18.1`.
 4. Environment variables: none are required. To light up the Java editor, add `VITE_COMPILE_API_URL`
    with the base URL of the compile service, scheme and host only, no trailing slash and no path:

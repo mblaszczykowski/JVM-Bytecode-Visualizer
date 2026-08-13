@@ -75,9 +75,10 @@ message, and `telemetry.test.ts` pins the exact set of keys a report may carry.
 
 **Negative / costs**
 
-- The hash is a hand-maintained coupling between `vercel.json` and `web/index.html`, and nothing
-  fails a build when it drifts. The failure is visible (a theme flash) and cheap, which is why it
-  has not been automated.
+- The hash is a coupling between `vercel.json` and `web/index.html`: editing the script means
+  recomputing it. `web/scripts/check-csp-hash.mjs` hashes the inline script and compares it to the
+  directive, and the `web` workflow runs it on every change to either file, so the drift fails a
+  build instead of reaching the deployed page as a theme flash.
 - `style-src 'unsafe-inline'` is a real weakening, and it cannot be removed while framer-motion
   animates inline styles.
 - `connect-src https:` is broad. It bounds the scheme and nothing else.
