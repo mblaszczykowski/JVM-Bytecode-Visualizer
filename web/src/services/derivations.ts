@@ -32,11 +32,11 @@ import {
 } from '../core/interpreter';
 
 import {
-  className,
+  classNameAt,
   constantPoolIndexOf,
-  nameAndType,
+  nameAndTypeAt,
   resolveOperandConstant,
-  utf8,
+  utf8At,
 } from './constant-pool';
 import { objectLabel } from './heap-view';
 import { calleeOf, memberOf, ownerOf, type Member } from './member-refs';
@@ -221,7 +221,7 @@ function descriptorKindOf(instruction: Instruction, pool: ConstantPool): PushedK
     return calleeOf(instruction, pool)?.returnsReference === true ? 'ref' : 'int';
   }
   if (entry?.tag === ConstantTag.Fieldref) {
-    const member = nameAndType(pool, entry.nameAndTypeIndex);
+    const member = nameAndTypeAt(pool, entry.nameAndTypeIndex);
     return member !== undefined && isReferenceDescriptor(member.descriptor) ? 'ref' : 'int';
   }
   return 'int';
@@ -581,7 +581,7 @@ function explainObject(context: ExplainContext): string | undefined {
       return `Pushes the int constant ${String(entry.value)} onto the operand stack.`;
     }
     if (entry?.tag === ConstantTag.String) {
-      const text = utf8(pool, entry.stringIndex);
+      const text = utf8At(pool, entry.stringIndex);
       return `Pushes a reference to the string "${text ?? ''}" onto the operand stack.`;
     }
     return index === undefined || entry === undefined
@@ -626,7 +626,7 @@ function explainObject(context: ExplainContext): string | undefined {
 
   if (mnemonic === 'new') {
     const index = constantPoolIndexOf(instruction);
-    const name = index === undefined ? undefined : className(pool, index);
+    const name = index === undefined ? undefined : classNameAt(pool, index);
     if (name === undefined) {
       return undefined;
     }

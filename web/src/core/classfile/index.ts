@@ -18,6 +18,7 @@ export {
   type VoidType,
 } from './descriptor';
 export { parseClassFile } from './parser';
+export { classNameAt, nameAndTypeAt, poolEntry, utf8At, type NameAndType } from './pool';
 export {
   AccessFlag,
   accessFlagNames,

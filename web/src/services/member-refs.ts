@@ -7,7 +7,7 @@ import {
 } from '../core/classfile';
 import type { Instruction } from '../core/disassembler';
 
-import { className, constantPoolIndexOf, nameAndType } from './constant-pool';
+import { classNameAt, constantPoolIndexOf, nameAndTypeAt } from './constant-pool';
 
 export interface Callee {
   readonly name: string;
@@ -24,7 +24,7 @@ export function calleeOf(instruction: Instruction, pool: ConstantPool): Callee |
   if (entry?.tag !== ConstantTag.Methodref) {
     return undefined;
   }
-  const member = nameAndType(pool, entry.nameAndTypeIndex);
+  const member = nameAndTypeAt(pool, entry.nameAndTypeIndex);
   if (member === undefined) {
     return undefined;
   }
@@ -48,8 +48,8 @@ export function memberOf(instruction: Instruction, pool: ConstantPool): Member |
   if (entry?.tag !== ConstantTag.Fieldref && entry?.tag !== ConstantTag.Methodref) {
     return undefined;
   }
-  const owner = className(pool, entry.classIndex);
-  const member = nameAndType(pool, entry.nameAndTypeIndex);
+  const owner = classNameAt(pool, entry.classIndex);
+  const member = nameAndTypeAt(pool, entry.nameAndTypeIndex);
   return owner === undefined || member === undefined
     ? undefined
     : { owner, name: member.name, descriptor: member.descriptor };

@@ -1,4 +1,12 @@
-import { constantTagName, ConstantTag, type ClassFile, type ConstantPool } from '../core/classfile';
+import {
+  classNameAt,
+  constantTagName,
+  ConstantTag,
+  nameAndTypeAt,
+  utf8At,
+  type ClassFile,
+  type ConstantPool,
+} from '../core/classfile';
 import { lookupOpcode, type Instruction } from '../core/disassembler';
 
 import type { MethodListing } from './program';
@@ -44,8 +52,8 @@ export function resolveConstant(pool: ConstantPool, index: number): ResolvedCons
     case ConstantTag.Methodref:
     case ConstantTag.Fieldref:
     case ConstantTag.InterfaceMethodref: {
-      const owner = className(pool, entry.classIndex);
-      const member = nameAndType(pool, entry.nameAndTypeIndex);
+      const owner = classNameAt(pool, entry.classIndex);
+      const member = nameAndTypeAt(pool, entry.nameAndTypeIndex);
       if (owner === undefined || member === undefined) {
         return undefined;
       }
@@ -53,17 +61,17 @@ export function resolveConstant(pool: ConstantPool, index: number): ResolvedCons
       return link(text, `// ${MEMBER_KINDS.get(entry.tag) ?? tagName} ${text}`);
     }
     case ConstantTag.Class: {
-      const name = utf8(pool, entry.nameIndex);
+      const name = utf8At(pool, entry.nameIndex);
       return name === undefined ? undefined : link(name, `// class ${name}`);
     }
     case ConstantTag.NameAndType: {
-      const member = nameAndType(pool, index);
+      const member = nameAndTypeAt(pool, index);
       return member === undefined
         ? undefined
         : link(`${member.name}:${member.descriptor}`, `// ${member.name}:${member.descriptor}`);
     }
     case ConstantTag.String: {
-      const value = utf8(pool, entry.stringIndex);
+      const value = utf8At(pool, entry.stringIndex);
       return value === undefined ? undefined : link(`"${value}"`, `// String ${value}`);
     }
     case ConstantTag.Integer:
@@ -84,12 +92,12 @@ export function resolveConstant(pool: ConstantPool, index: number): ResolvedCons
       return link(text, `// MethodHandle ${text}`);
     }
     case ConstantTag.MethodType: {
-      const descriptor = utf8(pool, entry.descriptorIndex);
+      const descriptor = utf8At(pool, entry.descriptorIndex);
       return descriptor === undefined ? undefined : link(descriptor, `// MethodType ${descriptor}`);
     }
     case ConstantTag.Dynamic:
     case ConstantTag.InvokeDynamic: {
-      const member = nameAndType(pool, entry.nameAndTypeIndex);
+      const member = nameAndTypeAt(pool, entry.nameAndTypeIndex);
       if (member === undefined) {
         return undefined;
       }
@@ -98,7 +106,7 @@ export function resolveConstant(pool: ConstantPool, index: number): ResolvedCons
     }
     case ConstantTag.Module:
     case ConstantTag.Package: {
-      const name = utf8(pool, entry.nameIndex);
+      const name = utf8At(pool, entry.nameIndex);
       return name === undefined ? undefined : link(name, `// ${tagName} ${name}`);
     }
     case ConstantTag.Float: {
@@ -162,25 +170,4 @@ export function resolveOperandConstant(
   return index === undefined ? undefined : resolveConstant(pool, index);
 }
 
-export function className(pool: ConstantPool, index: number): string | undefined {
-  const entry = pool[index] ?? undefined;
-  return entry?.tag === ConstantTag.Class ? utf8(pool, entry.nameIndex) : undefined;
-}
-
-export function nameAndType(
-  pool: ConstantPool,
-  index: number,
-): { readonly name: string; readonly descriptor: string } | undefined {
-  const entry = pool[index] ?? undefined;
-  if (entry?.tag !== ConstantTag.NameAndType) {
-    return undefined;
-  }
-  const name = utf8(pool, entry.nameIndex);
-  const descriptor = utf8(pool, entry.descriptorIndex);
-  return name === undefined || descriptor === undefined ? undefined : { name, descriptor };
-}
-
-export function utf8(pool: ConstantPool, index: number): string | undefined {
-  const entry = pool[index] ?? undefined;
-  return entry?.tag === ConstantTag.Utf8 ? entry.value : undefined;
-}
+export { classNameAt, nameAndTypeAt, utf8At };
