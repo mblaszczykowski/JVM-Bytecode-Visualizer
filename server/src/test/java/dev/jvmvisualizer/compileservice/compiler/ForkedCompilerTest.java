@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -13,7 +14,11 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.LongSupplier;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 
+@ExtendWith(OutputCaptureExtension.class)
 class ForkedCompilerTest {
 
     private static final String ADDER = """
@@ -96,6 +101,20 @@ class ForkedCompilerTest {
 
     @Test
     @Timeout(60)
+    void refusesAnAnswerTooLargeToBufferInsteadOfReadingItAll(CapturedOutput output) {
+        try (ForkedCompiler compiler = new ForkedCompiler(Duration.ofSeconds(30), 1,
+                List.of("-Xlog:all=trace:stdout"))) {
+
+            assertThatThrownBy(() -> compiler.compile(ADDER_UNIT))
+                    .isInstanceOf(CompilerUnavailableException.class)
+                    .hasMessage(ForkedCompiler.UNAVAILABLE_MESSAGE);
+        }
+
+        assertThat(output).contains("wrote more than 4194304 bytes to the result channel");
+    }
+
+    @Test
+    @Timeout(60)
     void killsTheCompilerWhenTheDeadlinePassesAndLeavesNoProcessBehind() throws Exception {
         long before = childProcesses();
         long threadsBefore = compileThreads();
@@ -146,13 +165,11 @@ class ForkedCompilerTest {
 
     @Test
     @Timeout(60)
-    void killsEveryRunningCompilerOnShutdown() throws Exception {
+    void killsEveryRunningCompilerOnShutdownWithoutReportingItAsAFailure(CapturedOutput output) throws Exception {
         long before = childProcesses();
-        CountDownLatch started = new CountDownLatch(1);
 
         ForkedCompiler compiler = new ForkedCompiler(Duration.ofSeconds(30), 1);
         Thread holder = new Thread(() -> {
-            started.countDown();
             try {
                 compiler.compile(RUNAWAY);
             } catch (CompilerUnavailableException expected) {
@@ -162,12 +179,28 @@ class ForkedCompilerTest {
         holder.setDaemon(true);
         holder.start();
 
-        assertThat(started.await(10, TimeUnit.SECONDS)).isTrue();
-        assertThat(waitForChildProcesses(before + 1)).isEqualTo(before + 1);
-
+        waitUntilACompilationIsWaitingForItsChild();
         compiler.close();
+        holder.join(30_000);
 
         assertThat(waitForChildProcesses(before)).isEqualTo(before);
+        assertThat(output).contains("compilation abandoned because the compiler is shutting down")
+                .doesNotContain("compiler process failed");
+    }
+
+    private static void waitUntilACompilationIsWaitingForItsChild() throws InterruptedException {
+        long deadline = System.nanoTime() + Duration.ofSeconds(20).toNanos();
+        while (System.nanoTime() < deadline) {
+            boolean reading = Thread.getAllStackTraces().entrySet().stream()
+                    .filter(entry -> entry.getKey().getName().startsWith("compile-fork"))
+                    .flatMap(entry -> Arrays.stream(entry.getValue()))
+                    .anyMatch(frame -> frame.getMethodName().equals("readNBytes"));
+            if (reading) {
+                return;
+            }
+            Thread.sleep(10);
+        }
+        throw new AssertionError("no compilation ever reached the point of reading its child's answer");
     }
 
     private static long childProcesses() {

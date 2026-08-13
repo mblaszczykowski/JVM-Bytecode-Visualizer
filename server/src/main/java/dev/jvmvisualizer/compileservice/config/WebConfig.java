@@ -12,6 +12,7 @@ import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.Ordered;
+import org.springframework.http.HttpHeaders;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import org.springframework.web.filter.CorsFilter;
@@ -42,6 +43,7 @@ class WebConfig {
         api.setAllowedOrigins(List.of(properties.allowedOrigin()));
         api.setAllowedMethods(List.of("POST", "OPTIONS"));
         api.setAllowedHeaders(List.of("Content-Type"));
+        api.setExposedHeaders(List.of(HttpHeaders.RETRY_AFTER));
         api.setMaxAge(3600L);
 
         CorsConfiguration health = new CorsConfiguration();

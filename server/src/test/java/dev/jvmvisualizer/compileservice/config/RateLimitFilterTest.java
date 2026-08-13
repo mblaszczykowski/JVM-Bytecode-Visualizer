@@ -105,6 +105,20 @@ class RateLimitFilterTest {
     }
 
     @Test
+    void cannotBeEscapedBySendingASecondForwardedForHeaderLine() throws Exception {
+        RateLimitFilter filter = filter(true, ONE_PROXY);
+
+        for (int i = 1; i <= LIMIT; i++) {
+            call(filter, "10.0.0.1", "203.0.113.7");
+        }
+
+        assertThat(callWith(filter, "10.0.0.1", List.of("198.51.100.1", "203.0.113.7")).getStatus())
+                .isEqualTo(HttpStatus.TOO_MANY_REQUESTS.value());
+        assertThat(callWith(filter, "10.0.0.1", List.of("198.51.100.2", "198.51.100.3", "203.0.113.7")).getStatus())
+                .isEqualTo(HttpStatus.TOO_MANY_REQUESTS.value());
+    }
+
+    @Test
     void countsBackTheConfiguredNumberOfAppendingProxies() throws Exception {
         RateLimitFilter filter = filter(true, 2);
 
@@ -244,11 +258,14 @@ class RateLimitFilterTest {
 
     private MockHttpServletResponse call(RateLimitFilter filter, String remoteAddress, String forwardedFor)
             throws Exception {
+        return callWith(filter, remoteAddress, forwardedFor == null ? List.of() : List.of(forwardedFor));
+    }
+
+    private MockHttpServletResponse callWith(RateLimitFilter filter, String remoteAddress,
+                                             List<String> forwardedForLines) throws Exception {
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/compile");
         request.setRemoteAddr(remoteAddress);
-        if (forwardedFor != null) {
-            request.addHeader("X-Forwarded-For", forwardedFor);
-        }
+        forwardedForLines.forEach(line -> request.addHeader("X-Forwarded-For", line));
         MockHttpServletResponse response = new MockHttpServletResponse();
         filter.doFilter(request, response, new MockFilterChain());
         return response;

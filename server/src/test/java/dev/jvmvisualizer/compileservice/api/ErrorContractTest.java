@@ -68,6 +68,19 @@ class ErrorContractTest {
     }
 
     @Test
+    void answersABodyThatIsNotAJsonObjectWithTheErrorShape() throws Exception {
+        for (String body : List.of("{\"source\":", "[]", "\"public class A { }\"")) {
+            assertErrorShape(mockMvc.perform(post("/api/compile")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(body))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.error").value("invalid-request"))
+                    .andExpect(jsonPath("$.message").value("request body must be a JSON object with a source field"))
+                    .andReturn());
+        }
+    }
+
+    @Test
     void answersAnUnexpectedFailureWithAnOpaqueError() throws Exception {
         given(compileService.compile(anyString())).willThrow(new IllegalStateException("connection string leaked"));
 

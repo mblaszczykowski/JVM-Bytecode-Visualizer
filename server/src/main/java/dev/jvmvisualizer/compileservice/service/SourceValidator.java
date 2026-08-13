@@ -16,9 +16,6 @@ public class SourceValidator {
     }
 
     public SourceUnit validate(String source) {
-        if (source == null || source.isBlank()) {
-            throw new InvalidSourceException(ErrorCode.EMPTY_SOURCE, "source must not be empty");
-        }
         long bytes = utf8Length(source);
         if (bytes > maxSourceBytes) {
             throw new InvalidSourceException(ErrorCode.SOURCE_TOO_LARGE,

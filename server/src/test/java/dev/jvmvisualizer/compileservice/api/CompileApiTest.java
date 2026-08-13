@@ -130,11 +130,13 @@ class CompileApiTest {
     }
 
     @Test
-    void rejectsEmptySource() throws Exception {
-        compile("")
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").value("invalid-request"))
-                .andExpect(jsonPath("$.message", containsString("source")));
+    void rejectsEmptyAndWhitespaceOnlySource() throws Exception {
+        for (String blank : List.of("", "   \n\t ")) {
+            compile(blank)
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.error").value("invalid-request"))
+                    .andExpect(jsonPath("$.message").value("source: source must not be empty"));
+        }
     }
 
     @Test

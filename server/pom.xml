@@ -72,8 +72,9 @@
         </configuration>
       </plugin>
 
-      <!-- Coverage gate on the code an attacker reaches first: the compiler sandbox and the
-           filters in front of it. The agent line is prepended to surefire's @{argLine}. -->
+      <!-- Coverage gate on the code an attacker reaches first: the compiler sandbox, the filters
+           in front of it, and the handler that decides what an error response says. The agent
+           line is prepended to surefire's @{argLine}. -->
       <plugin>
         <groupId>org.jacoco</groupId>
         <artifactId>jacoco-maven-plugin</artifactId>
@@ -102,14 +103,17 @@
             </goals>
             <configuration>
               <rules>
-                <!-- Each package is measured on its own. The minima sit just under what the
-                     suite reaches today (compiler 87.0% lines / 82.8% branches, config 90.2%
-                     / 76.9%, service 97.1% / 88.9%), so the gate catches regressions.
-                     CompilerProcessMain runs in the forked JVM, which the agent never sees;
-                     that alone accounts for 15 uncovered lines in the compiler package. -->
+                <!-- Each package is measured on its own. The minima sit under what the suite
+                     reaches today (api 95.7% lines / 81.8% branches, compiler 87.6% / 82.8%,
+                     config 92.8% / 85.2%, service 96.9% / 85.7%), so the gate catches
+                     regressions. CompilerProcessMain runs in the forked JVM, which the agent
+                     never sees; that alone accounts for 15 uncovered lines in the compiler
+                     package. What is left uncovered in api is the ResponseEntityExceptionHandler
+                     arms for statuses this service cannot produce. -->
                 <rule>
                   <element>PACKAGE</element>
                   <includes>
+                    <include>dev.jvmvisualizer.compileservice.api</include>
                     <include>dev.jvmvisualizer.compileservice.compiler</include>
                     <include>dev.jvmvisualizer.compileservice.config</include>
                     <include>dev.jvmvisualizer.compileservice.service</include>

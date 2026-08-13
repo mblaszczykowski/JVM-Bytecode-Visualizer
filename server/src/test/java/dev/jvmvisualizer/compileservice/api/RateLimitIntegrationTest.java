@@ -1,5 +1,6 @@
 package dev.jvmvisualizer.compileservice.api;
 
+import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -49,6 +50,9 @@ class RateLimitIntegrationTest {
         mockMvc.perform(compileRequest("10.1.0.2").header(HttpHeaders.ORIGIN, ORIGIN))
                 .andExpect(status().isTooManyRequests())
                 .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, ORIGIN))
+                .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_EXPOSE_HEADERS,
+                        containsString(HttpHeaders.RETRY_AFTER)))
+                .andExpect(header().string(HttpHeaders.RETRY_AFTER, "60"))
                 .andExpect(jsonPath("$.error").value("rate-limit-exceeded"));
     }
 

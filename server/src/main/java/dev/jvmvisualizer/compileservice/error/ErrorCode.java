@@ -2,7 +2,6 @@ package dev.jvmvisualizer.compileservice.error;
 
 public enum ErrorCode {
 
-    EMPTY_SOURCE("empty-source"),
     NO_PUBLIC_CLASS("no-public-class"),
     SOURCE_TOO_LARGE("source-too-large"),
     INVALID_REQUEST("invalid-request"),

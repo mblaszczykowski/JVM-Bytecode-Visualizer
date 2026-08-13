@@ -14,6 +14,7 @@ import java.io.IOException;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import org.springframework.http.HttpHeaders;
@@ -90,8 +91,8 @@ public class RateLimitFilter extends OncePerRequestFilter {
         if (!trustForwardedFor) {
             return remoteAddress;
         }
-        String forwarded = request.getHeader(X_FORWARDED_FOR);
-        if (forwarded == null || forwarded.isBlank()) {
+        String forwarded = String.join(",", Collections.list(request.getHeaders(X_FORWARDED_FOR)));
+        if (forwarded.isBlank()) {
             return remoteAddress;
         }
         List<String> entries = List.of(forwarded.split(","));

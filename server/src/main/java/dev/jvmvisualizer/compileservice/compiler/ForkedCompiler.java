@@ -50,6 +50,8 @@ public class ForkedCompiler implements SourceCompiler, AutoCloseable {
 
     private static final Duration REAPING_GRACE = Duration.ofSeconds(5);
 
+    private static final int MAX_RESULT_BYTES = 4 * 1024 * 1024;
+
     private final Duration timeout;
     private final List<String> command;
     private final ThreadPoolExecutor pool;
@@ -98,10 +100,15 @@ public class ForkedCompiler implements SourceCompiler, AutoCloseable {
             log.warn("compiler process outlived {} plus the reaping grace", timeout);
             return CompilationResult.Failure.of(TIMEOUT_MESSAGE);
         } catch (ExecutionException e) {
-            if (e.getCause() instanceof CompilerUnavailableException unavailable) {
+            Throwable cause = e.getCause();
+            if (cause instanceof CompilerUnavailableException unavailable) {
                 throw unavailable;
             }
-            log.error("compiler process failed", e.getCause());
+            if (closed && cause instanceof InterruptedException) {
+                log.info("compilation abandoned because the compiler is shutting down");
+            } else {
+                log.error("compiler process failed", cause);
+            }
             throw new CompilerUnavailableException(UNAVAILABLE_MESSAGE, RETRY_AFTER);
         } catch (InterruptedException e) {
             pending.cancel(true);
@@ -127,7 +134,11 @@ public class ForkedCompiler implements SourceCompiler, AutoCloseable {
             }, timeout.toMillis(), TimeUnit.MILLISECONDS);
 
             writeRequest(process, unit);
-            byte[] payload = process.getInputStream().readAllBytes();
+            byte[] payload = process.getInputStream().readNBytes(MAX_RESULT_BYTES + 1);
+            if (payload.length > MAX_RESULT_BYTES) {
+                log.error("compiler process wrote more than {} bytes to the result channel", MAX_RESULT_BYTES);
+                throw new CompilerUnavailableException(UNAVAILABLE_MESSAGE, RETRY_AFTER);
+            }
             int exitCode = process.waitFor();
 
             CompilationResult result = parse(payload);

@@ -20,17 +20,6 @@ class SourceValidatorTest {
     }
 
     @Test
-    void rejectsAnEmptySource() {
-        assertThatThrownBy(() -> validatorAccepting(64 * 1024).validate("   \n\t "))
-                .isInstanceOfSatisfying(InvalidSourceException.class,
-                        e -> assertThat(e.error()).isEqualTo(ErrorCode.EMPTY_SOURCE))
-                .hasMessage("source must not be empty");
-
-        assertThatThrownBy(() -> validatorAccepting(64 * 1024).validate(null))
-                .isInstanceOf(InvalidSourceException.class);
-    }
-
-    @Test
     void rejectsASourceWithoutAPublicTopLevelClass() {
         assertThatThrownBy(() -> validatorAccepting(64 * 1024).validate("class Hidden { }"))
                 .isInstanceOfSatisfying(InvalidSourceException.class,

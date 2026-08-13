@@ -16,7 +16,6 @@ import org.springframework.core.NestedExceptionUtils;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
-import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -100,20 +99,11 @@ class ApiExceptionHandler extends ResponseEntityExceptionHandler {
         if (status.is5xxServerError()) {
             return ErrorResponse.of(ErrorCode.INTERNAL_ERROR, INTERNAL_ERROR_MESSAGE);
         }
-        return new ErrorResponse(errorCode(status), detailOf(body, status));
-    }
-
-    private static String errorCode(HttpStatusCode status) {
         HttpStatus resolved = HttpStatus.resolve(status.value());
-        return resolved == null ? ErrorCode.REQUEST_ERROR.code()
-                : resolved.name().toLowerCase(Locale.ROOT).replace('_', '-');
-    }
-
-    private static String detailOf(Object body, HttpStatusCode status) {
-        if (body instanceof ProblemDetail problem && problem.getDetail() != null) {
-            return problem.getDetail();
+        if (resolved == null) {
+            return new ErrorResponse(ErrorCode.REQUEST_ERROR.code(), "the request was rejected");
         }
-        HttpStatus resolved = HttpStatus.resolve(status.value());
-        return resolved == null ? "the request was rejected" : resolved.getReasonPhrase();
+        return new ErrorResponse(resolved.name().toLowerCase(Locale.ROOT).replace('_', '-'),
+                resolved.getReasonPhrase());
     }
 }
