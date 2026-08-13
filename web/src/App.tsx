@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { useMemo, useReducer, useRef, useState } from 'react';
 
 import { AppShell } from './components/chrome/AppShell';
 import { BytecodePanel } from './components/panels/BytecodePanel';
@@ -13,15 +13,23 @@ import { StateColumn } from './components/panels/StateColumn';
 import type { ShortcutGroup } from './components/dialogs/KeyboardHelp';
 import { Toolbar, type CompilerStatus, type PanelName } from './components/chrome/Toolbar';
 import { EmbedBar } from './components/chrome/EmbedBar';
+import {
+  structureVisibilityOf,
+  useStructureTabs,
+  type StructureView,
+} from './components/chrome/StructureTabs';
 import { TourStrip } from './components/transport/TourStrip';
 import { TransportControls } from './components/transport/TransportControls';
-import { Segment, SegmentedControl } from './components/ui/SegmentedControl';
 import { WelcomeScreen, type WelcomeExample } from './components/welcome/WelcomeScreen';
 import { NO_SNAPSHOTS, type StackFrame } from './core/interpreter';
+import { useCompilerHealth } from './hooks/useCompilerHealth';
+import { useExampleManifest } from './hooks/useExampleManifest';
 import { useExamplePreviews } from './hooks/useExamplePreviews';
 import { useExecutionPlayer } from './hooks/useExecutionPlayer';
 import { useFileDropGuard } from './hooks/useFileDropGuard';
 import { useGuidedTour } from './hooks/useGuidedTour';
+import { useOpenedLink } from './hooks/useOpenedLink';
+import { useUrlSync } from './hooks/useUrlSync';
 import { useProgramView } from './hooks/useProgramView';
 import { useTransportShortcuts } from './hooks/useTransportShortcuts';
 import {
@@ -39,13 +47,7 @@ import {
   runFromState,
   type AppState,
 } from './services/app-state';
-import {
-  checkHealth,
-  compile,
-  compileApiBaseUrl,
-  type CompileDiagnostic,
-} from './services/compile-client';
-import { parseDeepLink, writeDeepLink, writeTourLink } from './services/deep-link';
+import { compile, compileApiBaseUrl, type CompileDiagnostic } from './services/compile-client';
 import { fullAppUrl, isEmbedded } from './services/embed';
 import {
   describeAppError,
@@ -53,7 +55,7 @@ import {
   describeCompileFailure,
   toAppError,
 } from './services/errors';
-import { fetchExampleManifest, shortTitleOf } from './services/examples';
+import { shortTitleOf } from './services/examples';
 import {
   listingToShow,
   methodKeyOf,
@@ -120,25 +122,6 @@ function visibilityOf(panel: PanelName, selected: PanelName): string {
   return panel === selected ? '' : 'hidden md:flex';
 }
 
-function structureVisibilityOf(
-  panel: StructureView,
-  selected: PanelName,
-  shown: StructureView,
-): string {
-  return `${panel === selected ? '' : 'hidden'} ${panel === shown ? 'md:flex' : 'md:hidden'}`;
-}
-
-type StructureView = 'source' | 'class';
-
-const STRUCTURE_VIEWS: readonly {
-  readonly id: StructureView;
-  readonly label: string;
-  readonly name: string;
-}[] = [
-  { id: 'source', label: 'Source', name: 'Source: the Java this class was compiled from' },
-  { id: 'class', label: 'Class', name: 'Class: the structure of the class file itself' },
-];
-
 async function settle(load: () => Promise<AppState>): Promise<AppState | undefined> {
   try {
     return await load();
@@ -167,60 +150,16 @@ export function App({
   const [linkedLine, setLinkedLine] = useState<number | undefined>(undefined);
   const [dismissed, setDismissed] = useState<string | undefined>(undefined);
 
-  const structureTabsRef = useRef<HTMLDivElement>(null);
-  const keepTabFocus = useRef(false);
-
   const tokenRef = useRef(0);
   const issueToken = (): number => {
     tokenRef.current += 1;
     return tokenRef.current;
   };
 
-  const [openedAt] = useState(() => parseDeepLink(window.location.hash));
   const [embedded] = useState(() => isEmbedded(window.location.search));
-  const pendingExample = useRef(openedAt?.exampleId);
-  const pendingStep = useRef(openedAt?.stepIndex);
 
-  useEffect(() => {
-    let active = true;
-    void fetchExampleManifest().then(
-      (manifest) => {
-        if (active) {
-          dispatch({ kind: 'examples-loaded', entries: manifest.examples });
-        }
-      },
-      (error: unknown) => {
-        if (active) {
-          dispatch({ kind: 'examples-failed', error: toAppError(error) });
-        }
-      },
-    );
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (compileApiUrl === undefined) {
-      return;
-    }
-    let active = true;
-    void checkHealth(compileApiUrl).then(
-      (healthy) => {
-        if (active) {
-          dispatch({ kind: 'compiler-checked', healthy });
-        }
-      },
-      () => {
-        if (active) {
-          dispatch({ kind: 'compiler-checked', healthy: false });
-        }
-      },
-    );
-    return () => {
-      active = false;
-    };
-  }, [compileApiUrl]);
+  useExampleManifest(dispatch);
+  useCompilerHealth(compileApiUrl, dispatch);
 
   const running = useRef<AbortController | undefined>(undefined);
   const startLoad = async (
@@ -276,20 +215,6 @@ export function App({
       loadExampleState(entry, undefined, context),
     );
   };
-
-  const latestSelectExample = useRef(selectExample);
-  useEffect(() => {
-    latestSelectExample.current = selectExample;
-  });
-
-  useEffect(() => {
-    const id = pendingExample.current ?? (embedded ? examples[0]?.id : undefined);
-    if (id === undefined || examples.length === 0) {
-      return;
-    }
-    pendingExample.current = undefined;
-    latestSelectExample.current(id);
-  }, [examples, embedded]);
 
   const selectFile = (file: File) => {
     void startLoad(`Reading ${file.name}`, (context) => loadUploadState(file, undefined, context));
@@ -352,29 +277,27 @@ export function App({
 
   const loadedExampleId = program?.origin.kind === 'example' ? program.origin.entry.id : undefined;
 
-  useEffect(() => {
-    const step = pendingStep.current;
-    if (step === undefined || stepCount === 0) {
-      return;
-    }
-    pendingStep.current = undefined;
-    if (loadedExampleId === openedAt?.exampleId && step < stepCount) {
-      seekTo(step);
-    }
-  }, [loadedExampleId, openedAt, stepCount, seekTo]);
+  const openedAt = useOpenedLink({
+    examples,
+    embedded,
+    selectExample,
+    loadedExampleId,
+    stepCount,
+    seekTo,
+  });
 
   const tour = useGuidedTour({ exampleId: loadedExampleId, snapshots, seekTo, openedAt });
 
-  useEffect(() => {
-    if (loadedExampleId === undefined || player.isPlaying) {
-      return;
-    }
-    if (tour.active !== undefined) {
-      writeTourLink(loadedExampleId, tour.active.tour.id, tour.stopIndex);
-      return;
-    }
-    writeDeepLink(loadedExampleId, stepCount === 0 ? undefined : player.stepIndex);
-  }, [loadedExampleId, tour.active, tour.stopIndex, player.stepIndex, player.isPlaying, stepCount]);
+  useUrlSync({
+    exampleId: loadedExampleId,
+    isPlaying: player.isPlaying,
+    stepIndex: player.stepIndex,
+    stepCount,
+    tour:
+      tour.active === undefined
+        ? undefined
+        : { id: tour.active.tour.id, stopIndex: tour.stopIndex },
+  });
 
   useTransportShortcuts({
     enabled: snapshots.length > 0 && editor.kind === 'closed',
@@ -480,38 +403,7 @@ export function App({
     setDismissed(raised?.message);
   };
 
-  useEffect(() => {
-    if (!keepTabFocus.current) {
-      return;
-    }
-    keepTabFocus.current = false;
-    structureTabsRef.current?.querySelector<HTMLElement>('[aria-pressed="true"]')?.focus();
-  });
-
-  const showStructure = (view: StructureView) => {
-    keepTabFocus.current =
-      view !== structureView &&
-      (structureTabsRef.current?.contains(document.activeElement) ?? false);
-    selectPanel(view);
-  };
-
-  const structureTabs = (
-    <SegmentedControl label="Left panel" groupRef={structureTabsRef} className="-my-0.5 p-0.5">
-      {STRUCTURE_VIEWS.map(({ id, label, name }) => (
-        <Segment
-          key={id}
-          label={name}
-          selected={structureView === id}
-          onClick={() => {
-            showStructure(id);
-          }}
-          className="px-2 py-0.5 text-label"
-        >
-          {label}
-        </Segment>
-      ))}
-    </SegmentedControl>
-  );
+  const structureTabs = useStructureTabs(structureView, selectPanel);
 
   const raiseLimit =
     compileNotice !== undefined || nextStepLimit === undefined || program === undefined

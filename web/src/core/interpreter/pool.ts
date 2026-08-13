@@ -44,7 +44,6 @@ export function classNameAt(pool: ConstantPool, index: number): string {
   if (entry?.tag !== ConstantTag.Class) {
     throw badPoolEntry(index, 'Class');
   }
-  // Not the shared classNameAt: this reports which of the two indices was wrong.
   return utf8(pool, entry.nameIndex);
 }
 
@@ -111,8 +110,6 @@ export function utf8(pool: ConstantPool, index: number): string {
   return required(utf8At(pool, index), index, 'Utf8');
 }
 
-// The interpreter cannot carry on past a pool entry of the wrong tag, so every accessor here
-// faults where the same lookup in services/ returns undefined and the panel renders a placeholder.
 function required<T>(value: T | undefined, index: number, expected: string): T {
   if (value === undefined) {
     throw badPoolEntry(index, expected);
