@@ -11,8 +11,9 @@ import {
   stackEffectOf,
   type OperandToken,
 } from '../services/bytecode-format';
+import { constantPoolIndexOf } from '../services/constant-pool';
 import type { Construct } from '../services/constructs';
-import { constantPoolIndexOf, type StackDelta } from '../services/derivations';
+import type { StackDelta } from '../services/derivations';
 
 import { BranchGutter } from './BranchGutter';
 import { CurrentRowHighlight } from './CurrentRowHighlight';

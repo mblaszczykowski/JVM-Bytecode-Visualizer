@@ -5,8 +5,8 @@ import {
   readExampleManifest,
   readExampleText,
 } from '../../services/__fixtures__/example-files';
+import { constantPoolComments } from '../../services/constant-pool';
 import {
-  constantPoolComments,
   describeNextInstruction,
   describeOperandRoles,
   type NextInstructionSummary,

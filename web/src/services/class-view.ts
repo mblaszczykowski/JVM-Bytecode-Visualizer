@@ -12,7 +12,7 @@ import {
   type FieldInfo,
 } from '../core/classfile';
 
-import { resolveConstant, tagNameOf } from './derivations';
+import { resolveConstant, tagNameOf } from './constant-pool';
 
 export interface ClassFact {
   readonly label: string;

@@ -1,11 +1,11 @@
 import type { Snapshot, StackFrame } from '../core/interpreter';
 
+import { constantPoolComments } from './constant-pool';
 import { constructsFor, type Construct } from './constructs';
 import {
   baseMnemonicOf,
   describeNextInstruction,
   describeOperandRoles,
-  constantPoolComments,
   explainMnemonic,
   type NextInstructionSummary,
 } from './derivations';

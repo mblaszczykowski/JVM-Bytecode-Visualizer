@@ -24,10 +24,10 @@ flowchart TD
     shim["run-program.worker.ts<br/>message wiring"]
     shim --> protocol
   end
-  subgraph app["web/src/services: application layer, 24 modules"]
+  subgraph app["web/src/services: application layer, 25 modules"]
     program["program.ts, program-view.ts<br/>parse, disassemble, listings"]
     runner["program-runner.ts<br/>inline or worker, cancellation"]
-    derive["derivations.ts, timeline.ts, constructs.ts<br/>what the panels explain"]
+    derive["derivations.ts, constant-pool.ts, timeline.ts, constructs.ts<br/>what the panels explain"]
     state["app-state.ts, deep-link.ts, embed.ts, theme.ts<br/>state and the URL"]
     compileClient["compile-client.ts<br/>optional service"]
   end

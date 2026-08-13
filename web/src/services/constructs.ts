@@ -1,7 +1,7 @@
 import type { ConstantPool } from '../core/classfile';
 import type { Instruction } from '../core/disassembler';
 
-import { constantPoolIndexOf, resolveConstant } from './derivations';
+import { constantPoolIndexOf, resolveConstant } from './constant-pool';
 
 export interface Construct {
   readonly label: string;
