@@ -77,14 +77,24 @@ export class Heap {
     return this.cells.length - 1;
   }
 
-  loadField(reference: number, name: string): { value: number; kind: ValueKind } {
-    const field = this.fieldIn(this.instanceCellAt(reference, name), name);
+  loadField(
+    reference: number,
+    name: string,
+    descriptor: string,
+  ): { value: number; kind: ValueKind } {
+    const field = this.fieldIn(this.instanceCellAt(reference, name), name, descriptor);
     return { value: field.value, kind: field.kind };
   }
 
-  storeField(reference: number, name: string, value: number, kind: ValueKind): void {
+  storeField(
+    reference: number,
+    name: string,
+    descriptor: string,
+    value: number,
+    kind: ValueKind,
+  ): void {
     const cell = this.instanceCellAt(reference, name);
-    const field = this.fieldIn(cell, name);
+    const field = this.fieldIn(cell, name, descriptor);
     field.value = value;
     field.kind = kind;
     cell.version += 1;
@@ -102,12 +112,14 @@ export class Heap {
     return cell;
   }
 
-  private fieldIn(cell: InstanceCell, name: string): FieldCell {
-    const field = cell.fields.find((candidate) => candidate.name === name);
+  private fieldIn(cell: InstanceCell, name: string, descriptor: string): FieldCell {
+    const field = cell.fields.find(
+      (candidate) => candidate.name === name && candidate.descriptor === descriptor,
+    );
     if (field === undefined) {
       throw new VmFault({
         kind: 'invalid-state',
-        message: `${cell.className} has no field named ${name}`,
+        message: `${cell.className} has no field ${name} of type ${descriptor}`,
       });
     }
     return field;

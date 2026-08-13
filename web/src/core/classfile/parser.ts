@@ -45,6 +45,13 @@ export function parseClassFile(buffer: ArrayBuffer): ClassFile {
   const fields = readFields(reader, constantPool);
   const methods = readMethods(reader, constantPool);
   readAttributes(reader, constantPool, 'ClassFile', () => undefined);
+  if (reader.remaining > 0) {
+    throw new ClassFileError({
+      kind: 'malformed-structure',
+      offset: reader.offset,
+      reason: `${String(reader.remaining)} byte(s) after the last class attribute`,
+    });
+  }
 
   return {
     minorVersion,
@@ -78,6 +85,13 @@ function readConstantPool(reader: ByteReader): ConstantPool {
     pool[index] = readConstantEntry(reader, tag, index, tagAt);
 
     if (tag === ConstantTag.Long || tag === ConstantTag.Double) {
+      if (index + 1 >= count) {
+        throw new ClassFileError({
+          kind: 'malformed-structure',
+          offset: tagAt,
+          reason: `constant_pool[${String(index)}] is a long or double in the last slot, so the second slot it takes does not exist`,
+        });
+      }
       index += 1;
     }
   }

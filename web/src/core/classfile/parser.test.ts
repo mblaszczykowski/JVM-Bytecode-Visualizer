@@ -260,6 +260,25 @@ describe('parseClassFile: Long/Double entries and the reference tags around them
     expect(constantPool[5]).toEqual({ tag: ConstantTag.Float, value: 1.5 });
   });
 
+  it('refuses a long in the last slot, whose second slot does not exist (JVMS §4.4.5)', () => {
+    const buffer = buildClassFile({
+      constantPoolCount: 5,
+      constantPool: [
+        utf8Entry('Synth'),
+        classEntry(1),
+        utf8Entry('java/lang/Object'),
+        [ConstantTag.Long, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01],
+      ],
+      thisClass: 2,
+      superClass: 0,
+    });
+
+    expect(expectClassFileError(() => parseClassFile(buffer))).toMatchObject({
+      kind: 'malformed-structure',
+      reason: expect.stringContaining('last slot') as string,
+    });
+  });
+
   it('reads a long that a double could not hold exactly', () => {
     const buffer = buildClassFile({
       constantPoolCount: 5,
@@ -754,6 +773,17 @@ describe('parseClassFile: robustness property test', () => {
       }),
       { numRuns: 500 },
     );
+  });
+
+  it('refuses bytes appended after the last class attribute', () => {
+    const full = factorialBytes();
+    const padded = Uint8Array.from([...full, 0x00, 0x00, 0x00, 0x00]);
+
+    expect(expectClassFileError(() => parseClassFile(padded.buffer))).toMatchObject({
+      kind: 'malformed-structure',
+      reason: '4 byte(s) after the last class attribute',
+    });
+    expect(() => parseClassFile(full.buffer)).not.toThrow();
   });
 
   it('reports every truncated prefix of the fixture as a ClassFileError', () => {

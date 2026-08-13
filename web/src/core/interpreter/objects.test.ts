@@ -287,6 +287,28 @@ describe('execute: faults on the member access paths', () => {
     });
   });
 
+  it('resolves a field on its descriptor as well as its name', () => {
+    const pool = new ConstantPoolBuilder();
+    const result = run({
+      pool,
+      fields: [
+        { name: 'value', descriptor: `L${SYNTHETIC_CLASS_NAME};`, accessFlags: AccessFlag.Public },
+        VALUE_FIELD,
+      ],
+      methods: [CONSTRUCTOR],
+      code: [
+        ...allocate(pool),
+        0x59,
+        0x07,
+        ...[0xb5, ...u2(pool.fieldref(SYNTHETIC_CLASS_NAME, 'value', 'I'))],
+        ...[0xb4, ...u2(pool.fieldref(SYNTHETIC_CLASS_NAME, 'value', 'I'))],
+        0xac,
+      ],
+    });
+
+    expect(expectCompleted(result)).toMatchObject({ returnValue: 4 });
+  });
+
   it('stops when the class has no field of that name', () => {
     const pool = new ConstantPoolBuilder();
     const result = run({
@@ -301,7 +323,7 @@ describe('execute: faults on the member access paths', () => {
 
     expect(expectVmError(result)).toMatchObject({
       kind: 'invalid-state',
-      message: `${SYNTHETIC_CLASS_NAME} has no field named missing`,
+      message: `${SYNTHETIC_CLASS_NAME} has no field missing of type I`,
     });
   });
 

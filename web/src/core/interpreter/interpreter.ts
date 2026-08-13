@@ -120,6 +120,7 @@ export function execute(classFile: ClassFile, options: ExecuteOptions = {}): Exe
     classFile,
     prepared,
     calls: new Map(),
+    switchTables: new Map(),
     instanceFields: undefined,
     maxCallDepth: atLeastOne(options.maxCallDepth, DEFAULT_MAX_CALL_DEPTH),
     callStack: [entryFrame],
@@ -344,6 +345,7 @@ interface Machine extends MachineState {
   readonly classFile: ClassFile;
   readonly prepared: Map<MethodInfo, PreparedMethod>;
   readonly calls: Map<number, ResolvedCall>;
+  readonly switchTables: Map<Instruction, SwitchTable>;
   instanceFields: readonly InstanceField[] | undefined;
   readonly maxCallDepth: number;
   readonly callStack: Frame[];
@@ -670,7 +672,7 @@ function step(machine: Machine, frame: Frame, instruction: Instruction): void {
       break;
     case Op.tableswitch:
     case Op.lookupswitch:
-      setPc(frame, switchTargetOf(instruction, pop(frame, 'int')));
+      setPc(frame, switchTargetOf(machine, instruction, pop(frame, 'int')));
       break;
 
     case Op.getstatic:
@@ -796,15 +798,37 @@ function branchTargetOf(instruction: Instruction): number {
   return branchTarget;
 }
 
-function switchTargetOf(instruction: Instruction, key: number): number {
-  const [fallback, ...arms] = instruction.switchTargets ?? [];
+interface SwitchTable {
+  readonly fallback: number;
+  readonly arms: ReadonlyMap<number, number>;
+}
+
+function switchTargetOf(machine: Machine, instruction: Instruction, key: number): number {
+  let table = machine.switchTables.get(instruction);
+  if (table === undefined) {
+    table = switchTableOf(instruction);
+    machine.switchTables.set(instruction, table);
+  }
+  return table.arms.get(key) ?? table.fallback;
+}
+
+function switchTableOf(instruction: Instruction): SwitchTable {
+  const targets = instruction.switchTargets ?? [];
+  const fallback = targets[0];
   if (fallback === undefined) {
     throw new VmFault({
       kind: 'invalid-state',
       message: `${instruction.mnemonic} without a jump table`,
     });
   }
-  return arms.find((arm) => arm.match === key)?.target ?? fallback.target;
+  const arms = new Map<number, number>();
+  for (let index = 1; index < targets.length; index += 1) {
+    const arm = targets[index];
+    if (arm?.match !== undefined && !arms.has(arm.match)) {
+      arms.set(arm.match, arm.target);
+    }
+  }
+  return { fallback: fallback.target, arms };
 }
 
 function throwFromStack(machine: Machine, frame: Frame): void {
@@ -893,14 +917,20 @@ function allocateInstance(machine: Machine, frame: Frame, poolIndex: number): vo
 
 function readField(machine: Machine, frame: Frame, poolIndex: number): void {
   const reference = fieldReference(machine, poolIndex);
-  const held = machine.heap.loadField(pop(frame, 'ref'), reference.name);
+  const held = machine.heap.loadField(pop(frame, 'ref'), reference.name, reference.descriptor);
   push(frame, held.value, held.kind);
 }
 
 function writeField(machine: Machine, frame: Frame, poolIndex: number): void {
   const reference = fieldReference(machine, poolIndex);
   const value = popAny(frame);
-  machine.heap.storeField(pop(frame, 'ref'), reference.name, value.value, value.kind);
+  machine.heap.storeField(
+    pop(frame, 'ref'),
+    reference.name,
+    reference.descriptor,
+    value.value,
+    value.kind,
+  );
 }
 
 function fieldReference(machine: Machine, poolIndex: number): MethodReference {
