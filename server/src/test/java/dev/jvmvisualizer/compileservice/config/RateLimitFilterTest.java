@@ -176,9 +176,23 @@ class RateLimitFilterTest {
     }
 
     @Test
+    void fallsBackToTheRemoteAddressWhenTheRequestNeverTraversedTheTrustedProxies() throws Exception {
+        RateLimitFilter filter = filter(true, 2);
+
+        for (int i = 1; i <= LIMIT; i++) {
+            call(filter, "10.0.0.1", "203.0.113.7");
+        }
+
+        assertThat(call(filter, "10.0.0.1", "198.51.100.5").getStatus())
+                .isEqualTo(HttpStatus.TOO_MANY_REQUESTS.value());
+    }
+
+    @Test
     void fallsBackToTheRemoteAddressForEntriesThatOnlyLookLikeIpv6() throws Exception {
+        String longerThanAnyIpAddress = "0001:0002:0003:0004:0005:0006:0007:0008:0009:0010:0011:0012";
         List<String> notLiterals = List.of("1::2::3", "gggg::1", "12345::1", "1:2:3:4:5:6:7:8:9", ":1:2:3:4:5:6:7",
-                "1:2:3:4:5:6:7", "::ffff:203.0.113.300", "fe80::1%eth0", "::ffff:1.2.3.4:5");
+                "1:2:3:4:5:6:7", "::ffff:203.0.113.300", "fe80::1%eth0", "::ffff:1.2.3.4:5", "",
+                longerThanAnyIpAddress, "[]", "1.2.3.4444", "1.2.3.x");
 
         for (String entry : notLiterals) {
             RateLimitFilter filter = filter(true, ONE_PROXY);
@@ -220,16 +234,23 @@ class RateLimitFilterTest {
         RateLimitFilter filter = filter(false);
 
         for (int i = 0; i < 10; i++) {
-            MockHttpServletRequest preflight = new MockHttpServletRequest("OPTIONS", "/api/compile");
-            preflight.setRemoteAddr("10.0.0.1");
-            MockHttpServletResponse response = new MockHttpServletResponse();
-            filter.doFilter(preflight, response, new MockFilterChain());
-            assertThat(response.getStatus()).isEqualTo(HttpStatus.OK.value());
+            assertThat(options(filter, true).getStatus()).isEqualTo(HttpStatus.OK.value());
         }
 
         for (int i = 1; i <= LIMIT; i++) {
             assertThat(call(filter, "10.0.0.1").getStatus()).isEqualTo(HttpStatus.OK.value());
         }
+    }
+
+    @Test
+    void chargesAnOptionsRequestThatIsNotAPreflight() throws Exception {
+        RateLimitFilter filter = filter(false);
+
+        for (int i = 1; i <= LIMIT; i++) {
+            assertThat(options(filter, false).getStatus()).isEqualTo(HttpStatus.OK.value());
+        }
+
+        assertThat(options(filter, false).getStatus()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS.value());
     }
 
     @Test
@@ -254,6 +275,18 @@ class RateLimitFilterTest {
 
     private MockHttpServletResponse call(RateLimitFilter filter, String remoteAddress) throws Exception {
         return call(filter, remoteAddress, null);
+    }
+
+    private MockHttpServletResponse options(RateLimitFilter filter, boolean preflight) throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("OPTIONS", "/api/compile");
+        request.setRemoteAddr("10.0.0.1");
+        if (preflight) {
+            request.addHeader(HttpHeaders.ORIGIN, "http://localhost:5173");
+            request.addHeader(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, "POST");
+        }
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        filter.doFilter(request, response, new MockFilterChain());
+        return response;
     }
 
     private MockHttpServletResponse call(RateLimitFilter filter, String remoteAddress, String forwardedFor)

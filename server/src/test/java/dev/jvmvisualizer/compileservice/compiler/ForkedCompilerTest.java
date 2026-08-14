@@ -38,6 +38,14 @@ class ForkedCompilerTest {
     private static final SourceUnit RUNAWAY = new SourceUnit("Runaway", runaway(24));
 
     @Test
+    void pinsTheMemoryCeilingsEachChildVmIsGiven() {
+        assertThat(ForkedCompiler.childVmOptions())
+                .as("Dockerfile, fly.toml and the sizing section of docs/deployment.md do arithmetic on these")
+                .containsSequence("-Xmx128m", "-XX:MaxMetaspaceSize=64m", "-XX:ReservedCodeCacheSize=32m",
+                        "-XX:MaxDirectMemorySize=16m", "-Xss1m");
+    }
+
+    @Test
     @Timeout(60)
     void compilesInAChildProcess() {
         try (ForkedCompiler compiler = new ForkedCompiler(Duration.ofSeconds(30), 1)) {

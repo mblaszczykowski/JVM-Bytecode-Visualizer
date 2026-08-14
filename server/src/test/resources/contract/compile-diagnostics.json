@@ -10,15 +10,15 @@
     "classFileBase64": null,
     "diagnostics": [
       {
+        "kind": "ERROR",
         "line": 3,
         "column": 16,
-        "kind": "ERROR",
         "message": "';' expected"
       },
       {
+        "kind": "NOTE",
         "line": null,
         "column": null,
-        "kind": "NOTE",
         "message": "some input files use unchecked or unsafe operations"
       }
     ]

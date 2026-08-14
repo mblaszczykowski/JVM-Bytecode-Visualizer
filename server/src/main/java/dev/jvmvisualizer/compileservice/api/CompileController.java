@@ -42,7 +42,7 @@ class CompileController {
 
     private static List<DiagnosticDto> toDto(List<CompilerDiagnostic> diagnostics) {
         return diagnostics.stream()
-                .map(d -> new DiagnosticDto(d.line(), d.column(), d.kind().name(), d.message()))
+                .map(d -> new DiagnosticDto(d.kind().name(), d.line(), d.column(), d.message()))
                 .toList();
     }
 }

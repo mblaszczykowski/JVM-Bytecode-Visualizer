@@ -37,6 +37,14 @@ class SourceValidatorTest {
     }
 
     @Test
+    void countsALatinSupplementCharacterAsTwoBytes() {
+        assertThatThrownBy(() -> validatorAccepting(27).validate(ADDER + " // ł"))
+                .isInstanceOfSatisfying(InvalidSourceException.class,
+                        e -> assertThat(e.error()).isEqualTo(ErrorCode.SOURCE_TOO_LARGE))
+                .hasMessage("source is 28 bytes, the limit is 27 bytes");
+    }
+
+    @Test
     void countsAnUnpairedSurrogateAsThreeBytes() {
         assertThatThrownBy(() -> validatorAccepting(24).validate(ADDER + " //\ud834"))
                 .hasMessage("source is 28 bytes, the limit is 24 bytes");

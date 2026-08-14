@@ -18,9 +18,9 @@ import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.web.cors.CorsUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 public class RateLimitFilter extends OncePerRequestFilter {
@@ -55,7 +55,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        return HttpMethod.OPTIONS.matches(request.getMethod());
+        return CorsUtils.isPreFlightRequest(request);
     }
 
     @Override

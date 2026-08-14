@@ -10,9 +10,9 @@
     "classFileBase64": "yv66vg==",
     "diagnostics": [
       {
+        "kind": "WARNING",
         "line": 5,
         "column": 9,
-        "kind": "WARNING",
         "message": "unchecked call to add(int,int)"
       }
     ]

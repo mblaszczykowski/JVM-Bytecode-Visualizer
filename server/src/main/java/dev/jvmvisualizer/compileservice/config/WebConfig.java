@@ -3,8 +3,15 @@ package dev.jvmvisualizer.compileservice.config;
 import com.fasterxml.jackson.core.JsonFactory;
 import com.fasterxml.jackson.core.StreamReadConstraints;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import dev.jvmvisualizer.compileservice.api.dto.ErrorResponse;
 import dev.jvmvisualizer.compileservice.compiler.ForkedCompiler;
 import dev.jvmvisualizer.compileservice.compiler.SourceCompiler;
+import dev.jvmvisualizer.compileservice.error.ErrorCode;
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
 import java.time.Clock;
 import java.util.List;
 import org.springframework.boot.autoconfigure.jackson.Jackson2ObjectMapperBuilderCustomizer;
@@ -13,18 +20,26 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.Ordered;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.server.ServerHttpResponse;
 import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.DefaultCorsProcessor;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import org.springframework.web.filter.CorsFilter;
+import org.springframework.web.filter.OncePerRequestFilter;
 
 @Configuration(proxyBeanMethods = false)
 class WebConfig {
 
-    private static final int CORS_ORDER = Ordered.HIGHEST_PRECEDENCE;
+    private static final int CONTENT_TYPE_OPTIONS_ORDER = Ordered.HIGHEST_PRECEDENCE;
+    private static final int CORS_ORDER = Ordered.HIGHEST_PRECEDENCE + 10;
     private static final int RATE_LIMIT_ORDER = Ordered.HIGHEST_PRECEDENCE + 50;
     private static final int SIZE_LIMIT_ORDER = Ordered.HIGHEST_PRECEDENCE + 100;
 
     private static final int SOURCE_FIELD_HEADROOM = 8 * 1024;
+
+    private static final String[] API_AND_HEALTH = {"/api/*", "/actuator/health"};
 
     private final CompileProperties properties;
 
@@ -38,7 +53,16 @@ class WebConfig {
     }
 
     @Bean
-    FilterRegistrationBean<CorsFilter> corsFilterRegistration() {
+    FilterRegistrationBean<ContentTypeOptionsFilter> contentTypeOptionsFilterRegistration() {
+        FilterRegistrationBean<ContentTypeOptionsFilter> registration =
+                new FilterRegistrationBean<>(new ContentTypeOptionsFilter());
+        registration.addUrlPatterns(API_AND_HEALTH);
+        registration.setOrder(CONTENT_TYPE_OPTIONS_ORDER);
+        return registration;
+    }
+
+    @Bean
+    FilterRegistrationBean<CorsFilter> corsFilterRegistration(ObjectMapper objectMapper) {
         CorsConfiguration api = new CorsConfiguration();
         api.setAllowedOrigins(List.of(properties.allowedOrigin()));
         api.setAllowedMethods(List.of("POST", "OPTIONS"));
@@ -55,8 +79,11 @@ class WebConfig {
         source.registerCorsConfiguration("/api/**", api);
         source.registerCorsConfiguration("/actuator/health", health);
 
-        FilterRegistrationBean<CorsFilter> registration = new FilterRegistrationBean<>(new CorsFilter(source));
-        registration.addUrlPatterns("/api/*", "/actuator/health");
+        CorsFilter corsFilter = new CorsFilter(source);
+        corsFilter.setCorsProcessor(new ErrorShapedCorsProcessor(objectMapper));
+
+        FilterRegistrationBean<CorsFilter> registration = new FilterRegistrationBean<>(corsFilter);
+        registration.addUrlPatterns(API_AND_HEALTH);
         registration.setOrder(CORS_ORDER);
         return registration;
     }
@@ -88,5 +115,37 @@ class WebConfig {
                         .maxStringLength(maxStringLength)
                         .build())
                 .build());
+    }
+
+    static final class ContentTypeOptionsFilter extends OncePerRequestFilter {
+
+        static final String HEADER = "X-Content-Type-Options";
+        static final String NOSNIFF = "nosniff";
+
+        @Override
+        protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
+                throws ServletException, IOException {
+            response.setHeader(HEADER, NOSNIFF);
+            chain.doFilter(request, response);
+        }
+    }
+
+    private static final class ErrorShapedCorsProcessor extends DefaultCorsProcessor {
+
+        private static final String REJECTED_MESSAGE = "this origin may not call the compile service";
+
+        private final ObjectMapper objectMapper;
+
+        private ErrorShapedCorsProcessor(ObjectMapper objectMapper) {
+            this.objectMapper = objectMapper;
+        }
+
+        @Override
+        protected void rejectRequest(ServerHttpResponse response) throws IOException {
+            response.setStatusCode(HttpStatus.FORBIDDEN);
+            response.getHeaders().setContentType(MediaType.APPLICATION_JSON);
+            objectMapper.writeValue(response.getBody(), ErrorResponse.of(ErrorCode.REQUEST_ERROR, REJECTED_MESSAGE));
+            response.flush();
+        }
     }
 }

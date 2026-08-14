@@ -104,12 +104,15 @@
             <configuration>
               <rules>
                 <!-- Each package is measured on its own. The minima sit under what the suite
-                     reaches today (api 95.7% lines / 81.8% branches, compiler 88.1% / 80.5%,
-                     config 92.8% / 85.2%, service 97.2% / 87.5%), so the gate catches
+                     reaches today (api 95.7% lines / 81.8% branches, compiler 89.2% / 79.9%,
+                     config 95.3% / 89.1%, service 100% / 93.8%), so the gate catches
                      regressions. CompilerProcessMain runs in the forked JVM, which the agent
                      never sees; that alone accounts for 15 uncovered lines in the compiler
-                     package. What is left uncovered in api is the ResponseEntityExceptionHandler
-                     arms for statuses this service cannot produce. -->
+                     package. Two branches in ForkedCompiler are only reached when close() lands
+                     inside a narrow window of the shutdown test, so the compiler figure moves by
+                     a few tenths between builds. What is left uncovered in api is the
+                     ResponseEntityExceptionHandler arms for statuses this service cannot
+                     produce. -->
                 <rule>
                   <element>PACKAGE</element>
                   <includes>

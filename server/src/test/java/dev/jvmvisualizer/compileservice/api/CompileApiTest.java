@@ -28,6 +28,7 @@ import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -36,6 +37,9 @@ class CompileApiTest {
 
     private static final int CLASS_FILE_MAGIC = 0xCAFEBABE;
     private static final short JAVA_21_MAJOR_VERSION = 65;
+
+    private static final String CONTENT_TYPE_OPTIONS = "X-Content-Type-Options";
+    private static final String NOSNIFF = "nosniff";
 
     private static final String ADDER = """
             public class Adder {
@@ -211,11 +215,37 @@ class CompileApiTest {
     }
 
     @Test
-    void rejectsCorsRequestFromAnotherOrigin() throws Exception {
-        mockMvc.perform(options("/api/compile")
+    void rejectsCorsRequestsFromAnotherOriginInTheOneErrorShape() throws Exception {
+        List<MockHttpServletRequestBuilder> fromEvil = List.of(
+                options("/api/compile")
                         .header(HttpHeaders.ORIGIN, "https://evil.example")
-                        .header(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, "POST"))
-                .andExpect(status().isForbidden());
+                        .header(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, "POST"),
+                post("/api/compile")
+                        .header(HttpHeaders.ORIGIN, "https://evil.example")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"source\":\"public class Adder { }\"}"));
+
+        for (MockHttpServletRequestBuilder rejected : fromEvil) {
+            MvcResult result = mockMvc.perform(rejected)
+                    .andExpect(status().isForbidden())
+                    .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                    .andExpect(header().string(CONTENT_TYPE_OPTIONS, NOSNIFF))
+                    .andExpect(jsonPath("$.error").value("request-error"))
+                    .andExpect(jsonPath("$.message").isNotEmpty())
+                    .andReturn();
+
+            assertThat(fieldNames(objectMapper.readTree(result.getResponse().getContentAsString())))
+                    .containsExactlyInAnyOrder("error", "message");
+        }
+    }
+
+    @Test
+    void tellsBrowsersNotToSniffTheContentTypeOfAnyApiAnswer() throws Exception {
+        compile(ADDER).andExpect(header().string(CONTENT_TYPE_OPTIONS, NOSNIFF));
+
+        mockMvc.perform(post("/api/compile").contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(header().string(CONTENT_TYPE_OPTIONS, NOSNIFF));
     }
 
     private ResultActions compile(String source) throws Exception {

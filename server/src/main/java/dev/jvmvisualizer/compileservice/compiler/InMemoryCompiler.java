@@ -74,10 +74,10 @@ public class InMemoryCompiler implements SourceCompiler {
         }
     }
 
-    private boolean call(JavaCompiler.CompilationTask task) {
+    boolean call(JavaCompiler.CompilationTask task) {
         try {
             return task.call();
-        } catch (RuntimeException | StackOverflowError e) {
+        } catch (RuntimeException | Error e) {
             log.warn("javac failed unexpectedly: {}", e.toString());
             return false;
         }

@@ -74,6 +74,10 @@ public class ForkedCompiler implements SourceCompiler, AutoCloseable {
         warnIfTheChildCannotBeLaunched();
     }
 
+    static List<String> childVmOptions() {
+        return CHILD_VM_OPTIONS;
+    }
+
     private static void warnIfTheChildCannotBeLaunched() {
         URL location = CompilerProcessMain.class.getResource("CompilerProcessMain.class");
         if (location != null && location.toString().contains("!/BOOT-INF/")) {
