@@ -1,5 +1,10 @@
 import { execute, type ExecutionResult, type Snapshot } from '../../core/interpreter';
-import { withHistory, type RunCommand, type RunEvent } from '../../workers/run-protocol';
+import {
+  runOptionsOf,
+  withHistory,
+  type RunCommand,
+  type RunEvent,
+} from '../../workers/run-protocol';
 
 export interface RunOptions {
   readonly signal?: AbortSignal | undefined;
@@ -22,8 +27,19 @@ export class RunCancelled extends Error {
   }
 }
 
-export function isRunCancelled(error: unknown): boolean {
+export function isRunCancelled(error: unknown): error is RunCancelled {
   return error instanceof RunCancelled;
+}
+
+export class RunAbandoned extends Error {
+  constructor(reason: string) {
+    super(reason);
+    this.name = 'RunAbandoned';
+  }
+}
+
+export function isRunAbandoned(error: unknown): error is RunAbandoned {
+  return error instanceof RunAbandoned;
 }
 
 function yieldToPaint(): Promise<void> {
@@ -39,11 +55,7 @@ export const inlineRunner: ProgramRunner = {
     if (options?.signal?.aborted === true) {
       throw new RunCancelled();
     }
-    return execute(command.classFile, {
-      entryMethod: command.entryMethod,
-      entryDescriptor: command.entryDescriptor,
-      maxSteps: command.maxSteps,
-    });
+    return execute(command.classFile, runOptionsOf(command));
   },
 };
 
@@ -51,11 +63,11 @@ const STEPS_PER_REPORT = 25_000;
 
 const WORKER_SILENCE_LIMIT_MS = 60_000;
 
-const TOO_LARGE_TO_RECORD = 'the program was probably too large for this browser to record';
+const TOO_LARGE_TO_RECORD = 'The program was probably too large for this browser to record.';
 
-const SILENT_WORKER = `the run stopped answering and was abandoned; ${TOO_LARGE_TO_RECORD}`;
+const SILENT_WORKER = `The run stopped answering and was abandoned. ${TOO_LARGE_TO_RECORD}`;
 
-const DEAD_WORKER = `the run failed part-way through and was abandoned; ${TOO_LARGE_TO_RECORD}`;
+const DEAD_WORKER = `The run failed part-way through and was abandoned. ${TOO_LARGE_TO_RECORD}`;
 
 export interface RunWorker {
   onmessage: ((event: MessageEvent<RunEvent>) => void) | null;
@@ -119,7 +131,7 @@ export function workerRunner(
           watchdog = setTimeout(() => {
             usable = false;
             release();
-            reject(new Error(SILENT_WORKER));
+            reject(new RunAbandoned(SILENT_WORKER));
           }, silenceLimitMs);
         };
 
@@ -147,7 +159,7 @@ export function workerRunner(
               return;
             case 'failed':
               release();
-              reject(new Error(data.reason));
+              reject(data.error);
               return;
           }
         };
@@ -155,7 +167,7 @@ export function workerRunner(
         worker.onerror = (): void => {
           release();
           if (answered) {
-            reject(new Error(DEAD_WORKER));
+            reject(new RunAbandoned(DEAD_WORKER));
             return;
           }
           usable = false;

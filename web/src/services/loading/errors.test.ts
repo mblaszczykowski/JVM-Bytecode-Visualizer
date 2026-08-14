@@ -29,6 +29,7 @@ import {
   type CompileFailure,
 } from './errors';
 import { ExampleLoadError } from './examples';
+import { RunAbandoned, RunCancelled } from './program-runner';
 
 const CASES: readonly {
   readonly name: string;
@@ -212,10 +213,10 @@ const CASES: readonly {
     severity: 'error',
     message:
       'OutOfMemoryError (pc 31, method sort). Recording this run would have cost 24,010,000 ' +
-      'copied values, and the budget is 24,000,000. Every step keeps its own copy of the heap, ' +
-      'the console lines and the standard-library objects the run has interned, so a large ' +
-      'array written in a loop, or a loop that prints, costs far more than the values ' +
-      'themselves. The history up to this point is still playable.',
+      'copied values, and the budget is 24,000,000. Every step copies the frames it changed, ' +
+      'three values per local slot and per operand, alongside the heap, the console lines and ' +
+      'the standard-library objects the run has interned. A deep call stack or a method with ' +
+      'many local slots costs the most. The history up to this point is still playable.',
   },
   {
     name: 'an exception nothing on the call stack caught',
@@ -295,6 +296,19 @@ const CASES: readonly {
     },
     severity: 'error',
     message: 'Could not download /examples/Gcd.class: the server answered 503.',
+  },
+  {
+    name: 'a run the browser could not finish',
+    error: {
+      kind: 'run-abandoned',
+      reason:
+        'The run stopped answering and was abandoned. The program was probably too large for ' +
+        'this browser to record.',
+    },
+    severity: 'error',
+    message:
+      'The run stopped answering and was abandoned. The program was probably too large for this ' +
+      'browser to record. Lower the step limit, or run a method that records fewer steps.',
   },
   {
     name: 'anything unforeseen',
@@ -609,6 +623,23 @@ describe('toAppError', () => {
     expect(toAppError(error)).toEqual({ kind: 'example-load', detail: error.detail });
   });
 
+  it('keeps a run the browser gave up on apart from an unforeseen failure', () => {
+    const error = new RunAbandoned('The run stopped answering and was abandoned.');
+
+    expect(toAppError(error)).toEqual({
+      kind: 'run-abandoned',
+      reason: 'The run stopped answering and was abandoned.',
+    });
+    expect(describeAppError(toAppError(error)).message).not.toContain('Unexpected failure');
+  });
+
+  it('has no variant of its own for a cancellation, which never reaches a banner', () => {
+    expect(toAppError(new RunCancelled())).toEqual({
+      kind: 'unexpected',
+      reason: 'The run was cancelled.',
+    });
+  });
+
   it('falls back to the message of anything else', () => {
     expect(toAppError(new RangeError('boom'))).toEqual({ kind: 'unexpected', reason: 'boom' });
     expect(toAppError('boom')).toEqual({ kind: 'unexpected', reason: 'boom' });
@@ -805,5 +836,19 @@ describe('describeCompileDiagnostics', () => {
   it('passes over the notes when there is a warning to report', () => {
     expect(describeCompileDiagnostics([note, unchecked])?.severity).toBe('warning');
     expect(messageFor([note, unchecked])).toContain('with 1 warning at line 5');
+  });
+
+  it('calls an error an error, whatever else javac said in the same breath', () => {
+    const missingSemicolon: CompileDiagnostic = {
+      line: 3,
+      column: 12,
+      kind: 'error',
+      message: "';' expected",
+    };
+
+    expect(describeCompileDiagnostics([note, missingSemicolon, unchecked])).toEqual({
+      severity: 'error',
+      message: "javac reported 1 error at line 3: ';' expected.",
+    });
   });
 });

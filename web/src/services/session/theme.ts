@@ -17,6 +17,8 @@ export function storedTheme(): ThemeChoice {
   }
 }
 
+const CHROME_OVERRIDE = 'meta[name="theme-color"]:not([media])';
+
 export function applyTheme(choice: ThemeChoice): void {
   const root = document.documentElement;
   if (choice === 'system') {
@@ -24,6 +26,27 @@ export function applyTheme(choice: ThemeChoice): void {
   } else {
     root.setAttribute('data-theme', choice);
   }
+  applyBrowserChrome(choice);
+}
+
+function applyBrowserChrome(choice: ThemeChoice): void {
+  const { head } = document;
+  head.querySelector(CHROME_OVERRIDE)?.remove();
+  if (choice === 'system') {
+    return;
+  }
+
+  const chosen = head.querySelector<HTMLMetaElement>(
+    `meta[name="theme-color"][data-scheme="${choice}"]`,
+  );
+  if (chosen === null) {
+    return;
+  }
+
+  const override = document.createElement('meta');
+  override.name = 'theme-color';
+  override.content = chosen.content;
+  head.prepend(override);
 }
 
 export function storeTheme(choice: ThemeChoice): void {

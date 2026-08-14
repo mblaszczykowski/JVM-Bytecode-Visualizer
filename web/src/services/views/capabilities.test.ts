@@ -114,7 +114,7 @@ describe('feature gaps', () => {
     }
     expect(titles).not.toContain('Objects, constructors and instance methods');
     expect(titles).not.toContain('Exceptions, throw and try/catch');
-    expect(CALL_SCOPE_NOTE).toContain('must resolve inside the uploaded class');
+    expect(CALL_SCOPE_NOTE).toContain('must resolve inside the loaded class');
   });
 
   it('names the standard-library slice the note claims, rather than denying it', () => {

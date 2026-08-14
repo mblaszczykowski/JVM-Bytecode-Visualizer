@@ -25,7 +25,7 @@ export function constructsFor(
     const construct =
       fromConstantPool(instruction, pool, methodName, className, index) ??
       arrayInitialiser(instruction, instructions, index);
-    if (construct !== undefined && !found.has(instruction.offset)) {
+    if (construct !== undefined) {
       found.set(instruction.offset, construct);
     }
   }
@@ -35,7 +35,7 @@ export function constructsFor(
       found.set(head, {
         label: 'loop',
         detail:
-          'The top of a loop: something later in the method jumps back here. Nothing in the bytecode says `for` or `while`; a loop is just a backward jump.',
+          'The top of a loop: something later in the method jumps back here. Nothing in the bytecode says `for` or `while`; both compile to a backward jump.',
       });
     }
   }
@@ -80,7 +80,8 @@ function fromConstantPool(
   if (UNBOXING.test(text)) {
     return {
       label: 'unboxing',
-      detail: `Takes the primitive back out of its wrapper, reversing the boxing that put it there. This is the call that throws when the reference is null.`,
+      detail:
+        'Takes the primitive back out of its wrapper, reversing the boxing that put it there. This is the call that throws when the reference is null.',
     };
   }
   if (
@@ -99,7 +100,7 @@ function fromConstantPool(
       detail: 'A null check the compiler inserted; nothing in the source asked for it.',
     };
   }
-  const owner = text.split('.')[0];
+  const owner = text.split('.')[0] ?? text;
   if (
     methodName === '<init>' &&
     instruction.mnemonic === 'invokespecial' &&
@@ -109,7 +110,7 @@ function fromConstantPool(
   ) {
     return {
       label: 'super()',
-      detail: `Every constructor begins by calling its superclass constructor (JVMS §2.9.1). ${owner ?? 'The superclass'} was never mentioned in the source.`,
+      detail: `Every constructor begins by calling its superclass constructor (JVMS §2.9.1). ${owner} was never mentioned in the source.`,
     };
   }
   if (text.includes('$assertionsDisabled')) {

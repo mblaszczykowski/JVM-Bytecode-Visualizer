@@ -32,13 +32,14 @@ import {
   type AppModel,
   type AppState,
   type EntryChoice,
+  type SettledState,
 } from './app-state';
 import { COMPILER_BUSY, type CompileDiagnostic, type CompileResult } from './compile-client';
 import { describeAppError, type AppError } from './errors';
 import { exampleUrl } from './examples';
 import type { ExampleEntry, ExampleManifest } from './manifest';
 import { buildProgram, type LoadedProgram } from './program';
-import { isRunCancelled, RunCancelled, type ProgramRunner } from './program-runner';
+import { RunCancelled, type ProgramRunner } from './program-runner';
 
 function factorialEntry(): ExampleEntry {
   const entry = (readExampleManifest() as ExampleManifest).examples[0];
@@ -46,6 +47,13 @@ function factorialEntry(): ExampleEntry {
     throw new Error('the manifest is empty');
   }
   return entry;
+}
+
+function settledState(state: SettledState | undefined): SettledState {
+  if (state === undefined) {
+    throw new Error('the load was cancelled, so it produced no state');
+  }
+  return state;
 }
 
 function countMethod(program: LoadedProgram): EntryChoice {
@@ -65,7 +73,7 @@ describe('example loading', () => {
     stubFetch(exampleRoutes());
     expect(programOf(IDLE)).toBeUndefined();
 
-    const state = await loadExampleState(factorialEntry());
+    const state = settledState(await loadExampleState(factorialEntry()));
 
     expect(state.status).toBe('ready');
     expect(programOf(state)?.snapshots).toHaveLength(40);
@@ -76,7 +84,7 @@ describe('example loading', () => {
     const entry = factorialEntry();
     stubFetch({ ...exampleRoutes(), [exampleUrl(entry.classFile)]: () => statusResponse(500) });
 
-    const state = await loadExampleState(entry);
+    const state = settledState(await loadExampleState(entry));
 
     expect(state).toMatchObject({
       status: 'error',
@@ -90,7 +98,7 @@ describe('upload', () => {
   it('accepts a class file and executes it', async () => {
     const bytes = new Uint8Array(readExampleBytes('Gcd.class'));
 
-    const state = await loadUploadState(uploadFile('Gcd.class', bytes));
+    const state = settledState(await loadUploadState(uploadFile('Gcd.class', bytes)));
 
     expect(state.status).toBe('ready');
     expect(programOf(state)?.origin).toEqual({ kind: 'upload', fileName: 'Gcd.class' });
@@ -100,7 +108,7 @@ describe('upload', () => {
   it('rejects a file over the size limit before reading it', async () => {
     const oversized = uploadFile('Huge.class', new Uint8Array(MAX_UPLOAD_BYTES + 1));
 
-    const state = await loadUploadState(oversized);
+    const state = settledState(await loadUploadState(oversized));
 
     expect(state).toMatchObject({
       status: 'error',
@@ -111,7 +119,7 @@ describe('upload', () => {
   it('reports a file that is not a class file at all', async () => {
     const text = new TextEncoder().encode('Not a class file, just some text.');
 
-    const state = await loadUploadState(uploadFile('notes.txt', text));
+    const state = settledState(await loadUploadState(uploadFile('notes.txt', text)));
 
     expect(state).toMatchObject({
       status: 'error',
@@ -125,11 +133,13 @@ describe('compiled source', () => {
   it('runs the class and keeps the source that produced it', async () => {
     const source = 'public class Gcd {\n    // whatever the author wrote\n}\n';
 
-    const state = await loadCompiledState({
-      className: 'Gcd',
-      classBytes: readExampleBytes('Gcd.class'),
-      source,
-    });
+    const state = settledState(
+      await loadCompiledState({
+        className: 'Gcd',
+        classBytes: readExampleBytes('Gcd.class'),
+        source,
+      }),
+    );
 
     expect(state.status).toBe('ready');
     expect(programOf(state)?.origin).toEqual({ kind: 'compiled', className: 'Gcd' });
@@ -138,11 +148,13 @@ describe('compiled source', () => {
   });
 
   it('reports bytes that are not a class file', async () => {
-    const state = await loadCompiledState({
-      className: 'Broken',
-      classBytes: new TextEncoder().encode('not bytecode').buffer,
-      source: 'public class Broken { }',
-    });
+    const state = settledState(
+      await loadCompiledState({
+        className: 'Broken',
+        classBytes: new TextEncoder().encode('not bytecode').buffer,
+        source: 'public class Broken { }',
+      }),
+    );
 
     expect(state).toMatchObject({
       status: 'error',
@@ -151,11 +163,13 @@ describe('compiled source', () => {
   });
 
   it('holds the compile service to the same size limit as an upload', async () => {
-    const state = await loadCompiledState({
-      className: 'Huge',
-      classBytes: new ArrayBuffer(MAX_UPLOAD_BYTES + 1),
-      source: 'public class Huge { }',
-    });
+    const state = settledState(
+      await loadCompiledState({
+        className: 'Huge',
+        classBytes: new ArrayBuffer(MAX_UPLOAD_BYTES + 1),
+        source: 'public class Huge { }',
+      }),
+    );
 
     expect(state).toMatchObject({
       status: 'error',
@@ -178,7 +192,7 @@ describe('compiled source', () => {
       maxSteps: 25,
     });
 
-    expect(programOf(await rerunState(program, 125))?.sourceLines).toEqual([
+    expect(programOf(settledState(await rerunState(program, 125)))?.sourceLines).toEqual([
       'public class Loop { }',
     ]);
   });
@@ -223,7 +237,7 @@ describe('a class file with nothing to run', () => {
   it('reaches a state that still carries the program', async () => {
     const bytes = new Uint8Array(readFixtureBytes('Library.class'));
 
-    const state = await loadUploadState(uploadFile('Library.class', bytes));
+    const state = settledState(await loadUploadState(uploadFile('Library.class', bytes)));
 
     expect(state).toMatchObject({
       status: 'error',
@@ -255,7 +269,7 @@ describe('running another method', () => {
     });
     expect(program.entry?.name).toBe('count');
 
-    const state = await runFromState(program, countMethod(program));
+    const state = settledState(await runFromState(program, countMethod(program)));
 
     expect(state.status).toBe('ready');
     expect(programOf(state)?.entry?.name).toBe('count');
@@ -269,7 +283,7 @@ describe('running another method', () => {
       maxSteps: 10,
     });
 
-    expect(programOf(await rerunState(program, 200))?.entry?.name).toBe('count');
+    expect(programOf(settledState(await rerunState(program, 200)))?.entry?.name).toBe('count');
   });
 });
 
@@ -302,10 +316,20 @@ describe('raising the step limit', () => {
       }
     }
 
-    it('keeps the full ceiling where there is memory for it', () => {
+    it('budgets the three histories a re-run holds at once, at the measured size', () => {
+      const perStep = ((274 + 610 + 610) * 1024 ** 2) / 500_000;
+
+      for (const gigabytes of [1, 2, 4, 8]) {
+        withDeviceMemory(gigabytes, () => {
+          expect(affordableStepLimit()).toBe(Math.floor((gigabytes * 1024 ** 3) / 8 / perStep));
+        });
+      }
+    });
+
+    it('never reaches the maximum on a device that reports its memory at all', () => {
       withDeviceMemory(8, () => {
-        expect(affordableStepLimit()).toBe(MAX_STEP_LIMIT);
-        expect(raisedStepLimit(100_000)).toBe(MAX_STEP_LIMIT);
+        expect(affordableStepLimit()).toBe(342_704);
+        expect(raisedStepLimit(100_000)).toBe(342_704);
       });
     });
 
@@ -313,10 +337,9 @@ describe('raising the step limit', () => {
       withDeviceMemory(1, () => {
         const ceiling = affordableStepLimit();
 
-        expect(ceiling).toBeLessThan(MAX_STEP_LIMIT);
+        expect(ceiling).toBe(42_838);
         expect(ceiling).toBeGreaterThan(DEFAULT_MAX_STEPS);
-        expect(raisedStepLimit(20_000)).toBe(100_000);
-        expect(raisedStepLimit(100_000)).toBe(ceiling);
+        expect(raisedStepLimit(20_000)).toBe(ceiling);
         expect(raisedStepLimit(ceiling)).toBeUndefined();
       });
     });
@@ -351,7 +374,7 @@ describe('raising the step limit', () => {
       maxSteps: 25,
     });
 
-    const state = await rerunState(program, 125);
+    const state = settledState(await rerunState(program, 125));
 
     expect(state).toMatchObject({ status: 'error', error: { kind: 'step-limit', limit: 125 } });
     expect(programOf(state)?.snapshots).toHaveLength(125);
@@ -372,7 +395,7 @@ describe('raising the step limit', () => {
       },
     };
 
-    const state = await rerunState({ ...program, classFile: unreadable }, 125);
+    const state = settledState(await rerunState({ ...program, classFile: unreadable }, 125));
 
     expect(state).toMatchObject({
       status: 'error',
@@ -393,7 +416,7 @@ describe('raising the step limit', () => {
       run: () => Promise.reject(new Error('the tab ran out of memory')),
     };
 
-    const state = await rerunState(program, 125, { runner });
+    const state = settledState(await rerunState(program, 125, { runner }));
 
     expect(state).toMatchObject({ status: 'error', error: { kind: 'unexpected' } });
     expect(programOf(state)).toBe(program);
@@ -410,19 +433,21 @@ describe('raising the step limit', () => {
       run: () => Promise.reject(new Error('the worker died')),
     };
 
-    expect(programOf(await runFromState(program, countMethod(program), { runner }))).toBe(program);
+    expect(
+      programOf(settledState(await runFromState(program, countMethod(program), { runner }))),
+    ).toBe(program);
   });
 
   it('re-runs an example without downloading it again', async () => {
     stubFetch(exampleRoutes());
-    const loaded = await loadExampleState(factorialEntry(), 20);
+    const loaded = settledState(await loadExampleState(factorialEntry(), 20));
     const program = programOf(loaded);
     if (program === undefined) {
       throw new Error('the example failed to load');
     }
     vi.unstubAllGlobals();
 
-    const state = await rerunState(program, 100);
+    const state = settledState(await rerunState(program, 100));
 
     expect(state.status).toBe('ready');
     expect(programOf(state)?.snapshots).toHaveLength(40);
@@ -431,23 +456,38 @@ describe('raising the step limit', () => {
 });
 
 describe('a run the reader abandoned', () => {
-  it('is not turned into a banner, because there is no screen left for one', async () => {
+  it('settles on no state at all, because there is no screen left for a banner', async () => {
     const runner: ProgramRunner = {
       cancellable: true,
       run: () => Promise.reject(new RunCancelled()),
     };
     const file = uploadFile('Gcd.class', new Uint8Array(readExampleBytes('Gcd.class')));
 
-    await expect(loadUploadState(file, undefined, { runner })).rejects.toSatisfy(isRunCancelled);
+    await expect(loadUploadState(file, undefined, { runner })).resolves.toBeUndefined();
+  });
+
+  it('leaves the history the reader was replaying alone when a re-run is abandoned', async () => {
+    const program = buildProgram({
+      origin: { kind: 'upload', fileName: 'Counter.class' },
+      classFile: parseClassFile(readFixtureBytes('Counter.class')),
+    });
+    const runner: ProgramRunner = {
+      cancellable: true,
+      run: () => Promise.reject(new RunCancelled()),
+    };
+
+    await expect(rerunState(program, 200, { runner })).resolves.toBeUndefined();
   });
 
   it('never reaches the runner at all when the class has nothing to run', async () => {
     const run = vi.fn();
     const file = uploadFile('Library.class', new Uint8Array(readFixtureBytes('Library.class')));
 
-    const state = await loadUploadState(file, undefined, {
-      runner: { cancellable: true, run },
-    });
+    const state = settledState(
+      await loadUploadState(file, undefined, {
+        runner: { cancellable: true, run },
+      }),
+    );
 
     expect(run).not.toHaveBeenCalled();
     expect(state).toMatchObject({ status: 'error', error: { kind: 'no-entry-point' } });
@@ -638,6 +678,25 @@ describe('the application model', () => {
       );
 
       expect(model.load).toBe(ready);
+    });
+
+    it('takes the javac banner away with the run it described', () => {
+      const ready = readyState();
+
+      const model = reduce(
+        initialAppModel(true),
+        started(1),
+        { kind: 'load-settled', token: 1, state: ready },
+        { kind: 'editor-opened' },
+        { kind: 'compile-started', token: 2 },
+        { kind: 'compile-settled', token: 2, result: compiled },
+        compiledRun(3, [warning]),
+        { kind: 'load-cancelled', token: 4 },
+      );
+
+      expect(model.load).toBe(ready);
+      expect(model.compileDiagnostics).toEqual([]);
+      expect(model.compileFailure).toBeUndefined();
     });
 
     it('has nothing to cancel when no run is in flight', () => {

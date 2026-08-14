@@ -1,4 +1,4 @@
-import type { HeapObject, StackFrame } from '../../core/interpreter';
+import type { ExternalValue, HeapObject, StackFrame, ValueKind } from '../../core/interpreter';
 
 import { OPERAND_ADDRESSING } from './opcode-notes';
 
@@ -6,6 +6,24 @@ export function objectLabel(object: HeapObject, handle: number): string {
   return object.kind === 'int-array'
     ? `int[${String(object.length)}]@${String(handle)}`
     : `${object.className}@${String(handle)}`;
+}
+
+export function describeValue(
+  kind: ValueKind,
+  value: number,
+  heap: readonly HeapObject[],
+  externals: readonly ExternalValue[],
+): string {
+  switch (kind) {
+    case 'ref': {
+      const object = heap[value];
+      return object === undefined ? 'null' : objectLabel(object, value);
+    }
+    case 'external':
+      return externals[value]?.label ?? 'an unknown object';
+    case 'int':
+      return String(value);
+  }
 }
 
 export function objectTypeName(object: HeapObject): string {
@@ -44,8 +62,7 @@ export function heapFocusOf(
     return undefined;
   }
 
-  const kind = frame.operandKinds?.[stack.length - handleDepth];
-  if (kind !== undefined && kind !== 'ref') {
+  if (frame.operandKinds[stack.length - handleDepth] !== 'ref') {
     return undefined;
   }
 

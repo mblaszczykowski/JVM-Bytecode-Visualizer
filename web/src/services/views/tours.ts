@@ -48,7 +48,6 @@ const TOURS: readonly Tour[] = [
       {
         method: 'factorial',
         pc: 6,
-        visit: 1,
         title: 'The bottom',
         body: 'n reached 1, so this frame returns without calling anything. From here the stack only shrinks.',
       },
@@ -56,7 +55,7 @@ const TOURS: readonly Tour[] = [
         method: 'factorial',
         pc: 14,
         title: 'The multiplications happen on the way back',
-        body: 'imul runs after the callee returned; its result is on the stack next to this frame’s n. Every frame was waiting here the whole time.',
+        body: "imul runs after the callee returned; its result is on the stack next to this frame's n. Every frame was waiting here the whole time.",
       },
       {
         method: 'main',
@@ -87,7 +86,7 @@ const TOURS: readonly Tour[] = [
         method: 'sortedMinimum',
         pc: 74,
         title: 'The second write completes the swap',
-        body: 'The saved value goes into the neighbouring cell. Two heap writes and one local slot: that is all a swap is, and the sort does it hundreds of times.',
+        body: 'The saved value goes into the neighbouring cell. A swap costs two heap writes and one local slot, and this sort performs one for every pair it finds out of order.',
       },
     ],
   },

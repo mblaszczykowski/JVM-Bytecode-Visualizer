@@ -59,6 +59,7 @@ export async function checkHealth(baseUrl: string): Promise<boolean> {
     return false;
   }
   attempt.done();
+  await attempt.response.body?.cancel().catch(() => undefined);
   return attempt.response.ok;
 }
 
@@ -103,8 +104,9 @@ async function interpret(attempt: Extract<Attempt, { kind: 'response' }>): Promi
   try {
     raw = await response.json();
   } catch (error) {
-    return attempt.reasonFor(error).kind === 'timeout'
-      ? { kind: 'unavailable', reason: attempt.reasonFor(error) }
+    const reason = attempt.reasonFor(error);
+    return reason.kind === 'timeout'
+      ? { kind: 'unavailable', reason }
       : unavailable('invalid-response', reasonOf(error));
   }
 

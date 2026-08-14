@@ -1,9 +1,15 @@
-import { ConstantTag, type ClassFile, type ConstantPool } from '../../core/classfile';
-import { arrayTypeName, lookupOpcode, T_INT, type Instruction } from '../../core/disassembler';
+import {
+  classNameAt,
+  ConstantTag,
+  nameAndTypeAt,
+  poolEntry,
+  utf8At,
+  type ClassFile,
+  type ConstantPool,
+} from '../../core/classfile';
+import { arrayTypeName, isSupportedOpcode, T_INT, type Instruction } from '../../core/disassembler';
 import {
   EXTERNAL_FIELDS,
-  NO_EXTERNALS,
-  NO_HEAP,
   EXTERNAL_METHODS,
   i2b,
   i2c,
@@ -31,17 +37,12 @@ import {
   type ValueKind,
 } from '../../core/interpreter';
 
-import {
-  classNameAt,
-  constantPoolIndexOf,
-  nameAndTypeAt,
-  resolveOperandConstant,
-  utf8At,
-} from './constant-pool';
-import { objectLabel } from './heap-view';
+import { constantPoolIndexOf, resolveOperandConstant } from './constant-pool';
+import { describeValue } from './heap-view';
 import { calleeOf, memberOf, ownerOf, type Member } from './member-refs';
 import {
   baseMnemonicOf,
+  knownStaticFields,
   OPCODE_NOTES,
   OPERAND_ADDRESSING,
   stackDeltaOf,
@@ -62,6 +63,7 @@ export interface NextInstructionSummary {
 interface ExplainContext {
   readonly instruction: Instruction;
   readonly frame: StackFrame;
+  readonly depth: number;
   readonly heap: readonly HeapObject[];
   readonly externals: readonly ExternalValue[];
   readonly listing: MethodListing | undefined;
@@ -82,8 +84,9 @@ export function describeNextInstruction(
   const context: ExplainContext = {
     instruction,
     frame,
-    heap: snapshot.heap ?? NO_HEAP,
-    externals: snapshot.externals ?? NO_EXTERNALS,
+    depth: snapshot.callStack.length,
+    heap: snapshot.heap,
+    externals: snapshot.externals,
     listing,
     classFile,
   };
@@ -95,82 +98,9 @@ export function describeNextInstruction(
   };
 }
 
-export function describeValue(
-  kind: ValueKind | undefined,
-  value: number,
-  heap: readonly HeapObject[],
-  externals: readonly ExternalValue[],
-): string {
-  switch (kind) {
-    case 'ref': {
-      const object = heap[value];
-      return object === undefined ? 'null' : objectLabel(object, value);
-    }
-    case 'external':
-      return externals[value]?.label ?? 'an unknown object';
-    case 'int':
-    case undefined:
-      return String(value);
-  }
-}
-
-export function describeOperandRoles(
-  snapshot: Snapshot,
-  listing: MethodListing | undefined,
-  classFile: ClassFile,
-): readonly (string | undefined)[] {
-  const frame = snapshot.callStack.at(-1);
-  const instruction = snapshot.currentInstruction;
-  if (frame === undefined || instruction === undefined) {
-    return [];
-  }
-
-  const pool = classFile.constantPool;
-  const roles: (string | undefined)[] = frame.operandStack.map(() => undefined);
-  const topIndex = frame.operandStack.length - 1;
-  const effect = stackDeltaOf(instruction, pool) ?? { pops: 0, pushes: 0 };
-
-  for (let taken = 0; taken < effect.pops && topIndex - taken >= 0; taken++) {
-    roles[topIndex - taken] = operandRole(instruction.mnemonic, effect.pops, taken);
-  }
-
-  const survivor = topIndex - effect.pops;
-  if (survivor >= 0 && listing !== undefined) {
-    const consumer = consumerOf(
-      listing,
-      pool,
-      instruction.offset,
-      frame.operandStack.length,
-      survivor,
-    );
-    if (consumer !== undefined) {
-      roles[survivor] = `waiting for ${consumer}`;
-    }
-  }
-
-  return roles;
-}
-
-function operandRole(mnemonic: string, pops: number, taken: number): string {
-  const named = OPERAND_ADDRESSING[mnemonic]?.roles[taken];
-  if (named !== undefined) {
-    return named;
-  }
-  if (mnemonic === 'invokestatic') {
-    return `→ arg ${String(pops - 1 - taken)}`;
-  }
-  if (mnemonic === 'invokevirtual' || mnemonic === 'invokespecial') {
-    return taken === pops - 1 ? '→ receiver' : `→ arg ${String(pops - 2 - taken)}`;
-  }
-  if (pops === 2) {
-    return taken === 0 ? '→ right' : '→ left';
-  }
-  return `→ ${mnemonic}`;
-}
-
 function effectsOf(context: ExplainContext): readonly EffectPill[] {
   const { instruction } = context;
-  if (lookupOpcode(instruction.opcode)?.kind !== 'supported') {
+  if (!isSupportedOpcode(instruction.opcode)) {
     return [];
   }
   const delta = stackDeltaOf(instruction, context.classFile.constantPool);
@@ -179,9 +109,10 @@ function effectsOf(context: ExplainContext): readonly EffectPill[] {
   }
 
   const note = OPCODE_NOTES[baseMnemonicOf(instruction)];
-  const pushed = pushedKindOf(context);
+  const pushed = pushedKindOf(context, delta.pops);
   if (note?.frame === 'return') {
-    return [...popPills(delta.pops), { label: 'pop frame' }, ...pushPills(delta.pops, pushed)];
+    const returned = context.depth > 1 ? delta.pops : 0;
+    return [...popPills(delta.pops), { label: 'pop frame' }, ...pushPills(returned, pushed)];
   }
   if (note?.frame === 'call' && calleeOpensFrame(context)) {
     return [...popPills(delta.pops), { label: 'push frame' }];
@@ -193,27 +124,44 @@ function popPills(count: number): readonly EffectPill[] {
   return count === 0 ? [] : [{ label: `pop ${String(count)}` }];
 }
 
-function pushPills(count: number, pushed: string): readonly EffectPill[] {
+function pushPills(count: number, pushed: PushedKind | undefined): readonly EffectPill[] {
   if (count === 0) {
     return [];
+  }
+  if (pushed === undefined) {
+    return [{ label: `push ${String(count)}` }];
   }
   return [{ label: count === 1 ? `push ${pushed}` : `push ${String(count)} ${pushed}s` }];
 }
 
-function pushedKindOf(context: ExplainContext): PushedKind {
+function pushedKindOf(context: ExplainContext, copied: number): PushedKind | undefined {
   const pushed = OPCODE_NOTES[baseMnemonicOf(context.instruction)]?.pushedKind;
   if (pushed === 'descriptor') {
     return descriptorKindOf(context.instruction, context.classFile.constantPool);
   }
   if (pushed === 'stack-top') {
-    return context.frame.operandKinds?.at(-1) === 'int' ? 'int' : 'ref';
+    return copiedKindOf(context.frame, copied);
   }
   return pushed ?? 'int';
 }
 
+function copiedKindOf(frame: StackFrame, copied: number): PushedKind | undefined {
+  let seen: PushedKind | undefined;
+  for (let depth = 1; depth <= copied; depth++) {
+    const index = frame.operandStack.length - depth;
+    const kind: PushedKind = frame.operandKinds[index] === 'int' ? 'int' : 'ref';
+    if (seen === undefined) {
+      seen = kind;
+    } else if (seen !== kind) {
+      return undefined;
+    }
+  }
+  return seen ?? 'ref';
+}
+
 function descriptorKindOf(instruction: Instruction, pool: ConstantPool): PushedKind {
   const index = constantPoolIndexOf(instruction);
-  const entry = index === undefined ? undefined : (pool[index] ?? undefined);
+  const entry = index === undefined ? undefined : poolEntry(pool, index);
   if (entry?.tag === ConstantTag.String) {
     return 'ref';
   }
@@ -285,7 +233,7 @@ const NARROWING: Readonly<
 function explain(context: ExplainContext): string {
   const { instruction } = context;
 
-  if (lookupOpcode(instruction.opcode)?.kind !== 'supported') {
+  if (!isSupportedOpcode(instruction.opcode)) {
     return `${instruction.mnemonic} is outside the supported instruction subset; running it stops the program here.`;
   }
 
@@ -317,10 +265,6 @@ function explainLocals(context: ExplainContext): string | undefined {
     return `Pushes the reference in local ${String(slot)} (${describeSlot(context, slot)}) onto the operand stack.`;
   }
 
-  if (mnemonic === 'aconst_null') {
-    return 'Pushes the null reference onto the operand stack.';
-  }
-
   if (mnemonic.startsWith('iconst') || mnemonic === 'bipush' || mnemonic === 'sipush') {
     return `Pushes the constant ${String(constantOf(instruction))} onto the operand stack.`;
   }
@@ -332,7 +276,7 @@ function explainLocals(context: ExplainContext): string | undefined {
 
   if (mnemonic.startsWith('astore')) {
     const slot = slotOf(instruction);
-    return `Pops the reference to ${stackText(context, 1, 'ref')} into local slot ${String(slot)} (${storedName(context, slot)}).`;
+    return `Pops the reference to ${stackText(context, 1)} into local slot ${String(slot)} (${storedName(context, slot)}).`;
   }
 
   if (mnemonic.startsWith('iinc')) {
@@ -424,7 +368,7 @@ function explainBranch(context: ExplainContext): string | undefined {
   }
 
   if (mnemonic === 'ifnull' || mnemonic === 'ifnonnull') {
-    const premise = `Pops the top reference (${stackText(context, 1, 'ref')}) and compares it against null`;
+    const premise = `Pops the top reference (${stackText(context, 1)}) and compares it against null`;
     const isNull = top === undefined ? undefined : top === NULL_REFERENCE;
     return branchOutcome(
       context,
@@ -436,8 +380,8 @@ function explainBranch(context: ExplainContext): string | undefined {
   if (mnemonic === 'if_acmpeq' || mnemonic === 'if_acmpne') {
     const wantsSame = mnemonic === 'if_acmpeq';
     const premise =
-      `Pops both references and checks whether ${stackText(context, 2, 'ref')} and ` +
-      `${stackText(context, 1, 'ref')} are ${wantsSame ? 'the same object' : 'different objects'}`;
+      `Pops both references and checks whether ${stackText(context, 2)} and ` +
+      `${stackText(context, 1)} are ${wantsSame ? 'the same object' : 'different objects'}`;
     const same = sameReference(context);
     return branchOutcome(context, premise, same === undefined ? undefined : same === wantsSame);
   }
@@ -478,21 +422,23 @@ function branchOutcome(
     : `${premise}: false, so execution falls through to pc ${String(fallThrough ?? context.instruction.offset)}.`;
 }
 
-interface HeldReference {
-  readonly value: number | undefined;
-  readonly kind: ValueKind | undefined;
+interface HeldValue {
+  readonly value: number;
+  readonly kind: ValueKind;
 }
 
-function referenceAt(context: ExplainContext, depth: number): HeldReference {
+function heldAt(context: ExplainContext, depth: number): HeldValue | undefined {
   const stack = context.frame.operandStack;
   const index = stack.length - depth;
-  return { value: stack[index], kind: context.frame.operandKinds?.[index] };
+  const value = stack[index];
+  const kind = context.frame.operandKinds[index];
+  return value === undefined || kind === undefined ? undefined : { value, kind };
 }
 
 function sameReference(context: ExplainContext): boolean | undefined {
-  const right = referenceAt(context, 1);
-  const left = referenceAt(context, 2);
-  if (right.value === undefined || left.value === undefined) {
+  const right = heldAt(context, 1);
+  const left = heldAt(context, 2);
+  if (right === undefined || left === undefined) {
     return undefined;
   }
   return right.value === left.value && right.kind === left.kind;
@@ -504,10 +450,16 @@ function explainCall(context: ExplainContext): string | undefined {
   const pool = context.classFile.constantPool;
 
   if (mnemonic === 'ireturn') {
-    return `Pops ${valueText(frame.operandStack.at(-1))}, discards the frame of ${frame.methodName} and pushes the value onto the caller's stack.`;
+    const popped = valueText(frame.operandStack.at(-1));
+    return context.depth > 1
+      ? `Pops ${popped}, discards the frame of ${frame.methodName} and pushes the value onto the caller's stack.`
+      : `Pops ${popped} and discards the frame of ${frame.methodName}, the only frame there is, so the value becomes the result of the run.`;
   }
   if (mnemonic === 'areturn') {
-    return `Pops the reference to ${stackText(context, 1, 'ref')}, discards the frame of ${frame.methodName} and pushes the reference onto the caller's stack.`;
+    const popped = stackText(context, 1);
+    return context.depth > 1
+      ? `Pops the reference to ${popped}, discards the frame of ${frame.methodName} and pushes the reference onto the caller's stack.`
+      : `Pops the reference to ${popped} and discards the frame of ${frame.methodName}, the only frame there is, so the run ends here.`;
   }
   if (mnemonic === 'return') {
     return `Discards the frame of ${frame.methodName} and returns nothing.`;
@@ -525,8 +477,7 @@ function explainCall(context: ExplainContext): string | undefined {
   const signature = `${callee.name}${callee.descriptor}`;
   const args = argumentTexts(context, callee.arity);
   const popped = args.length === 0 ? '' : `${args.join(' and ')} and `;
-  const receiver =
-    mnemonic === 'invokestatic' ? undefined : stackText(context, callee.arity + 1, 'ref');
+  const receiver = mnemonic === 'invokestatic' ? undefined : stackText(context, callee.arity + 1);
 
   if (opensFrame(context.classFile, owner, callee.name, callee.descriptor)) {
     const resume = offsetAfter(context.listing, instruction.offset);
@@ -576,13 +527,15 @@ function explainObject(context: ExplainContext): string | undefined {
 
   if (mnemonic === 'ldc' || mnemonic === 'ldc_w') {
     const index = constantPoolIndexOf(instruction);
-    const entry = index === undefined ? undefined : (pool[index] ?? undefined);
+    const entry = index === undefined ? undefined : poolEntry(pool, index);
     if (entry?.tag === ConstantTag.Integer) {
       return `Pushes the int constant ${String(entry.value)} onto the operand stack.`;
     }
     if (entry?.tag === ConstantTag.String) {
       const text = utf8At(pool, entry.stringIndex);
-      return `Pushes a reference to the string "${text ?? ''}" onto the operand stack.`;
+      return text === undefined
+        ? undefined
+        : `Pushes a reference to the string ${quoted(text)} onto the operand stack.`;
     }
     return index === undefined || entry === undefined
       ? undefined
@@ -611,7 +564,7 @@ function explainObject(context: ExplainContext): string | undefined {
     const held = fieldText(context, 1, member);
     return held === undefined
       ? `Pops an object reference and pushes its field ${member.name}.`
-      : `Pops the reference to ${stackText(context, 1, 'ref')} and pushes its field ${member.name}, currently ${held}.`;
+      : `Pops the reference to ${stackText(context, 1)} and pushes its field ${member.name}, currently ${held}.`;
   }
 
   if (mnemonic === 'putfield') {
@@ -620,7 +573,7 @@ function explainObject(context: ExplainContext): string | undefined {
       return undefined;
     }
     return member.owner === context.classFile.thisClassName
-      ? `Stores ${stackText(context, 1)} in the field ${member.name} of ${stackText(context, 2, 'ref')}.`
+      ? `Stores ${stackText(context, 1)} in the field ${member.name} of ${stackText(context, 2)}.`
       : foreignFieldText(member);
   }
 
@@ -636,14 +589,21 @@ function explainObject(context: ExplainContext): string | undefined {
   }
 
   if (mnemonic === 'athrow') {
-    return `Throws ${stackText(context, 1, 'external')}: frames are discarded until one has a handler covering this offset whose catch type matches, and the run stops if none does.`;
+    return `Throws ${stackText(context, 1)}: frames are discarded until one has a handler covering this offset whose catch type matches, and the run stops if none does.`;
   }
 
   return undefined;
 }
 
-function knownStaticFields(): string {
-  return [...EXTERNAL_FIELDS.values()].map((value) => value.label).join(', ');
+const LONGEST_SHOWN_LITERAL = 40;
+
+const ESCAPED: Readonly<Record<string, string>> = { '\n': '\\n', '\r': '\\r', '\t': '\\t' };
+
+function quoted(text: string): string {
+  const escaped = text.replace(/[\n\r\t]/g, (character) => ESCAPED[character] ?? character);
+  return escaped.length <= LONGEST_SHOWN_LITERAL
+    ? `"${escaped}"`
+    : `"${escaped.slice(0, LONGEST_SHOWN_LITERAL)}…"`;
 }
 
 function foreignFieldText(member: Member): string {
@@ -651,8 +611,8 @@ function foreignFieldText(member: Member): string {
 }
 
 function fieldText(context: ExplainContext, depth: number, member: Member): string | undefined {
-  const held = referenceAt(context, depth);
-  const object = held.value === undefined ? undefined : context.heap[held.value];
+  const held = heldAt(context, depth);
+  const object = held === undefined ? undefined : context.heap[held.value];
   if (object?.kind !== 'instance' || object.className !== member.owner) {
     return undefined;
   }
@@ -675,15 +635,18 @@ function explainArray(context: ExplainContext): string | undefined {
         const element = arrayTypeName(atype) ?? `atype ${String(atype)}`;
         return `Allocates ${element}[]. This interpreter only allocates int arrays, so running it stops the program here.`;
       }
-      return top === undefined
-        ? 'Allocates a zero-filled int array as long as the value on top of the operand stack.'
+      if (top === undefined) {
+        return 'Allocates a zero-filled int array as long as the value on top of the operand stack.';
+      }
+      return top < 0
+        ? `Allocates int[${String(top)}]: a negative length, which stops the run with a NegativeArraySizeException.`
         : `Allocates int[${String(top)}], zero-filled, and pushes a reference to it.`;
     }
 
     case 'arraylength': {
       const array = arrayAt(context);
       return array === undefined
-        ? 'Pops an array reference and pushes the length of the array.'
+        ? undefined
         : `Pops the reference to int[${String(array.length)}] and pushes its length, ${String(array.length)}.`;
     }
 
@@ -720,11 +683,11 @@ function arrayAt(context: ExplainContext): ArrayObject | undefined {
   return object?.kind === 'int-array' ? object : undefined;
 }
 
-function stackText(context: ExplainContext, depth: number, assumed?: ValueKind): string {
-  const held = referenceAt(context, depth);
-  return held.value === undefined
+function stackText(context: ExplainContext, depth: number): string {
+  const held = heldAt(context, depth);
+  return held === undefined
     ? 'the top value'
-    : describeValue(held.kind ?? assumed, held.value, context.heap, context.externals);
+    : describeValue(held.kind, held.value, context.heap, context.externals);
 }
 
 function valueText(value: number | undefined): string {
@@ -759,10 +722,11 @@ function localNameAt(listing: MethodListing, pc: number, slot: number): string |
 function describeSlot(context: ExplainContext, slot: number): string {
   const { frame } = context;
   const value = frame.locals[slot];
+  const kind = frame.localKinds[slot];
   const shown =
-    value === undefined
+    value === undefined || kind === undefined
       ? 'uninitialised'
-      : describeValue(frame.localKinds?.[slot], value, context.heap, context.externals);
+      : describeValue(kind, value, context.heap, context.externals);
   return `${nameOfSlot(frame, slot)} = ${shown}`;
 }
 
@@ -791,48 +755,4 @@ function calleeOpensFrame(context: ExplainContext): boolean {
     member !== undefined &&
     opensFrame(context.classFile, member.owner, member.name, member.descriptor)
   );
-}
-
-function consumerOf(
-  listing: MethodListing,
-  pool: ConstantPool,
-  fromOffset: number,
-  height: number,
-  targetIndex: number,
-): string | undefined {
-  const start = listing.indexByOffset.get(fromOffset);
-  if (start === undefined) {
-    return undefined;
-  }
-
-  const visited = new Set<number>();
-  let stackHeight = height;
-  for (let index = start; index < listing.instructions.length; index++) {
-    const instruction = listing.instructions[index];
-    if (instruction === undefined || visited.has(index)) {
-      return undefined;
-    }
-    visited.add(index);
-
-    const effect = stackDeltaOf(instruction, pool);
-    if (effect === undefined) {
-      return undefined;
-    }
-    if (stackHeight - effect.pops <= targetIndex) {
-      return instruction.mnemonic;
-    }
-    stackHeight = stackHeight - effect.pops + effect.pushes;
-
-    if (instruction.mnemonic === 'goto') {
-      const target =
-        instruction.branchTarget === undefined
-          ? undefined
-          : listing.indexByOffset.get(instruction.branchTarget);
-      if (target === undefined) {
-        return undefined;
-      }
-      index = target - 1;
-    }
-  }
-  return undefined;
 }

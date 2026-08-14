@@ -2,35 +2,30 @@ import { describe, expect, it } from 'vitest';
 
 import { parseClassFile, type ClassFile } from '../../core/classfile';
 import { syntheticClass } from '../../core/interpreter/__fixtures__/synthetic-class';
+import type { RunCommand } from '../../workers/run-protocol';
 
 import { AccessFlag } from '../../core/classfile';
 
 import { readExampleBytes, readExampleText, readFixtureBytes } from '../__fixtures__/example-files';
 import {
   buildProgram,
-  consoleLinesOf,
-  deadOffsetsOf,
-  defaultListingOf,
   depthsOf,
-  findListing,
-  firstStepByLine,
-  firstStepByOffset,
-  isCurrentListing,
-  lastLiveSnapshot,
-  lineForOffset,
-  lineMappingNote,
-  listingFor,
-  listingToShow,
-  methodKeyOf,
+  describeNotRunnable,
   NO_SOURCE_LINES,
-  offsetsForLine,
   previewProgram,
-  runnableMethodsOf,
-  runPrintedOutput,
-  runSummaryOf,
+  PREVIEW_MAX_STEPS,
   type LoadedProgram,
   type MethodListing,
 } from './program';
+import { inlineRunner, type ProgramRunner } from './program-runner';
+import {
+  deadOffsetsOf,
+  defaultListingOf,
+  findListing,
+  listingFor,
+  listingToShow,
+  methodKeyOf,
+} from '../views/program-view';
 
 const FACTORIAL_ENTRY = {
   id: 'factorial',
@@ -50,6 +45,10 @@ function factorialProgram(): LoadedProgram {
     classFile: parseClassFile(readExampleBytes('Factorial.class')),
     source: { fileName: 'Factorial.java', text: readExampleText('Factorial.java') },
   });
+}
+
+function runnableOf(program: LoadedProgram): readonly MethodListing[] {
+  return program.methods.filter((method) => method.notRunnable === undefined);
 }
 
 function listing(program: LoadedProgram, name: string, descriptor: string): MethodListing {
@@ -149,127 +148,50 @@ describe('buildProgram', () => {
   });
 });
 
-describe('method listing lookup', () => {
-  it('follows the top frame of the snapshot', () => {
-    const program = factorialProgram();
-    const insideRecursion = program.snapshots[10];
-
-    expect(listingFor(program, insideRecursion)?.name).toBe('factorial');
-  });
-
-  it('falls back to the entry method for the terminal snapshot', () => {
-    const program = factorialProgram();
-    const terminal = program.snapshots.at(-1);
-
-    expect(terminal?.callStack).toHaveLength(0);
-    expect(listingFor(program, terminal)?.name).toBe('main');
-  });
-});
-
-describe('run summary', () => {
-  it('reads the answer out of the frame the run left behind', () => {
-    const summary = runSummaryOf(factorialProgram());
-
-    expect(summary).toEqual({
-      resultName: 'result',
-      resultValue: 24,
-      totalSteps: 40,
-      maxDepth: 5,
-      referenceValue: 24,
-    });
-  });
-
-  it('withholds the reference value when the run disagrees with it', () => {
-    const program = buildProgram({
-      origin: { kind: 'example', entry: { ...FACTORIAL_ENTRY, expectedResult: 25 } },
-      classFile: parseClassFile(readExampleBytes('Factorial.class')),
-      source: { fileName: 'Factorial.java', text: readExampleText('Factorial.java') },
-    });
-
-    expect(runSummaryOf(program)?.resultValue).toBe(24);
-    expect(runSummaryOf(program)?.referenceValue).toBeUndefined();
-  });
-
-  it('has nothing to summarise for a run that stopped early', () => {
-    const program = buildProgram({
-      classFile: syntheticMain([0xa7, 0x00, 0x00]),
-      origin: { kind: 'upload', fileName: 'Loop.class' },
-      maxSteps: 20,
-    });
-
-    expect(runSummaryOf(program)).toBeUndefined();
-  });
-
-  it('finds the last snapshot that still had a frame', () => {
-    const program = factorialProgram();
-
-    expect(program.snapshots.at(-1)?.callStack).toHaveLength(0);
-    expect(lastLiveSnapshot(program.snapshots)?.step).toBe(38);
-  });
-});
-
-describe('seeking by row', () => {
-  it('maps every offset of a method to the first step that stood there', () => {
-    const program = factorialProgram();
-    const steps = firstStepByOffset(program.snapshots, listing(program, 'factorial', '(I)I'));
-
-    expect(steps.get(0)).toBe(2);
-    expect(program.snapshots[2]?.currentInstruction?.offset).toBe(0);
-    expect(steps.get(11)).toBe(9);
-    expect(program.snapshots[9]?.currentInstruction?.mnemonic).toBe('invokestatic');
-  });
-
-  it('keeps the methods apart, so an offset means one instruction', () => {
-    const program = factorialProgram();
-    const main = firstStepByOffset(
-      program.snapshots,
-      listing(program, 'main', '([Ljava/lang/String;)V'),
-    );
-
-    expect(main.get(0)).toBe(0);
-    expect(main.size).toBe(4);
-  });
-
-  it('maps every source line to the first step that reached it', () => {
-    const program = factorialProgram();
-    const steps = firstStepByLine(program.snapshots);
-
-    expect(steps.get(28)).toBe(0);
-    expect(steps.get(17)).toBe(2);
-  });
-});
-
 describe('run preview', () => {
-  it('measures a run without keeping its history', () => {
-    const preview = previewProgram(parseClassFile(readExampleBytes('Factorial.class')));
+  it('measures a run without keeping its history', async () => {
+    const preview = await previewProgram(parseClassFile(readExampleBytes('Factorial.class')), {
+      runner: inlineRunner,
+    });
 
     expect(preview.steps).toBe(40);
     expect(preview.maxDepth).toBe(5);
     expect(preview.profile).toHaveLength(32);
     expect(Math.max(...preview.profile)).toBe(5);
   });
-});
 
-describe('line mapping', () => {
-  it('picks the entry with the largest startPc <= offset', () => {
-    const program = factorialProgram();
-    const factorial = listing(program, 'factorial', '(I)I');
+  it('hands the run to the runner rather than executing it here', async () => {
+    const commands: RunCommand[] = [];
+    const runner: ProgramRunner = {
+      cancellable: true,
+      run(command, options) {
+        commands.push(command);
+        return inlineRunner.run(command, options);
+      },
+    };
 
-    const lines = factorial.instructions.map((instruction) =>
-      lineForOffset(factorial, instruction.offset),
-    );
+    await previewProgram(parseClassFile(readExampleBytes('Factorial.class')), { runner });
 
-    expect(lines[0]).toBe(17);
-    expect(lines.at(-1)).toBe(20);
-    expect(lineMappingNote(factorial, 7)).toBe('LineNumberTable · largest startPc ≤ 7 → line 20');
+    expect(commands).toHaveLength(1);
+    expect(commands[0]?.entryMethod).toBe('main');
+    expect(commands[0]?.entryDescriptor).toBe('([Ljava/lang/String;)V');
+    expect(commands[0]?.maxSteps).toBe(PREVIEW_MAX_STEPS);
   });
 
-  it('maps a source line back to the range of offsets that produced it', () => {
-    const program = factorialProgram();
-    const factorial = listing(program, 'factorial', '(I)I');
+  it('measures an empty run for a class with no entry point to start from', async () => {
+    const preview = await previewProgram(
+      syntheticClass({
+        methods: [
+          { name: 'area', descriptor: '()I', accessFlags: AccessFlag.Abstract },
+          { name: 'draw', descriptor: '()V', accessFlags: AccessFlag.Public, code: [0xb1] },
+        ],
+      }),
+      { runner: inlineRunner },
+    );
 
-    expect(offsetsForLine(factorial, 17)).toEqual({ from: 0, to: 2 });
-    expect(offsetsForLine(factorial, 1)).toBeUndefined();
+    expect(preview.steps).toBe(0);
+    expect(preview.maxDepth).toBe(0);
+    expect(preview.profile).toEqual(Array.from({ length: 32 }, () => 0));
   });
 });
 
@@ -287,7 +209,7 @@ describe('a class with no method a run can start from', () => {
     expect(program.outcome).toEqual({ kind: 'no-entry-point' });
     expect(program.snapshots).toHaveLength(0);
     expect(program.methods.map(methodKeyOf)).toEqual(['<init>()V', 'twice(I)I', 'clamp(III)I']);
-    expect(runnableMethodsOf(program)).toEqual([]);
+    expect(runnableOf(program)).toEqual([]);
   });
 
   it('says of each method why a run cannot start there', () => {
@@ -295,9 +217,44 @@ describe('a class with no method a run can start from', () => {
 
     expect(program.methods.map((method) => method.notRunnable)).toEqual([
       'instance-method',
-      'descriptor',
-      'descriptor',
+      'not-an-entry-shape',
+      'not-an-entry-shape',
     ]);
+  });
+
+  it('marks every shape a run cannot start from, whatever makes it unstartable', () => {
+    const program = buildProgram({
+      origin: UPLOAD,
+      classFile: syntheticClass({
+        methods: [
+          { name: 'main', descriptor: '([Ljava/lang/String;)V', code: [0xb1] },
+          { name: 'twice', descriptor: '(I)I', code: [0x1a, 0x1a, 0x60, 0xac] },
+          { name: 'half', descriptor: '()D', code: [0x0e, 0xaf] },
+          { name: 'join', descriptor: '([Ljava/lang/String;)Ljava/lang/String;', code: [0xb0] },
+        ],
+      }),
+    });
+
+    expect(program.methods.map((method) => method.notRunnable)).toEqual([
+      undefined,
+      'not-an-entry-shape',
+      'not-an-entry-shape',
+      'not-an-entry-shape',
+    ]);
+  });
+
+  it('does not call an int method outside the subset the run itself executes', () => {
+    const program = buildProgram({
+      origin: { kind: 'upload', fileName: 'DaysInYear.class' },
+      classFile: parseClassFile(readExampleBytes('DaysInYear.class')),
+    });
+    const daysInMonth = listing(program, 'daysInMonth', '(I)I');
+
+    expect(daysInMonth.notRunnable).toBe('not-an-entry-shape');
+    expect(daysInMonth.executedOffsets.size).toBeGreaterThan(0);
+    expect(describeNotRunnable('not-an-entry-shape')).toBe(
+      'a run starts from main(String[]), or from a method taking nothing and returning void or int',
+    );
   });
 
   it('opens the panel on the first method there is anything to disassemble', () => {
@@ -344,7 +301,7 @@ describe('entry points beyond main', () => {
 
     expect(program.entry?.name).toBe('count');
     expect(program.outcome).toEqual({ kind: 'completed', returnValue: 15 });
-    expect(runnableMethodsOf(program).map(methodKeyOf)).toEqual(['count()I']);
+    expect(runnableOf(program).map(methodKeyOf)).toEqual(['count()I']);
   });
 
   it('marks a method that would need argument values rather than offering it', () => {
@@ -353,7 +310,7 @@ describe('entry points beyond main', () => {
       classFile: parseClassFile(readFixtureBytes('Counter.class')),
     });
 
-    expect(findListing(program, 'step', '(I)I')?.notRunnable).toBe('descriptor');
+    expect(findListing(program, 'step', '(I)I')?.notRunnable).toBe('not-an-entry-shape');
   });
 
   it('starts from the method the caller names', () => {
@@ -391,6 +348,30 @@ describe('entry points beyond main', () => {
     expect(byDescriptor.outcome).toEqual({ kind: 'completed', returnValue: 5 });
   });
 
+  it('refuses a named method a run cannot start from, rather than quietly running main', () => {
+    const program = buildProgram({
+      origin: { kind: 'upload', fileName: 'Gcd.class' },
+      classFile: parseClassFile(readExampleBytes('Gcd.class')),
+      entryMethod: 'gcd',
+      entryDescriptor: '(II)I',
+    });
+
+    expect(program.entry).toBeUndefined();
+    expect(program.outcome).toEqual({ kind: 'no-entry-point' });
+    expect(program.snapshots).toHaveLength(0);
+  });
+
+  it('refuses a name no method in the class carries', () => {
+    const program = buildProgram({
+      origin: { kind: 'upload', fileName: 'Gcd.class' },
+      classFile: parseClassFile(readExampleBytes('Gcd.class')),
+      entryMethod: 'nowhere',
+    });
+
+    expect(program.entry).toBeUndefined();
+    expect(program.outcome).toEqual({ kind: 'no-entry-point' });
+  });
+
   it('never opens on the class initialiser, but keeps it runnable on request', () => {
     const classFile = syntheticClass({
       methods: [
@@ -402,10 +383,7 @@ describe('entry points beyond main', () => {
     const program = buildProgram({ origin: UPLOAD, classFile });
 
     expect(program.entry?.name).toBe('compute');
-    expect(runnableMethodsOf(program).map((method) => method.name)).toEqual([
-      '<clinit>',
-      'compute',
-    ]);
+    expect(runnableOf(program).map((method) => method.name)).toEqual(['<clinit>', 'compute']);
     expect(buildProgram({ origin: UPLOAD, classFile, entryMethod: '<clinit>' }).entry?.name).toBe(
       '<clinit>',
     );
@@ -413,24 +391,3 @@ describe('entry points beyond main', () => {
 });
 
 const UPLOAD = { kind: 'upload', fileName: 'Synthetic.class' } as const;
-
-describe('the listing the panels are looking at', () => {
-  it('is live only while the step is standing in it', () => {
-    const program = factorialProgram();
-    const frame = program.snapshots[12]?.callStack.at(-1);
-
-    expect(isCurrentListing(listing(program, 'factorial', '(I)I'), frame)).toBe(true);
-    expect(isCurrentListing(listing(program, '<init>', '()V'), frame)).toBe(false);
-    expect(isCurrentListing(undefined, frame)).toBe(false);
-  });
-});
-
-describe('console output', () => {
-  it('is empty for a run that printed nothing, and reports so for the whole run', () => {
-    const program = factorialProgram();
-
-    expect(consoleLinesOf(program.snapshots[0])).toEqual([]);
-    expect(consoleLinesOf(undefined)).toEqual([]);
-    expect(runPrintedOutput(program.snapshots)).toBe(false);
-  });
-});

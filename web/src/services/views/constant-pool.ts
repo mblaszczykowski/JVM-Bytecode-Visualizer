@@ -3,6 +3,7 @@ import {
   constantTagName,
   ConstantTag,
   nameAndTypeAt,
+  poolEntry,
   utf8At,
   type ClassFile,
   type ConstantPool,
@@ -34,7 +35,7 @@ export interface ResolvedConstant {
 }
 
 export function resolveConstant(pool: ConstantPool, index: number): ResolvedConstant | undefined {
-  const entry = pool[index] ?? undefined;
+  const entry = poolEntry(pool, index);
   if (entry === undefined) {
     return undefined;
   }
@@ -80,7 +81,7 @@ export function resolveConstant(pool: ConstantPool, index: number): ResolvedCons
       return link(entry.value, `// ${entry.value}`);
     case ConstantTag.MethodHandle: {
       const kind = REFERENCE_KINDS.get(entry.referenceKind);
-      const target = pool[entry.referenceIndex] ?? undefined;
+      const target = poolEntry(pool, entry.referenceIndex);
       const referenced =
         target !== undefined && MEMBER_KINDS.has(target.tag)
           ? resolveConstant(pool, entry.referenceIndex)
@@ -169,5 +170,3 @@ export function resolveOperandConstant(
   const index = constantPoolIndexOf(instruction);
   return index === undefined ? undefined : resolveConstant(pool, index);
 }
-
-export { classNameAt, nameAndTypeAt, utf8At };

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { parseClassFile, type ClassFile } from '../../core/classfile';
 import { execute, type ExecutionResult, type Snapshot } from '../../core/interpreter';
+import { snapshotOf } from '../../core/interpreter/__fixtures__/snapshots';
 import {
   runAndStream,
   SNAPSHOTS_PER_MESSAGE,
@@ -14,6 +15,7 @@ import { readExampleBytes } from '../__fixtures__/example-files';
 import {
   createProgramRunner,
   inlineRunner,
+  isRunAbandoned,
   isRunCancelled,
   RunCancelled,
   workerRunner,
@@ -70,7 +72,7 @@ class FakeWorker implements RunWorker {
 }
 
 function fakeHistory(steps: number): readonly Snapshot[] {
-  return Array.from({ length: steps }, (_, step) => ({ step, callStack: [] }));
+  return Array.from({ length: steps }, (_, step) => snapshotOf({ step, callStack: [] }));
 }
 
 describe('running on this thread', () => {
@@ -137,7 +139,7 @@ describe('running in a worker', () => {
       const runner = workerRunner(() => worker, inlineRunner, 1_000);
 
       const pending = runner.run(commandFor(gcd()));
-      const settled = expect(pending).rejects.toThrow('stopped answering');
+      const settled = expect(pending).rejects.toSatisfy(isRunAbandoned);
       await vi.advanceTimersByTimeAsync(1_000);
       await settled;
 
@@ -173,10 +175,22 @@ describe('running in a worker', () => {
     const runner = workerRunner(() => worker);
 
     const pending = runner.run(commandFor(gcd()));
-    worker.emit({ kind: 'failed', reason: 'the class file fell apart' });
+    worker.emit({ kind: 'failed', error: new Error('the class file fell apart') });
 
     await expect(pending).rejects.toThrow('the class file fell apart');
+    await expect(pending).rejects.not.toSatisfy(isRunAbandoned);
     expect(worker.terminations).toBe(1);
+  });
+
+  it('keeps the stack of the bug the worker hit, rather than starting a new one here', async () => {
+    const worker = new FakeWorker();
+    const runner = workerRunner(() => worker);
+    const bug = new Error('the class file fell apart');
+
+    const pending = runner.run(commandFor(gcd()));
+    worker.emit(structuredClone({ kind: 'failed', error: bug }));
+
+    await expect(pending).rejects.toHaveProperty('stack', bug.stack);
   });
 });
 
@@ -189,6 +203,7 @@ describe('a worker that dies with the run in it', () => {
     worker.emit({ kind: 'snapshots', snapshots: fakeHistory(10) });
     worker.fail();
 
+    await expect(pending).rejects.toSatisfy(isRunAbandoned);
     await expect(pending).rejects.toThrow('failed part-way through');
     expect(worker.terminations).toBe(1);
   });

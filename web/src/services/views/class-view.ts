@@ -7,6 +7,7 @@ import {
   isClassFileError,
   METHOD_ACCESS_FLAGS,
   parseFieldDescriptor,
+  poolEntry,
   type ClassFile,
   type ConstantPool,
   type FieldInfo,
@@ -26,10 +27,7 @@ export function classFactsOf(classFile: ClassFile): readonly ClassFact[] {
 
   return [
     { label: 'this_class', value: classFile.thisClassName },
-    {
-      label: 'super_class',
-      value: classFile.superClassName === '' ? '–' : classFile.superClassName,
-    },
+    { label: 'super_class', value: classFile.superClassName ?? '–' },
     {
       label: 'interfaces',
       value: classFile.interfaceNames.length === 0 ? '–' : classFile.interfaceNames.join(', '),
@@ -98,7 +96,7 @@ export function constantPoolRowsOf(pool: ConstantPool): readonly ConstantPoolRow
   const rows: ConstantPoolRow[] = [];
 
   for (let index = 1; index < pool.length; index++) {
-    const entry = pool[index] ?? undefined;
+    const entry = poolEntry(pool, index);
     if (entry === undefined) {
       continue;
     }

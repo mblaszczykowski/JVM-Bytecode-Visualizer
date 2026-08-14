@@ -1,31 +1,35 @@
 import { describe, expect, it } from 'vitest';
 
-import { parseClassFile } from '../../core/classfile';
+import { ConstantTag, parseClassFile } from '../../core/classfile';
 import { lookupOpcode, T_INT, type OperandSpec } from '../../core/disassembler';
 import { WIDENED_FORMS } from '../../core/disassembler';
 import {
   EXECUTABLE_OPCODES,
-  type ExternalValue,
   type HeapObject,
   type Snapshot,
   type StackFrame,
   type ValueKind,
 } from '../../core/interpreter';
+import { frameOf, snapshotOf } from '../../core/interpreter/__fixtures__/snapshots';
 import {
   ConstantPoolBuilder,
   syntheticClass,
 } from '../../core/interpreter/__fixtures__/synthetic-class';
 
 import { readExampleBytes, readExampleText } from '../__fixtures__/example-files';
-import { describeNextInstruction, describeOperandRoles, describeValue } from './derivations';
+import { describeNextInstruction } from './derivations';
+import { describeValue } from './heap-view';
+import { describeOperandRoles } from './operand-roles';
 import {
   baseMnemonicOf,
   explainMnemonic,
+  knownStaticFields,
   OPCODE_NOTES,
   OPERAND_ADDRESSING,
   stackDeltaOf,
 } from './opcode-notes';
-import { buildProgram, listingFor, type LoadedProgram } from '../loading/program';
+import { buildProgram, type LoadedProgram } from '../loading/program';
+import { listingFor } from './program-view';
 
 function factorialProgram(): LoadedProgram {
   return buildProgram({
@@ -186,6 +190,24 @@ describe('next instruction summary', () => {
     );
   });
 
+  it('says the value of a return from the only frame becomes the result of the run', () => {
+    const program = buildProgram({
+      origin: { kind: 'upload', fileName: 'Answer.class' },
+      classFile: syntheticClass({
+        methods: [{ name: 'main', descriptor: '()I', code: [0x08, 0xac] }],
+      }),
+    });
+
+    expect(summaryOf(program, 'ireturn').explanation).toBe(
+      'Pops 5 and discards the frame of main, the only frame there is, so the value becomes ' +
+        'the result of the run.',
+    );
+    expect(summaryOf(program, 'ireturn').effects).toEqual([
+      { label: 'pop 1' },
+      { label: 'pop frame' },
+    ]);
+  });
+
   it('warns that an unsupported instruction ends the run', () => {
     const program = buildProgram({
       origin: { kind: 'upload', fileName: 'Unsupported.class' },
@@ -254,6 +276,60 @@ describe('operand stack roles', () => {
     const roles = describeOperandRoles(snapshot, listingFor(program, snapshot), program.classFile);
 
     expect(roles).toEqual([undefined, 'waiting for iadd']);
+  });
+
+  it('names what a stack instruction does with each value instead of combining them', () => {
+    const rolesOver = (code: readonly number[], mnemonic: string) => {
+      const program = buildProgram({
+        origin: { kind: 'upload', fileName: 'Stack.class' },
+        classFile: syntheticClass({
+          methods: [{ name: 'main', descriptor: '([Ljava/lang/String;)V', code }],
+        }),
+      });
+      const snapshot = firstSnapshotOf(program, mnemonic);
+      return describeOperandRoles(snapshot, listingFor(program, snapshot), program.classFile);
+    };
+
+    expect(rolesOver([0x04, 0x05, 0x5c, 0x58, 0x58, 0xb1], 'dup2')).toEqual([
+      '→ copied',
+      '→ copied',
+    ]);
+    expect(rolesOver([0x04, 0x05, 0x58, 0xb1], 'pop2')).toEqual(['→ discarded', '→ discarded']);
+    expect(rolesOver([0x04, 0x05, 0x5f, 0x58, 0xb1], 'swap')).toEqual(['→ swapped', '→ swapped']);
+  });
+
+  it('drops the argument index where a parameter takes more than one slot', () => {
+    const pool = new ConstantPoolBuilder();
+    const countsLongs = pool.methodref('Synthetic', 'count', '(J)V');
+    const classFile = syntheticClass({
+      pool,
+      methods: [{ name: 'count', descriptor: '(J)V', code: [0xb1] }],
+    });
+    const snapshot: Snapshot = snapshotOf({
+      step: 0,
+      callStack: [
+        frameOf({
+          methodName: 'main',
+          methodDescriptor: '()V',
+          pc: 0,
+          operandStack: [0, 0],
+          operandKinds: ['int', 'int'],
+          locals: [],
+          localNames: [],
+        }),
+      ],
+      currentInstruction: {
+        offset: 0,
+        opcode: 0xb8,
+        mnemonic: 'invokestatic',
+        operands: [countsLongs],
+      },
+    });
+
+    expect(describeOperandRoles(snapshot, undefined, classFile)).toEqual([
+      '→ argument',
+      '→ argument',
+    ]);
   });
 
   it('has no roles to report on the terminal snapshot', () => {
@@ -354,6 +430,14 @@ describe('array instructions', () => {
     );
   });
 
+  it('counts the copies without a kind when the copied values are not all one kind', () => {
+    const program = arrayProgram([
+      0x06, 0xbc, 0x0a, 0x4c, 0x2b, 0x03, 0x5c, 0x2e, 0x04, 0x60, 0x4f, 0xb1,
+    ]);
+
+    expect(summaryOf(program, 'dup2').effects).toEqual([{ label: 'pop 2' }, { label: 'push 4' }]);
+  });
+
   it('labels each operand cell by what the array instruction does with it', () => {
     const program = arrayProgram();
     const rolesAt = (mnemonic: string): readonly (string | undefined)[] => {
@@ -384,7 +468,18 @@ describe('array instructions', () => {
     expect(explainMnemonic('aload_0')).toBe(
       'Pushes the reference in local variable slot 0 onto the operand stack.',
     );
-    expect(explainMnemonic('iload_0')).toBe('Pushes local variable slot 0 onto the operand stack.');
+    expect(explainMnemonic('iload_0')).toBe(
+      'Pushes the int in local variable slot 0 onto the operand stack.',
+    );
+  });
+
+  it('says a negative length ends the run rather than promising an array', () => {
+    const program = arrayProgram([0x02, 0xbc, 0x0a, 0x4c, 0xb1]);
+
+    expect(summaryOf(program, 'newarray').explanation).toBe(
+      'Allocates int[-1]: a negative length, which stops the run with a ' +
+        'NegativeArraySizeException.',
+    );
   });
 });
 
@@ -579,41 +674,13 @@ describe('printing to the console', () => {
     const program = collatzProgram();
     const snapshot = firstSnapshotOf(program, 'invokevirtual');
     const frame = snapshot.callStack.at(-1);
+    const kind = frame?.operandKinds.at(-2);
+    const value = frame?.operandStack.at(-2);
+    if (kind === undefined || value === undefined) {
+      throw new Error('the collatz run puts a receiver under the argument of its first call');
+    }
 
-    expect(
-      describeValue(
-        frame?.operandKinds?.at(-2),
-        frame?.operandStack.at(-2) ?? 0,
-        snapshot.heap ?? [],
-        snapshot.externals ?? [],
-      ),
-    ).toBe('System.out');
-  });
-});
-
-describe('value labels', () => {
-  const heap: readonly HeapObject[] = [
-    { kind: 'int-array', length: 3, elements: [0, 0, 0] },
-    { kind: 'instance', className: 'Counter', fields: [] },
-  ];
-  const externals: readonly ExternalValue[] = [
-    { className: 'java/io/PrintStream', label: 'System.out' },
-  ];
-
-  it('names a value by what it is rather than by the number in the cell', () => {
-    expect(describeValue('int', 3, heap, externals)).toBe('3');
-    expect(describeValue('ref', 0, heap, externals)).toBe('int[3]@0');
-    expect(describeValue('ref', 1, heap, externals)).toBe('Counter@1');
-    expect(describeValue('external', 0, heap, externals)).toBe('System.out');
-  });
-
-  it('has an answer for a reference that names nothing', () => {
-    expect(describeValue('ref', -1, heap, externals)).toBe('null');
-    expect(describeValue('external', 4, heap, externals)).toBe('an unknown object');
-  });
-
-  it('falls back to the number when a frame carries no kinds', () => {
-    expect(describeValue(undefined, 7, heap, externals)).toBe('7');
+    expect(describeValue(kind, value, snapshot.heap, snapshot.externals)).toBe('System.out');
   });
 });
 
@@ -631,6 +698,9 @@ describe('object instructions', () => {
   const mathMax = pool.methodref('java/lang/Math', 'max', '(II)I');
   const countsLongs = pool.methodref('Synthetic', 'count', '(J)V');
   const withoutCode = pool.methodref('Synthetic', 'stub', '()I');
+  const longText = pool.stringEntry('a'.repeat(64));
+  const twoLines = pool.stringEntry('first\nsecond');
+  const unresolvedText = pool.raw({ tag: ConstantTag.String, stringIndex: 9999 });
   const classFile = syntheticClass({
     pool,
     methods: [
@@ -656,10 +726,10 @@ describe('object instructions', () => {
     operandStack: readonly number[],
     operandKinds: readonly ValueKind[],
   ) {
-    const snapshot: Snapshot = {
+    const snapshot: Snapshot = snapshotOf({
       step: 0,
       callStack: [
-        {
+        frameOf({
           methodName: 'main',
           methodDescriptor: '()V',
           pc: 0,
@@ -667,12 +737,11 @@ describe('object instructions', () => {
           operandKinds,
           locals: [],
           localNames: [],
-        },
+        }),
       ],
       currentInstruction: { offset: 0, opcode, mnemonic, operands },
       heap,
-      externals: [],
-    };
+    });
     const summary = describeNextInstruction(snapshot, undefined, classFile);
     if (summary === undefined) {
       throw new Error(`no summary for ${mnemonic}`);
@@ -797,11 +866,26 @@ describe('object instructions', () => {
     );
   });
 
+  it('shortens a long string constant and escapes the newlines in it', () => {
+    expect(summaryAt(0x12, 'ldc', [longText], [], []).explanation).toBe(
+      `Pushes a reference to the string "${'a'.repeat(40)}…" onto the operand stack.`,
+    );
+    expect(summaryAt(0x12, 'ldc', [twoLines], [], []).explanation).toBe(
+      'Pushes a reference to the string "first\\nsecond" onto the operand stack.',
+    );
+  });
+
+  it('falls back to the row help rather than claiming an empty string', () => {
+    expect(summaryAt(0x12, 'ldc', [unresolvedText], [], []).explanation).toBe(
+      explainMnemonic('ldc'),
+    );
+  });
+
   it('labels the operands a field write is about to take', () => {
-    const snapshot: Snapshot = {
+    const snapshot: Snapshot = snapshotOf({
       step: 0,
       callStack: [
-        {
+        frameOf({
           methodName: 'main',
           methodDescriptor: '()V',
           pc: 0,
@@ -809,12 +893,11 @@ describe('object instructions', () => {
           operandKinds: ['ref', 'int'],
           locals: [],
           localNames: [],
-        },
+        }),
       ],
       currentInstruction: { offset: 0, opcode: 0xb5, mnemonic: 'putfield', operands: [fieldref] },
       heap,
-      externals: [],
-    };
+    });
 
     expect(describeOperandRoles(snapshot, undefined, classFile)).toEqual(['→ object', '→ value']);
   });
@@ -870,7 +953,7 @@ describe('the opcode table', () => {
     return forms;
   }
 
-  function probeOf(form: Form): Snapshot {
+  function probeOf(form: Form, heap: readonly HeapObject[] = []): Snapshot {
     const poolIndex = poolIndices[POOL_ROLES[form.mnemonic] ?? 'integer'];
     const operands = form.operands.map((spec) => {
       if (spec.role === 'constant-pool-index') {
@@ -883,7 +966,7 @@ describe('the opcode table', () => {
     });
     const branches = form.operands.some((spec) => spec.role === 'branch-offset');
     const switches = form.mnemonic === 'tableswitch' || form.mnemonic === 'lookupswitch';
-    const frame: StackFrame = {
+    const frame: StackFrame = frameOf({
       methodName: 'main',
       methodDescriptor: '()V',
       pc: 0,
@@ -891,8 +974,8 @@ describe('the opcode table', () => {
       operandKinds: ['int', 'int', 'int', 'int'],
       locals: [0, 0, 0, 0],
       localNames: [],
-    };
-    return {
+    });
+    return snapshotOf({
       step: 0,
       callStack: [frame],
       currentInstruction: {
@@ -910,12 +993,11 @@ describe('the opcode table', () => {
             }
           : {}),
       },
-      heap: [],
-      externals: [],
-    };
+      heap,
+    });
   }
 
-  const PILL = /^(pop \d+|pop frame|push frame|push (int|ref)|push \d+ (int|ref)s)$/;
+  const PILL = /^(pop \d+|pop frame|push frame|push (int|ref)|push \d+( (int|ref)s)?)$/;
 
   it('gives every executable instruction help, a stack delta and effect pills', () => {
     for (const form of executableForms()) {
@@ -960,6 +1042,33 @@ describe('the opcode table', () => {
       expect.arrayContaining(['iload_w', 'istore_w', 'aload_w', 'astore_w', 'iinc_w']),
     );
     expect(new Set(mnemonics).size).toBe(mnemonics.length);
+  });
+
+  it('leaves the row help to the two instructions that have no arm of their own', () => {
+    const array: HeapObject = { kind: 'int-array', length: 4, elements: [0, 0, 0, 0] };
+    const readsHelp = new Set<string>();
+
+    for (const form of executableForms()) {
+      const snapshot = probeOf(form, [array]);
+      const instruction = snapshot.currentInstruction;
+      if (instruction === undefined) {
+        throw new Error(`no probe instruction for ${form.mnemonic}`);
+      }
+      const base = baseMnemonicOf(instruction);
+      const summary = describeNextInstruction(snapshot, undefined, classFile);
+      if (summary?.explanation === OPCODE_NOTES[base]?.help) {
+        readsHelp.add(base);
+      }
+    }
+
+    expect([...readsHelp].sort()).toEqual(['aconst_null', 'nop']);
+  });
+
+  it('reads the static fields the machine knows out of the interpreter, not out of prose', () => {
+    const help = explainMnemonic('getstatic') ?? '';
+
+    expect(knownStaticFields().length).toBeGreaterThan(0);
+    expect(help).toContain(`knows ${knownStaticFields()} and no other static field`);
   });
 
   it('keeps the operand roles and the heap addressing of an instruction in step', () => {

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  flushDeepLink,
   formatDeepLink,
   formatTourLink,
   parseDeepLink,
@@ -117,6 +118,8 @@ describe('tour links', () => {
 
 describe('writing the address bar', () => {
   afterEach(() => {
+    flushDeepLink();
+    vi.useRealTimers();
     vi.restoreAllMocks();
     window.history.replaceState(null, '', window.location.pathname);
   });
@@ -129,6 +132,7 @@ describe('writing the address bar', () => {
     const replaceState = watchHistory();
 
     writeDeepLink('bubble-sort', 247);
+    flushDeepLink();
 
     expect(window.location.hash).toBe('#/bubble-sort/248');
     expect(replaceState).toHaveBeenCalledTimes(1);
@@ -136,6 +140,7 @@ describe('writing the address bar', () => {
 
   it('writes the example alone before anything has been executed', () => {
     writeDeepLink('factorial');
+    flushDeepLink();
 
     expect(window.location.hash).toBe('#/factorial');
   });
@@ -144,16 +149,20 @@ describe('writing the address bar', () => {
     const pushState = vi.spyOn(window.history, 'pushState');
 
     writeDeepLink('factorial', 3);
+    flushDeepLink();
     writeTourLink('factorial', 'recursion', 2);
+    flushDeepLink();
 
     expect(pushState).not.toHaveBeenCalled();
   });
 
   it('says nothing when the address bar already reads that way', () => {
     writeDeepLink('factorial', 3);
+    flushDeepLink();
     const replaceState = watchHistory();
 
     writeDeepLink('factorial', 3);
+    flushDeepLink();
 
     expect(replaceState).not.toHaveBeenCalled();
     expect(window.location.hash).toBe('#/factorial/4');
@@ -161,10 +170,13 @@ describe('writing the address bar', () => {
 
   it('writes a tour stop, and stops writing when it does not move', () => {
     writeTourLink('collatz', 'the-loop', 4);
+    flushDeepLink();
     const replaceState = watchHistory();
 
     writeTourLink('collatz', 'the-loop', 4);
+    flushDeepLink();
     writeTourLink('collatz', 'the-loop', 5);
+    flushDeepLink();
 
     expect(window.location.hash).toBe('#/collatz/tour/the-loop/6');
     expect(replaceState).toHaveBeenCalledTimes(1);
@@ -172,10 +184,54 @@ describe('writing the address bar', () => {
 
   it('is read back by the parser as the place it was written from', () => {
     writeTourLink('collatz', 'the-loop', 4);
+    flushDeepLink();
 
     expect(parseDeepLink(window.location.hash)).toEqual({
       exampleId: 'collatz',
       tour: { tourId: 'the-loop', stopIndex: 4 },
     });
+  });
+
+  it('spends one write on a scrub the reader drags across many steps', () => {
+    vi.useFakeTimers();
+    const replaceState = watchHistory();
+
+    for (let step = 0; step < 39; step += 1) {
+      writeDeepLink('bubble-sort', step);
+    }
+
+    expect(replaceState).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(300);
+
+    expect(replaceState).toHaveBeenCalledTimes(1);
+    expect(window.location.hash).toBe('#/bubble-sort/39');
+  });
+
+  it('goes on writing after the burst it coalesced', () => {
+    vi.useFakeTimers();
+    writeDeepLink('bubble-sort', 0);
+    vi.advanceTimersByTime(300);
+    const replaceState = watchHistory();
+
+    writeDeepLink('bubble-sort', 1);
+    vi.advanceTimersByTime(300);
+
+    expect(replaceState).toHaveBeenCalledTimes(1);
+    expect(window.location.hash).toBe('#/bubble-sort/2');
+  });
+
+  it('leaves the address bar stale rather than throwing when the browser refuses', () => {
+    writeDeepLink('factorial', 3);
+    flushDeepLink();
+    vi.spyOn(window.history, 'replaceState').mockImplementation(() => {
+      throw new DOMException('too many calls to replaceState', 'SecurityError');
+    });
+
+    expect(() => {
+      writeDeepLink('factorial', 9);
+      flushDeepLink();
+    }).not.toThrow();
+    expect(window.location.hash).toBe('#/factorial/4');
   });
 });

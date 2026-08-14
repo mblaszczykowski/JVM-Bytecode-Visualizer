@@ -2,7 +2,7 @@ import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 
 import { parseClassFile } from '../../core/classfile';
-import { execute } from '../../core/interpreter';
+import { execute, NO_CONSOLE_OUTPUT } from '../../core/interpreter';
 import type { Snapshot } from '../../core/interpreter';
 
 import { readExampleBytes } from '../__fixtures__/example-files';
@@ -131,7 +131,7 @@ describe('timelineEventsOf', () => {
 
   it('marks every line the program printed, and nothing else', () => {
     const snapshots = runOf('Collatz');
-    const printed = snapshots.at(-1)?.consoleOutput ?? [];
+    const printed = snapshots.at(-1)?.consoleOutput ?? NO_CONSOLE_OUTPUT;
 
     expect(printed.length).toBeGreaterThan(1);
     expect(stepsOf(timelineEventsOf(snapshots), 'print')).toHaveLength(printed.length);

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { parseClassFile, type ConstantPool } from '../../core/classfile';
-import type { Instruction } from '../../core/disassembler';
+import { disassemble, type Instruction } from '../../core/disassembler';
 
 import { readExampleBytes } from '../__fixtures__/example-files';
 import {
@@ -32,6 +32,21 @@ const goto: Instruction = {
 
 const imul: Instruction = { offset: 9, opcode: 0x68, mnemonic: 'imul', operands: [] };
 
+function instructionOf(fileName: string, methodName: string, mnemonic: string): Instruction {
+  const classFile = parseClassFile(readExampleBytes(fileName));
+  const code = classFile.methods.find((method) => method.name === methodName)?.code?.code;
+  if (code === undefined) {
+    throw new Error(`no method ${methodName} with code in ${fileName}`);
+  }
+  const found = disassemble(code).instructions.find(
+    (instruction) => instruction.mnemonic === mnemonic,
+  );
+  if (found === undefined) {
+    throw new Error(`no ${mnemonic} in ${methodName}`);
+  }
+  return found;
+}
+
 const monitorenter: Instruction = {
   offset: 10,
   opcode: 0xc2,
@@ -57,6 +72,45 @@ describe('operandTokens', () => {
       { text: '1', isReference: false },
     ]);
   });
+
+  it('prints every arm of a switch table, the way javap does', () => {
+    const tableswitch = instructionOf('DaysInYear.class', 'daysInMonth', 'tableswitch');
+
+    expect(operandTokens(tableswitch).map((token) => token.text)).toEqual([
+      '2: 56',
+      '3: 62',
+      '4: 59',
+      '5: 62',
+      '6: 59',
+      '7: 62',
+      '8: 62',
+      '9: 59',
+      '10: 62',
+      '11: 59',
+      'default: 62',
+    ]);
+    expect(operandTokens(tableswitch).every((token) => token.isReference)).toBe(true);
+  });
+
+  it('reads a lookupswitch out of its own sorted table', () => {
+    const lookupswitch: Instruction = {
+      offset: 0,
+      opcode: 0xab,
+      mnemonic: 'lookupswitch',
+      operands: [],
+      switchTargets: [
+        { match: undefined, target: 40 },
+        { match: 1, target: 28 },
+        { match: 100, target: 34 },
+      ],
+    };
+
+    expect(operandTokens(lookupswitch).map((token) => token.text)).toEqual([
+      '1: 28',
+      '100: 34',
+      'default: 40',
+    ]);
+  });
 });
 
 describe('formatOperands', () => {
@@ -64,6 +118,12 @@ describe('formatOperands', () => {
     expect(formatOperands(iinc)).toBe('1, 1');
     expect(formatOperands(invokestatic)).toBe('#7');
     expect(formatOperands(imul)).toBe('');
+  });
+
+  it('spells the switch table out instead of leaving the row bare', () => {
+    expect(formatOperands(instructionOf('DaysInYear.class', 'daysInMonth', 'tableswitch'))).toBe(
+      '2: 56, 3: 62, 4: 59, 5: 62, 6: 59, 7: 62, 8: 62, 9: 59, 10: 62, 11: 59, default: 62',
+    );
   });
 });
 

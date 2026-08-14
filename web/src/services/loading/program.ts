@@ -13,7 +13,6 @@ import {
   isEntryMethod,
   type ExecutionResult,
   type Snapshot,
-  type StackFrame,
   type VmError,
   NO_SNAPSHOTS,
 } from '../../core/interpreter';
@@ -21,7 +20,7 @@ import {
 import type { ExampleEntry } from './manifest';
 import type { LoadContext } from './program-runner';
 
-export type NotRunnableReason = 'no-code' | 'instance-method' | 'descriptor';
+export type NotRunnableReason = 'no-code' | 'instance-method' | 'not-an-entry-shape';
 
 export function describeNotRunnable(reason: NotRunnableReason): string {
   switch (reason) {
@@ -29,8 +28,8 @@ export function describeNotRunnable(reason: NotRunnableReason): string {
       return 'no Code attribute: abstract, native, or declared by an interface';
     case 'instance-method':
       return 'an instance method; a run needs a static entry point';
-    case 'descriptor':
-      return 'its descriptor is outside the int-only subset this machine executes';
+    case 'not-an-entry-shape':
+      return 'a run starts from main(String[]), or from a method taking nothing and returning void or int';
   }
 }
 
@@ -70,10 +69,6 @@ export interface LoadedProgram {
   readonly snapshots: readonly Snapshot[];
   readonly outcome: ExecutionOutcome;
   readonly maxSteps: number;
-}
-
-export function runnableMethodsOf(program: LoadedProgram): readonly MethodListing[] {
-  return program.methods.filter((method) => method.notRunnable === undefined);
 }
 
 export interface ProgramSource {
@@ -166,16 +161,20 @@ export async function runProgram(
     return buildProgram(input);
   }
 
-  const run = await context.runner.run(
-    {
-      classFile: input.classFile,
-      entryMethod: entry.name,
-      entryDescriptor: entry.descriptor,
-      maxSteps: input.maxSteps ?? DEFAULT_MAX_STEPS,
-    },
+  const run = await runEntry(input.classFile, entry, input.maxSteps ?? DEFAULT_MAX_STEPS, context);
+  return buildProgram({ ...input, run });
+}
+
+function runEntry(
+  classFile: ClassFile,
+  entry: MethodInfo,
+  maxSteps: number,
+  context: LoadContext,
+): Promise<ExecutionResult> {
+  return context.runner.run(
+    { classFile, entryMethod: entry.name, entryDescriptor: entry.descriptor, maxSteps },
     context,
   );
-  return buildProgram({ ...input, run });
 }
 
 const EMPTY_OFFSETS: ReadonlySet<number> = new Set<number>();
@@ -190,7 +189,10 @@ function notRunnableReasonOf(method: MethodInfo): NotRunnableReason | undefined 
   if (!isStatic(method.accessFlags)) {
     return 'instance-method';
   }
-  return isEntryMethod(method) ? undefined : 'descriptor';
+  if (isEntryMethod(method)) {
+    return undefined;
+  }
+  return 'not-an-entry-shape';
 }
 
 function chooseEntry(
@@ -199,14 +201,13 @@ function chooseEntry(
   descriptor?: string,
 ): MethodInfo | undefined {
   const runnable = classFile.methods.filter((method) => notRunnableReasonOf(method) === undefined);
+  if (requested !== undefined) {
+    return runnable.find(
+      (method) =>
+        method.name === requested && (descriptor === undefined || method.descriptor === descriptor),
+    );
+  }
   return (
-    (requested === undefined
-      ? undefined
-      : runnable.find(
-          (method) =>
-            method.name === requested &&
-            (descriptor === undefined || method.descriptor === descriptor),
-        )) ??
     runnable.find((method) => method.name === DEFAULT_ENTRY_METHOD) ??
     runnable.find((method) => method.name !== CLASS_INITIALISER)
   );
@@ -214,118 +215,8 @@ function chooseEntry(
 
 const CLASS_INITIALISER = '<clinit>';
 
-export function findListing(
-  program: LoadedProgram,
-  name: string,
-  descriptor: string,
-): MethodListing | undefined {
-  return program.methods.find((method) => method.name === name && method.descriptor === descriptor);
-}
-
-export function defaultListingOf(program: LoadedProgram): MethodListing | undefined {
-  return program.entry ?? program.methods.find((method) => method.instructions.length > 0);
-}
-
-export function methodKeyOf(method: MethodListing): string {
-  return `${method.name}${method.descriptor}`;
-}
-
-export function listingToShow(
-  program: LoadedProgram,
-  snapshot: Snapshot | undefined,
-  viewedMethodKey: string | undefined,
-): MethodListing | undefined {
-  const viewed =
-    viewedMethodKey === undefined
-      ? undefined
-      : program.methods.find((method) => methodKeyOf(method) === viewedMethodKey);
-  return viewed ?? listingFor(program, snapshot);
-}
-
-export function listingFor(
-  program: LoadedProgram,
-  snapshot: Snapshot | undefined,
-): MethodListing | undefined {
-  const frame = snapshot?.callStack.at(-1);
-  if (frame === undefined) {
-    return defaultListingOf(program);
-  }
-  return (
-    findListing(program, frame.methodName, frame.methodDescriptor) ?? defaultListingOf(program)
-  );
-}
-
-export function isCurrentListing(
-  listing: MethodListing | undefined,
-  frame: StackFrame | undefined,
-): boolean {
-  return (
-    listing !== undefined &&
-    frame?.methodName === listing.name &&
-    frame.methodDescriptor === listing.descriptor
-  );
-}
-
-export function consoleLinesOf(snapshot: Snapshot | undefined): readonly string[] {
-  return snapshot?.consoleOutput ?? NO_CONSOLE_OUTPUT;
-}
-
-export function runPrintedOutput(snapshots: readonly Snapshot[]): boolean {
-  return snapshots.some((snapshot) => consoleLinesOf(snapshot).length > 0);
-}
-
-const NO_CONSOLE_OUTPUT: readonly string[] = [];
-
-export function deadOffsetsOf(listing: MethodListing): ReadonlySet<number> {
-  const dead = new Set<number>();
-  for (const instruction of listing.instructions) {
-    if (!listing.executedOffsets.has(instruction.offset)) {
-      dead.add(instruction.offset);
-    }
-  }
-  return dead;
-}
-
-export function lineForOffset(listing: MethodListing, offset: number): number | undefined {
-  let line: number | undefined;
-  let bestStartPc = -1;
-  for (const entry of listing.lineNumbers) {
-    if (entry.startPc <= offset && entry.startPc > bestStartPc) {
-      bestStartPc = entry.startPc;
-      line = entry.lineNumber;
-    }
-  }
-  return line;
-}
-
-export interface OffsetRange {
-  readonly from: number;
-  readonly to: number;
-}
-
-export function offsetsForLine(listing: MethodListing, line: number): OffsetRange | undefined {
-  const offsets = listing.instructions
-    .map((instruction) => instruction.offset)
-    .filter((offset) => lineForOffset(listing, offset) === line);
-
-  const from = offsets[0];
-  const to = offsets.at(-1);
-  return from === undefined || to === undefined ? undefined : { from, to };
-}
-
-export function lineMappingNote(listing: MethodListing, pc: number): string | undefined {
-  const line = lineForOffset(listing, pc);
-  return line === undefined
-    ? undefined
-    : `LineNumberTable · largest startPc ≤ ${String(pc)} → line ${String(line)}`;
-}
-
 export function depthsOf(snapshots: readonly Snapshot[]): readonly number[] {
   return snapshots.map((snapshot) => snapshot.callStack.length);
-}
-
-export function topFrameOf(snapshot: Snapshot | undefined): StackFrame | undefined {
-  return snapshot?.callStack.at(-1);
 }
 
 export interface RunPreview {
@@ -334,12 +225,18 @@ export interface RunPreview {
   readonly profile: readonly number[];
 }
 
-const PREVIEW_MAX_STEPS = 5_000;
+export const PREVIEW_MAX_STEPS = 5_000;
 
 const PREVIEW_BUCKETS = 32;
 
-export function previewProgram(classFile: ClassFile): RunPreview {
-  const depths = depthsOf(execute(classFile, { maxSteps: PREVIEW_MAX_STEPS }).snapshots);
+export async function previewProgram(
+  classFile: ClassFile,
+  context: LoadContext,
+): Promise<RunPreview> {
+  const entry = chooseEntry(classFile, undefined);
+  const run =
+    entry === undefined ? undefined : await runEntry(classFile, entry, PREVIEW_MAX_STEPS, context);
+  const depths = depthsOf(run?.snapshots ?? NO_SNAPSHOTS);
   const profile: number[] = [];
 
   for (let bucket = 0; bucket < PREVIEW_BUCKETS; bucket++) {
@@ -357,95 +254,6 @@ export function previewProgram(classFile: ClassFile): RunPreview {
     maxDepth: depths.reduce((deepest, depth) => Math.max(deepest, depth), 0),
     profile,
   };
-}
-
-export interface RunSummary {
-  readonly resultName: string;
-  readonly resultValue: number | undefined;
-  readonly totalSteps: number;
-  readonly maxDepth: number;
-  readonly referenceValue: number | undefined;
-}
-
-function resultOf(frame: StackFrame | undefined, name: string): number | undefined {
-  if (frame === undefined) {
-    return undefined;
-  }
-  const slot = frame.localNames.indexOf(name);
-  return slot < 0 ? undefined : frame.locals[slot];
-}
-
-export function lastLiveSnapshot(snapshots: readonly Snapshot[]): Snapshot | undefined {
-  for (let index = snapshots.length - 1; index >= 0; index--) {
-    const snapshot = snapshots[index];
-    if (snapshot !== undefined && snapshot.callStack.length > 0) {
-      return snapshot;
-    }
-  }
-  return undefined;
-}
-
-export function runSummaryOf(program: LoadedProgram): RunSummary | undefined {
-  if (program.outcome.kind !== 'completed') {
-    return undefined;
-  }
-
-  const entry = program.origin.kind === 'example' ? program.origin.entry : undefined;
-  const resultName = entry?.resultVariable ?? 'result';
-  const lastLive = lastLiveSnapshot(program.snapshots);
-  const resultValue = resultOf(lastLive?.callStack[0], resultName) ?? program.outcome.returnValue;
-
-  let maxDepth = 0;
-  for (const snapshot of program.snapshots) {
-    maxDepth = Math.max(maxDepth, snapshot.callStack.length);
-  }
-
-  return {
-    resultName,
-    resultValue,
-    totalSteps: program.snapshots.length,
-    maxDepth,
-    referenceValue:
-      entry !== undefined && entry.expectedResult === resultValue
-        ? entry.expectedResult
-        : undefined,
-  };
-}
-
-export function firstStepByOffset(
-  snapshots: readonly Snapshot[],
-  listing: MethodListing | undefined,
-): ReadonlyMap<number, number> {
-  const steps = new Map<number, number>();
-  if (listing === undefined) {
-    return steps;
-  }
-
-  snapshots.forEach((snapshot, index) => {
-    const frame = snapshot.callStack.at(-1);
-    const offset = snapshot.currentInstruction?.offset;
-    if (
-      frame?.methodName !== listing.name ||
-      frame.methodDescriptor !== listing.descriptor ||
-      offset === undefined ||
-      steps.has(offset)
-    ) {
-      return;
-    }
-    steps.set(offset, index);
-  });
-  return steps;
-}
-
-export function firstStepByLine(snapshots: readonly Snapshot[]): ReadonlyMap<number, number> {
-  const steps = new Map<number, number>();
-  snapshots.forEach((snapshot, index) => {
-    const { sourceLine } = snapshot;
-    if (sourceLine !== undefined && !steps.has(sourceLine)) {
-      steps.set(sourceLine, index);
-    }
-  });
-  return steps;
 }
 
 function methodKey(name: string, descriptor: string): string {

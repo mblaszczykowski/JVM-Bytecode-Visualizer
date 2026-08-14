@@ -1,13 +1,16 @@
 import {
+  classNameAt,
   ConstantTag,
   isClassFileError,
+  nameAndTypeAt,
   parseMethodDescriptor,
+  poolEntry,
   type ConstantPool,
   type JvmReturnType,
 } from '../../core/classfile';
 import type { Instruction } from '../../core/disassembler';
 
-import { classNameAt, constantPoolIndexOf, nameAndTypeAt } from './constant-pool';
+import { constantPoolIndexOf } from './constant-pool';
 
 export interface Callee {
   readonly name: string;
@@ -20,7 +23,7 @@ export interface Callee {
 
 export function calleeOf(instruction: Instruction, pool: ConstantPool): Callee | undefined {
   const index = constantPoolIndexOf(instruction);
-  const entry = index === undefined ? undefined : (pool[index] ?? undefined);
+  const entry = index === undefined ? undefined : poolEntry(pool, index);
   if (entry?.tag !== ConstantTag.Methodref) {
     return undefined;
   }
@@ -44,7 +47,7 @@ export interface Member {
 
 export function memberOf(instruction: Instruction, pool: ConstantPool): Member | undefined {
   const index = constantPoolIndexOf(instruction);
-  const entry = index === undefined ? undefined : (pool[index] ?? undefined);
+  const entry = index === undefined ? undefined : poolEntry(pool, index);
   if (entry?.tag !== ConstantTag.Fieldref && entry?.tag !== ConstantTag.Methodref) {
     return undefined;
   }
@@ -59,7 +62,7 @@ export function ownerOf(instruction: Instruction, pool: ConstantPool): string | 
   return memberOf(instruction, pool)?.owner;
 }
 
-export function parseDescriptor(descriptor: string):
+function parseDescriptor(descriptor: string):
   | {
       readonly arity: number;
       readonly parameterSlots: number;

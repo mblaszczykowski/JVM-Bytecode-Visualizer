@@ -58,16 +58,43 @@ export function formatTourLink(exampleId: string, tourId: string, stopIndex: num
   return `#/${exampleId}/${TOUR}/${tourId}/${String(stopIndex + 1)}`;
 }
 
+const MIN_WRITE_INTERVAL_MS = 300;
+
+let pendingHash: string | undefined;
+let writeTimer: ReturnType<typeof setTimeout> | undefined;
+
 export function writeDeepLink(exampleId: string, stepIndex?: number): void {
-  replaceHash(formatDeepLink(exampleId, stepIndex));
+  scheduleHash(formatDeepLink(exampleId, stepIndex));
 }
 
 export function writeTourLink(exampleId: string, tourId: string, stopIndex: number): void {
-  replaceHash(formatTourLink(exampleId, tourId, stopIndex));
+  scheduleHash(formatTourLink(exampleId, tourId, stopIndex));
+}
+
+export function flushDeepLink(): void {
+  if (writeTimer !== undefined) {
+    clearTimeout(writeTimer);
+    writeTimer = undefined;
+  }
+  const next = pendingHash;
+  pendingHash = undefined;
+  if (next !== undefined) {
+    replaceHash(next);
+  }
+}
+
+function scheduleHash(next: string): void {
+  pendingHash = next;
+  writeTimer ??= setTimeout(flushDeepLink, MIN_WRITE_INTERVAL_MS);
 }
 
 function replaceHash(next: string): void {
-  if (window.location.hash !== next) {
+  if (window.location.hash === next) {
+    return;
+  }
+  try {
     window.history.replaceState(null, '', next);
+  } catch {
+    return;
   }
 }

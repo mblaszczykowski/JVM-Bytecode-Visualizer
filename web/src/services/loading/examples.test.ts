@@ -223,6 +223,36 @@ describe('fetchExampleResources', () => {
     });
   });
 
+  it('stops both downloads when the reader abandons the load', async () => {
+    const aborted: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        (input: unknown, init?: RequestInit) =>
+          new Promise<Response>((_resolve, reject) => {
+            init?.signal?.addEventListener('abort', () => {
+              aborted.push(String(input));
+              reject(new DOMException('The operation was aborted.', 'AbortError'));
+            });
+          }),
+      ),
+    );
+    const entry = factorialEntry();
+    const controller = new AbortController();
+
+    const pending = detailOf(() => fetchExampleResources(entry, controller.signal));
+    controller.abort();
+
+    expect((await pending).detail).toEqual({
+      kind: 'network',
+      url: exampleUrl(entry.classFile),
+      reason: 'the download was cancelled',
+    });
+    expect(aborted.sort()).toEqual(
+      [exampleUrl(entry.classFile), exampleUrl(entry.sourceFile)].sort(),
+    );
+  });
+
   it('gives up on a manifest whose body never arrives', async () => {
     vi.useFakeTimers();
     try {

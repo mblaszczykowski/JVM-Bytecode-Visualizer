@@ -1,5 +1,10 @@
 import type { ConstantPool } from '../../core/classfile';
-import { lookupOpcode, type Instruction } from '../../core/disassembler';
+import {
+  isSupportedOpcode,
+  lookupOpcode,
+  type Instruction,
+  type SwitchCase,
+} from '../../core/disassembler';
 
 import { stackDeltaOf, type StackDelta } from './opcode-notes';
 
@@ -13,7 +18,7 @@ export function stackEffectOf(
   instruction: Instruction,
   pool: ConstantPool,
 ): StackDelta | 'varies' | undefined {
-  if (lookupOpcode(instruction.opcode)?.kind !== 'supported') {
+  if (!isSupportedOpcode(instruction.opcode)) {
     return undefined;
   }
   return stackDeltaOf(instruction, pool) ?? 'varies';
@@ -40,6 +45,11 @@ export interface OperandToken {
 }
 
 export function operandTokens(instruction: Instruction): readonly OperandToken[] {
+  const { switchTargets } = instruction;
+  if (switchTargets !== undefined) {
+    return switchArmsOf(switchTargets);
+  }
+
   if (instruction.branchTarget !== undefined) {
     return [{ text: String(instruction.branchTarget), isReference: true }];
   }
@@ -53,4 +63,19 @@ export function operandTokens(instruction: Instruction): readonly OperandToken[]
     }
     return { text: String(operand), isReference: role === 'branch-offset' };
   });
+}
+
+function switchArmsOf(cases: readonly SwitchCase[]): readonly OperandToken[] {
+  const matched = cases.filter((arm) => arm.match !== undefined);
+  const fallback = cases.find((arm) => arm.match === undefined);
+
+  return [
+    ...matched.map((arm) => ({
+      text: `${String(arm.match)}: ${String(arm.target)}`,
+      isReference: true,
+    })),
+    ...(fallback === undefined
+      ? []
+      : [{ text: `default: ${String(fallback.target)}`, isReference: true }]),
+  ];
 }

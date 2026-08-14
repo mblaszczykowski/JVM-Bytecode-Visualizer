@@ -244,17 +244,3 @@ export const GLOSSARY: readonly GlossaryEntry[] = READING_ORDER.map((id) => ENTR
 export function glossaryEntry(id: GlossaryTermId): GlossaryEntry {
   return ENTRIES[id];
 }
-
-const TERM_BY_PANEL: Readonly<Record<string, GlossaryTermId>> = {
-  Source: 'line-number-table',
-  'Class file': 'constant-pool',
-  Bytecode: 'opcode',
-  'Call stack': 'call-stack',
-  'Operand stack': 'operand-stack',
-  Locals: 'local-variable-slot',
-  'Run state': 'frame',
-};
-
-export function glossaryTermForPanel(panelTitle: string): GlossaryTermId | undefined {
-  return TERM_BY_PANEL[panelTitle];
-}

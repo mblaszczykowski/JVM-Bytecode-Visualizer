@@ -51,6 +51,8 @@ export const EXAMPLE_TIMEOUT_MS = 10_000;
 
 const TIMED_OUT = `no answer within ${String(EXAMPLE_TIMEOUT_MS / 1000)} s`;
 
+const CANCELLED = 'the download was cancelled';
+
 export async function fetchExampleManifest(): Promise<ExampleManifest> {
   const url = exampleUrl(MANIFEST_FILE);
   const raw = await request(url, async (response) => {
@@ -76,10 +78,13 @@ export function fetchExampleClass(entry: ExampleEntry): Promise<ArrayBuffer> {
   return fetchBinary(exampleUrl(entry.classFile));
 }
 
-export async function fetchExampleResources(entry: ExampleEntry): Promise<ExampleResources> {
+export async function fetchExampleResources(
+  entry: ExampleEntry,
+  signal?: AbortSignal,
+): Promise<ExampleResources> {
   const [classBytes, source] = await Promise.all([
-    fetchBinary(exampleUrl(entry.classFile)),
-    fetchText(exampleUrl(entry.sourceFile)),
+    fetchBinary(exampleUrl(entry.classFile), signal),
+    fetchText(exampleUrl(entry.sourceFile), signal),
   ]);
   return { entry, classBytes, source };
 }
@@ -89,26 +94,33 @@ export function shortTitleOf(entry: ExampleEntry): string {
   return head === undefined ? entry.title : head.trim();
 }
 
-function abortRejection(signal: AbortSignal): Promise<never> {
+function abortRejection(signal: AbortSignal, reason: () => string): Promise<never> {
   return new Promise((_, reject) => {
     signal.addEventListener('abort', () => {
-      reject(new Error(TIMED_OUT));
+      reject(new Error(reason()));
     });
   });
 }
 
-async function request<T>(url: string, read: (response: Response) => Promise<T>): Promise<T> {
+async function request<T>(
+  url: string,
+  read: (response: Response) => Promise<T>,
+  signal?: AbortSignal,
+): Promise<T> {
   const controller = new AbortController();
   const timer = setTimeout(() => {
     controller.abort();
   }, EXAMPLE_TIMEOUT_MS);
+  const stop =
+    signal === undefined ? controller.signal : AbortSignal.any([signal, controller.signal]);
+  const stopped = (): string => (controller.signal.aborted ? TIMED_OUT : CANCELLED);
 
   try {
-    const response = await fetch(url, { signal: controller.signal });
+    const response = await fetch(url, { signal: stop });
     if (!response.ok) {
       throw new ExampleLoadError({ kind: 'http', url, status: response.status });
     }
-    return await Promise.race([read(response), abortRejection(controller.signal)]);
+    return await Promise.race([read(response), abortRejection(stop, stopped)]);
   } catch (error) {
     if (error instanceof ExampleLoadError) {
       throw error;
@@ -116,17 +128,17 @@ async function request<T>(url: string, read: (response: Response) => Promise<T>)
     throw new ExampleLoadError({
       kind: 'network',
       url,
-      reason: controller.signal.aborted ? TIMED_OUT : reasonOf(error),
+      reason: stop.aborted ? stopped() : reasonOf(error),
     });
   } finally {
     clearTimeout(timer);
   }
 }
 
-async function fetchBinary(url: string): Promise<ArrayBuffer> {
-  return request(url, (response) => response.arrayBuffer());
+async function fetchBinary(url: string, signal?: AbortSignal): Promise<ArrayBuffer> {
+  return request(url, (response) => response.arrayBuffer(), signal);
 }
 
-async function fetchText(url: string): Promise<string> {
-  return request(url, (response) => response.text());
+async function fetchText(url: string, signal?: AbortSignal): Promise<string> {
+  return request(url, (response) => response.text(), signal);
 }

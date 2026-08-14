@@ -12,7 +12,8 @@ import {
 } from './__fixtures__/example-files';
 import { describeNextInstruction } from './views/derivations';
 import { parseExampleManifest } from './loading/manifest';
-import { buildProgram, listingFor, type LoadedProgram } from './loading/program';
+import { buildProgram, type LoadedProgram } from './loading/program';
+import { listingFor } from './views/program-view';
 
 const ARITHMETIC = /and pushes (-?\d+) (\S+) (-?\d+) = (-?\d+)\.$/;
 const BRANCH_TAKEN = /: true, so execution jumps to pc (\d+)\.$/;

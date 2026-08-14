@@ -87,6 +87,62 @@ describe('string concatenation', () => {
   });
 });
 
+describe('what the compiler added around the source', () => {
+  function labelsOverPool(
+    build: (pool: ConstantPoolBuilder) => readonly number[],
+  ): readonly string[] {
+    const pool = new ConstantPoolBuilder();
+    const code = build(pool);
+    const { instructions } = disassemble(Uint8Array.from(code));
+    const found = constructsFor(instructions, pool.build(), 'main', 'Synthetic');
+    return [...found.values()].map((construct) => construct.label);
+  }
+
+  it('names the wrapper a primitive is put into', () => {
+    expect(
+      labelsOverPool((pool) => [
+        0xb8,
+        0x00,
+        pool.methodref('java/lang/Integer', 'valueOf', '(I)Ljava/lang/Integer;'),
+      ]),
+    ).toEqual(['boxing']);
+  });
+
+  it('names the call that takes the primitive back out', () => {
+    expect(
+      labelsOverPool((pool) => [
+        0xb6,
+        0x00,
+        pool.methodref('java/lang/Integer', 'intValue', '()I'),
+      ]),
+    ).toEqual(['unboxing']);
+  });
+
+  it('names a null check nothing in the source asked for', () => {
+    expect(
+      labelsOverPool((pool) => [
+        0xb8,
+        0x00,
+        pool.methodref(
+          'java/util/Objects',
+          'requireNonNull',
+          '(Ljava/lang/Object;)Ljava/lang/Object;',
+        ),
+      ]),
+    ).toEqual(['null check']);
+  });
+
+  it('names the flag an assert statement is compiled behind', () => {
+    expect(
+      labelsOverPool((pool) => [
+        0xb2,
+        0x00,
+        pool.fieldref('Synthetic', '$assertionsDisabled', 'Z'),
+      ]),
+    ).toEqual(['assert']);
+  });
+});
+
 describe('the constructor call javac inserts', () => {
   function constructorConstructs(owner: string, className: string): readonly string[] {
     const pool = new ConstantPoolBuilder();

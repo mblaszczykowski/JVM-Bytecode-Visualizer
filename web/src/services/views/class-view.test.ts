@@ -48,9 +48,14 @@ describe('class facts', () => {
 
   it('says so plainly when a class implements nothing and extends nothing', () => {
     const facts = classFactsOf({
-      ...syntheticClass({ methods: [] }),
-      superClassName: '',
+      minorVersion: 0,
+      majorVersion: 65,
+      constantPool: [null],
       accessFlags: 0,
+      thisClassName: 'module-info',
+      interfaceNames: [],
+      fields: [],
+      methods: [],
     });
 
     expect(facts.find((fact) => fact.label === 'super_class')?.value).toBe('–');

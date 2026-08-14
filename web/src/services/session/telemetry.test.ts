@@ -1,6 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { observeUnhandledFailures, report, type ProgramContext } from './telemetry';
+import { syntheticClass } from '../../core/interpreter/__fixtures__/synthetic-class';
+import { readExampleManifest } from '../__fixtures__/example-files';
+import type { ExampleEntry, ExampleManifest } from '../loading/manifest';
+import { buildProgram, type LoadedProgram, type ProgramOrigin } from '../loading/program';
+
+import {
+  observeUnhandledFailures,
+  report,
+  telemetryContextOf,
+  type ProgramContext,
+} from './telemetry';
 
 const URL = 'https://telemetry.example/report';
 
@@ -11,8 +21,17 @@ interface Beacon {
 
 let sent: Beacon[] = [];
 
+interface Sent {
+  readonly report: Record<string, unknown>;
+  readonly program: Record<string, unknown>;
+}
+
+function envelopeOf(beacon: Beacon): Sent {
+  return JSON.parse(beacon.body) as Sent;
+}
+
 function fieldsOf(beacon: Beacon): Record<string, unknown> {
-  return (JSON.parse(beacon.body) as { report: Record<string, unknown> }).report;
+  return envelopeOf(beacon).report;
 }
 
 function stubBeacon(): void {
@@ -54,7 +73,7 @@ describe('report', () => {
     expect(sent).toEqual([]);
   });
 
-  it('sends the failure and the build to the configured endpoint', () => {
+  it('sends the failure and the program it happened in to the configured endpoint', () => {
     vi.stubEnv('VITE_TELEMETRY_URL', URL);
 
     const accepted = report(
@@ -89,15 +108,26 @@ describe('report', () => {
     });
   });
 
-  it('sends the counted fields of a report and no others', () => {
+  it('sends the counted fields of the envelope and the report inside it, and no others', () => {
     vi.stubEnv('VITE_TELEMETRY_URL', URL);
 
     report({ kind: 'panel-crash', errorName: 'TypeError', step: 1, totalSteps: 2 });
-    report({ kind: 'unhandled', errorName: 'RangeError', fromPromise: true });
+    report(
+      { kind: 'unhandled', errorName: 'RangeError', fromPromise: true },
+      { origin: 'example', exampleId: 'factorial' },
+    );
 
+    expect(sent.map((beacon) => Object.keys(envelopeOf(beacon)))).toEqual([
+      ['report', 'program', 'userAgent'],
+      ['report', 'program', 'userAgent'],
+    ]);
     expect(sent.map((beacon) => Object.keys(fieldsOf(beacon)))).toEqual([
       ['kind', 'errorName', 'step', 'totalSteps'],
       ['kind', 'errorName', 'fromPromise'],
+    ]);
+    expect(sent.map((beacon) => Object.keys(envelopeOf(beacon).program))).toEqual([
+      ['origin'],
+      ['origin', 'exampleId'],
     ]);
   });
 
@@ -112,6 +142,48 @@ describe('report', () => {
     });
 
     expect(report({ kind: 'unhandled', errorName: 'Error', fromPromise: false })).toBe(false);
+  });
+});
+
+describe('telemetryContextOf', () => {
+  function programFrom(origin: ProgramOrigin): LoadedProgram {
+    return buildProgram({
+      origin,
+      classFile: syntheticClass({
+        methods: [{ name: 'main', descriptor: '([Ljava/lang/String;)V', code: [0xb1] }],
+      }),
+    });
+  }
+
+  function firstExample(): ExampleEntry {
+    const entry = (readExampleManifest() as ExampleManifest).examples[0];
+    if (entry === undefined) {
+      throw new Error('the manifest is empty');
+    }
+    return entry;
+  }
+
+  it('names the example, which is public anyway', () => {
+    const entry = firstExample();
+
+    expect(telemetryContextOf(programFrom({ kind: 'example', entry }))).toEqual({
+      origin: 'example',
+      exampleId: entry.id,
+    });
+  });
+
+  it('counts the methods of an upload instead of naming the file', () => {
+    expect(telemetryContextOf(programFrom({ kind: 'upload', fileName: 'Payroll.class' }))).toEqual({
+      origin: 'upload',
+      methods: 1,
+    });
+  });
+
+  it('counts the methods of a compiled class instead of naming it', () => {
+    expect(telemetryContextOf(programFrom({ kind: 'compiled', className: 'Payroll' }))).toEqual({
+      origin: 'compiled',
+      methods: 1,
+    });
   });
 });
 

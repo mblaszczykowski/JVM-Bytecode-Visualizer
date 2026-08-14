@@ -10,9 +10,21 @@ import {
   THEME_STORAGE_KEY,
 } from './theme';
 
+function statedChromeColours(): void {
+  document.head.innerHTML =
+    '<meta name="theme-color" media="(prefers-color-scheme: light)" content="#f4f5f7" data-scheme="light">' +
+    '<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#08090a" data-scheme="dark">';
+}
+
+function chromeOverride(): string | undefined {
+  return document.head.querySelector<HTMLMetaElement>('meta[name="theme-color"]:not([media])')
+    ?.content;
+}
+
 afterEach(() => {
   localStorage.clear();
   document.documentElement.removeAttribute('data-theme');
+  document.head.innerHTML = '';
   vi.restoreAllMocks();
 });
 
@@ -67,6 +79,43 @@ describe('applyTheme', () => {
     applyTheme('system');
 
     expect(document.documentElement.hasAttribute('data-theme')).toBe(false);
+  });
+
+  it('repaints the browser chrome to match an explicit choice', () => {
+    statedChromeColours();
+
+    applyTheme('dark');
+    expect(chromeOverride()).toBe('#08090a');
+
+    applyTheme('light');
+    expect(chromeOverride()).toBe('#f4f5f7');
+  });
+
+  it('puts the override ahead of the media-scoped pair the browser reads in order', () => {
+    statedChromeColours();
+
+    applyTheme('dark');
+
+    const metas = [...document.head.querySelectorAll('meta[name="theme-color"]')];
+    expect(metas).toHaveLength(3);
+    expect(metas[0]?.hasAttribute('media')).toBe(false);
+  });
+
+  it('hands the browser back to the media queries when the reader follows the system', () => {
+    statedChromeColours();
+
+    applyTheme('dark');
+    applyTheme('system');
+
+    expect(chromeOverride()).toBeUndefined();
+    expect(document.head.querySelectorAll('meta[name="theme-color"]')).toHaveLength(2);
+  });
+
+  it('carries on where the page states no chrome colour to copy', () => {
+    expect(() => {
+      applyTheme('dark');
+    }).not.toThrow();
+    expect(chromeOverride()).toBeUndefined();
   });
 });
 

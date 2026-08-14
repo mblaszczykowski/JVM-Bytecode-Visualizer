@@ -1,3 +1,5 @@
+import type { LoadedProgram } from '../loading/program';
+
 export type Report =
   | {
       readonly kind: 'panel-crash';
@@ -17,10 +19,21 @@ export interface ProgramContext {
   readonly methods?: number;
 }
 
+export function telemetryContextOf(program: LoadedProgram): ProgramContext {
+  const { origin } = program;
+  switch (origin.kind) {
+    case 'example':
+      return { origin: 'example', exampleId: origin.entry.id };
+    case 'upload':
+      return { origin: 'upload', methods: program.methods.length };
+    case 'compiled':
+      return { origin: 'compiled', methods: program.methods.length };
+  }
+}
+
 interface Envelope {
   readonly report: Report;
   readonly program: ProgramContext;
-  readonly release: string;
   readonly userAgent: string;
 }
 
@@ -48,7 +61,6 @@ export function report(problem: Report, program: ProgramContext = NO_PROGRAM): b
     return send(url, {
       report: problem,
       program,
-      release: import.meta.env.MODE,
       userAgent: navigator.userAgent,
     });
   } catch {

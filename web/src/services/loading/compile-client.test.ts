@@ -87,6 +87,24 @@ describe('health check', () => {
     expect(fetchMock).toHaveBeenCalledWith(HEALTH_URL, expect.anything());
   });
 
+  it('releases the body it never reads, so the connection is not left open', async () => {
+    const cancel = vi.fn(() => Promise.resolve());
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve({
+          ok: true,
+          status: 200,
+          headers: new Headers(),
+          body: { cancel },
+        } as unknown as Response),
+      ),
+    );
+
+    await expect(checkHealth(BASE)).resolves.toBe(true);
+    expect(cancel).toHaveBeenCalledOnce();
+  });
+
   it('is unhealthy on an error status', async () => {
     stubFetch({ [HEALTH_URL]: () => statusResponse(503) });
 

@@ -1,4 +1,4 @@
-import type { GlossaryTermId } from './glossary';
+import type { GlossaryTermId } from '../views/glossary';
 
 const FIRST_TERM: GlossaryTermId = 'operand-stack';
 

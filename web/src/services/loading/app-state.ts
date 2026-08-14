@@ -13,20 +13,23 @@ import type { ExampleEntry } from './manifest';
 import { runProgram, type LoadedProgram } from './program';
 import { inlineRunner, isRunCancelled, type LoadContext } from './program-runner';
 
-export type AppState =
+export type SettledState =
   | { readonly status: 'idle' }
-  | {
-      readonly status: 'loading';
-      readonly label: string;
-      readonly steps: number | undefined;
-      readonly cancellable: boolean;
-      readonly resume: AppState;
-    }
   | { readonly status: 'ready'; readonly program: LoadedProgram }
   | {
       readonly status: 'error';
       readonly error: AppError;
       readonly program: LoadedProgram | undefined;
+    };
+
+export type AppState =
+  | SettledState
+  | {
+      readonly status: 'loading';
+      readonly label: string;
+      readonly steps: number | undefined;
+      readonly cancellable: boolean;
+      readonly resume: SettledState;
     };
 
 export const MAX_UPLOAD_BYTES = 512 * 1024;
@@ -37,18 +40,27 @@ export const MAX_STEP_LIMIT = 500_000;
 
 const STEP_LIMIT_FACTOR = 5;
 
-const BYTES_PER_STEP = 550;
+const MEASURED_RUN_STEPS = 500_000;
+
+const MEASURED_WORKER_HEAP_BYTES = 274 * 1024 ** 2;
+
+const MEASURED_TRANSFERRED_HEAP_BYTES = 610 * 1024 ** 2;
+
+const TRANSFERRED_HISTORIES_HELD_AT_ONCE = 2;
+
+const BYTES_PER_STEP =
+  (MEASURED_WORKER_HEAP_BYTES +
+    MEASURED_TRANSFERRED_HEAP_BYTES * TRANSFERRED_HISTORIES_HELD_AT_ONCE) /
+  MEASURED_RUN_STEPS;
 
 const MEMORY_SHARE = 1 / 8;
-
-const CONCURRENT_COPIES = 2;
 
 export function affordableStepLimit(): number {
   const gigabytes = reportedDeviceMemory();
   if (gigabytes === undefined) {
     return MAX_STEP_LIMIT;
   }
-  const affordable = (gigabytes * 1024 ** 3 * MEMORY_SHARE) / (BYTES_PER_STEP * CONCURRENT_COPIES);
+  const affordable = (gigabytes * 1024 ** 3 * MEMORY_SHARE) / BYTES_PER_STEP;
   return Math.max(DEFAULT_MAX_STEPS, Math.min(MAX_STEP_LIMIT, Math.floor(affordable)));
 }
 
@@ -59,9 +71,9 @@ function reportedDeviceMemory(): number | undefined {
     : undefined;
 }
 
-export const IDLE: AppState = { status: 'idle' };
+export const IDLE: SettledState = { status: 'idle' };
 
-export function failedState(error: AppError, program?: LoadedProgram): AppState {
+export function failedState(error: AppError, program?: LoadedProgram): SettledState {
   return { status: 'error', error, program };
 }
 
@@ -87,7 +99,7 @@ export function raisedStepLimit(current: number): number | undefined {
   return Math.min(current * STEP_LIMIT_FACTOR, ceiling);
 }
 
-export function stateFor(program: LoadedProgram): AppState {
+export function stateFor(program: LoadedProgram): SettledState {
   switch (program.outcome.kind) {
     case 'completed':
       return { status: 'ready', program };
@@ -111,14 +123,11 @@ export function stateFor(program: LoadedProgram): AppState {
 async function settled(
   build: () => Promise<LoadedProgram>,
   loaded?: LoadedProgram,
-): Promise<AppState> {
+): Promise<SettledState | undefined> {
   try {
     return stateFor(await build());
   } catch (error) {
-    if (isRunCancelled(error)) {
-      throw error;
-    }
-    return failedState(toAppError(error), loaded);
+    return isRunCancelled(error) ? undefined : failedState(toAppError(error), loaded);
   }
 }
 
@@ -126,9 +135,9 @@ export async function loadExampleState(
   entry: ExampleEntry,
   maxSteps: number = DEFAULT_MAX_STEPS,
   context: LoadContext = INLINE_LOAD,
-): Promise<AppState> {
+): Promise<SettledState | undefined> {
   return settled(async () => {
-    const resources = await fetchExampleResources(entry);
+    const resources = await fetchExampleResources(entry, context.signal);
     return runProgram(
       {
         origin: { kind: 'example', entry },
@@ -141,7 +150,7 @@ export async function loadExampleState(
   });
 }
 
-function oversizedState(fileName: string, bytes: number): AppState | undefined {
+function oversizedState(fileName: string, bytes: number): SettledState | undefined {
   return bytes > MAX_UPLOAD_BYTES
     ? failedState({ kind: 'file-too-large', fileName, bytes, limit: MAX_UPLOAD_BYTES })
     : undefined;
@@ -151,7 +160,7 @@ export async function loadUploadState(
   file: File,
   maxSteps: number = DEFAULT_MAX_STEPS,
   context: LoadContext = INLINE_LOAD,
-): Promise<AppState> {
+): Promise<SettledState | undefined> {
   const oversized = oversizedState(file.name, file.size);
   if (oversized !== undefined) {
     return oversized;
@@ -190,7 +199,7 @@ export async function loadCompiledState(
   compiled: CompiledClass,
   maxSteps: number = DEFAULT_MAX_STEPS,
   context: LoadContext = INLINE_LOAD,
-): Promise<AppState> {
+): Promise<SettledState | undefined> {
   const oversized = oversizedState(`${compiled.className}.class`, compiled.classBytes.byteLength);
   if (oversized !== undefined) {
     return oversized;
@@ -213,7 +222,7 @@ export function rerunState(
   program: LoadedProgram,
   maxSteps: number,
   context: LoadContext = INLINE_LOAD,
-): Promise<AppState> {
+): Promise<SettledState | undefined> {
   return rebuiltState(program, maxSteps, program.entry, context);
 }
 
@@ -226,7 +235,7 @@ export function runFromState(
   program: LoadedProgram,
   entry: EntryChoice,
   context: LoadContext = INLINE_LOAD,
-): Promise<AppState> {
+): Promise<SettledState | undefined> {
   return rebuiltState(program, program.maxSteps, entry, context);
 }
 
@@ -235,7 +244,7 @@ function rebuiltState(
   maxSteps: number,
   entry: EntryChoice | undefined,
   context: LoadContext,
-): Promise<AppState> {
+): Promise<SettledState | undefined> {
   return settled(
     () =>
       runProgram(
@@ -345,7 +354,13 @@ export function appReducer(model: AppModel, action: AppAction): AppModel {
         : model;
     case 'load-cancelled':
       return model.load.status === 'loading'
-        ? { ...model, load: model.load.resume, loadToken: action.token }
+        ? {
+            ...model,
+            load: model.load.resume,
+            compileFailure: undefined,
+            compileDiagnostics: NO_DIAGNOSTICS,
+            loadToken: action.token,
+          }
         : model;
     case 'load-settled':
       return action.token === model.loadToken ? { ...model, load: action.state } : model;

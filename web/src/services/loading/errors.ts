@@ -9,10 +9,12 @@ import {
   COMPILER_BUSY,
   type CompileDiagnostic,
   type CompileResult,
+  type DiagnosticKind,
   type ServiceFailure,
   type UnavailableReason,
 } from './compile-client';
 import { formatExampleLoadError, isExampleLoadError, type ExampleLoadDetail } from './examples';
+import { isRunAbandoned } from './program-runner';
 
 export type AppError =
   | { readonly kind: 'class-file'; readonly detail: ClassFileErrorDetail }
@@ -27,6 +29,7 @@ export type AppError =
     }
   | { readonly kind: 'file-unreadable'; readonly fileName: string; readonly reason: string }
   | { readonly kind: 'example-load'; readonly detail: ExampleLoadDetail }
+  | { readonly kind: 'run-abandoned'; readonly reason: string }
   | { readonly kind: 'unexpected'; readonly reason: string };
 
 export type ErrorSeverity = 'error' | 'warning' | 'info';
@@ -72,6 +75,11 @@ export function describeAppError(error: AppError): ErrorPresentation {
       };
     case 'example-load':
       return { severity: 'error', message: formatExampleLoadError(error.detail) };
+    case 'run-abandoned':
+      return {
+        severity: 'error',
+        message: `${error.reason} Lower the step limit, or run a method that records fewer steps.`,
+      };
     case 'unexpected':
       return { severity: 'error', message: `Unexpected failure: ${error.reason}.` };
   }
@@ -96,26 +104,42 @@ export function describeCompileFailure(failure: CompileFailure): ErrorPresentati
 export function describeCompileDiagnostics(
   diagnostics: readonly CompileDiagnostic[],
 ): ErrorPresentation | undefined {
-  const warnings = diagnostics.filter((diagnostic) => diagnostic.kind === 'warning');
-  const reported = warnings.length > 0 ? warnings : diagnostics;
-  const first = reported[0];
-  if (first === undefined) {
-    return undefined;
+  for (const reported of REPORTED_KINDS) {
+    const matching = diagnostics.filter((diagnostic) => diagnostic.kind === reported.kind);
+    const first = matching[0];
+    if (first !== undefined) {
+      return {
+        severity: reported.severity,
+        message:
+          `${reported.lead} ${countOf(matching.length, reported.kind)}${atLine(first)}: ` +
+          `${first.message}.${reported.tail}`,
+      };
+    }
   }
-
-  const { severity, noun, plural } = warnings.length > 0 ? WARNINGS : NOTES;
-  return {
-    severity,
-    message:
-      `javac compiled the class with ${countOf(reported.length, noun)}${atLine(first)}: ` +
-      `${first.message}. ${plural} do not stop a compile, so the class it produced is the one ` +
-      'on screen.',
-  };
+  return undefined;
 }
 
-const WARNINGS = { severity: 'warning', noun: 'warning', plural: 'Warnings' } as const;
+const COMPILED_WITH = 'javac compiled the class with';
 
-const NOTES = { severity: 'info', noun: 'note', plural: 'Notes' } as const;
+function survivesTheCompile(plural: string): string {
+  return ` ${plural} do not stop a compile, so the class it produced is the one on screen.`;
+}
+
+const REPORTED_KINDS = [
+  { kind: 'error', severity: 'error', lead: 'javac reported', tail: '' },
+  {
+    kind: 'warning',
+    severity: 'warning',
+    lead: COMPILED_WITH,
+    tail: survivesTheCompile('Warnings'),
+  },
+  { kind: 'note', severity: 'info', lead: COMPILED_WITH, tail: survivesTheCompile('Notes') },
+] as const satisfies readonly {
+  kind: DiagnosticKind;
+  severity: ErrorSeverity;
+  lead: string;
+  tail: string;
+}[];
 
 function countOf(total: number, noun: string): string {
   return total === 1 ? `1 ${noun}` : `${String(total)} ${noun}s, the first`;
@@ -219,7 +243,7 @@ function describeVmError(error: VmError): string {
         `OutOfMemoryError ${at}. ` +
         (error.resource === 'heap'
           ? `The program asked for ${error.requested.toLocaleString('en-US')} array elements at once, and this machine holds at most ${error.limit.toLocaleString('en-US')}.`
-          : `Recording this run would have cost ${error.requested.toLocaleString('en-US')} copied values, and the budget is ${error.limit.toLocaleString('en-US')}. Every step keeps its own copy of the heap, the console lines and the standard-library objects the run has interned, so a large array written in a loop, or a loop that prints, costs far more than the values themselves.`) +
+          : `Recording this run would have cost ${error.requested.toLocaleString('en-US')} copied values, and the budget is ${error.limit.toLocaleString('en-US')}. Every step copies the frames it changed, three values per local slot and per operand, alongside the heap, the console lines and the standard-library objects the run has interned. A deep call stack or a method with many local slots costs the most.`) +
         ` ${historyStands}`
       );
     case 'unsupported-field':
@@ -241,6 +265,9 @@ export function toAppError(error: unknown): AppError {
   }
   if (isExampleLoadError(error)) {
     return { kind: 'example-load', detail: error.detail };
+  }
+  if (isRunAbandoned(error)) {
+    return { kind: 'run-abandoned', reason: error.message };
   }
   return { kind: 'unexpected', reason: error instanceof Error ? error.message : String(error) };
 }

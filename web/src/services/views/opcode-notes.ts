@@ -1,5 +1,6 @@
 import { isClassFileError, parseFieldDescriptor, type ConstantPool } from '../../core/classfile';
 import { lookupOpcode, type Instruction } from '../../core/disassembler';
+import { EXTERNAL_FIELDS } from '../../core/interpreter';
 
 import { calleeOf, memberOf, slotsOf } from './member-refs';
 
@@ -32,10 +33,19 @@ export const OPERAND_ADDRESSING: Readonly<Record<string, OperandAddressing>> = {
     indexDepth: 2,
     access: 'write',
   },
-  arraylength: { roles: ['→ array'], handleDepth: 1, access: 'read' },
+  arraylength: { roles: ['→ array'], handleDepth: 1 },
   newarray: { roles: ['→ length'] },
-  getfield: { roles: ['→ object'], handleDepth: 1, access: 'read' },
-  putfield: { roles: ['→ value', '→ object'], handleDepth: 2, access: 'write' },
+  getfield: { roles: ['→ object'] },
+  putfield: { roles: ['→ value', '→ object'] },
+  pop: { roles: ['→ discarded'] },
+  pop2: { roles: ['→ discarded', '→ discarded'] },
+  dup: { roles: ['→ copied'] },
+  dup_x1: { roles: ['→ copied', '→ kept'] },
+  dup_x2: { roles: ['→ copied', '→ kept', '→ kept'] },
+  dup2: { roles: ['→ copied', '→ copied'] },
+  dup2_x1: { roles: ['→ copied', '→ copied', '→ kept'] },
+  dup2_x2: { roles: ['→ copied', '→ copied', '→ kept', '→ kept'] },
+  swap: { roles: ['→ swapped', '→ swapped'] },
   athrow: { roles: ['→ thrown'] },
   areturn: { roles: ['→ returned'] },
   ifnull: { roles: ['→ tested'] },
@@ -91,6 +101,10 @@ function fieldDelta(
   };
 }
 
+export function knownStaticFields(): string {
+  return [...EXTERNAL_FIELDS.values()].map((value) => value.label).join(', ');
+}
+
 function fieldSlots(descriptor: string): number | undefined {
   try {
     return slotsOf(parseFieldDescriptor(descriptor));
@@ -127,18 +141,20 @@ const NOTES: readonly (readonly [string, OpcodeNote])[] = [
   ],
   [
     'iload',
-    { help: 'Pushes the local variable slot named by the operand onto the operand stack.' },
+    {
+      help: 'Pushes the int in the local variable slot named by the operand onto the operand stack.',
+    },
   ],
   [
     'istore',
     {
-      help: 'Pops the top of the operand stack into the local variable slot named by the operand.',
+      help: 'Pops an int off the operand stack into the local variable slot named by the operand.',
     },
   ],
   [
     'aload',
     {
-      help: 'Pushes the reference held by the local variable slot named by the operand.',
+      help: 'Pushes the reference in the local variable slot named by the operand onto the operand stack.',
       pushedKind: 'ref',
     },
   ],
@@ -175,8 +191,8 @@ const NOTES: readonly (readonly [string, OpcodeNote])[] = [
     'pop2',
     {
       help:
-        'Discards the top two values of the operand stack. On a real JVM the same opcode ' +
-        'discards a single long or double instead, and this subset has neither.',
+        'Discards the top two values of the operand stack. On a real JVM the same opcode also ' +
+        'discards a single long or double, and this subset has neither.',
     },
   ],
   ['dup', { help: 'Duplicates the top value of the operand stack.', pushedKind: 'stack-top' }],
@@ -315,7 +331,7 @@ const NOTES: readonly (readonly [string, OpcodeNote])[] = [
     {
       help:
         'Reads the static field named by the constant pool and pushes its value. This machine ' +
-        'knows System.out and no other static field.',
+        `knows ${knownStaticFields()} and no other static field.`,
       pushedKind: 'descriptor',
       varies: fieldDelta(0, 'read'),
     },
@@ -364,8 +380,9 @@ const NOTES: readonly (readonly [string, OpcodeNote])[] = [
     'invokestatic',
     {
       help:
-        'Resolves a static method through the constant pool, pops its arguments into the new ' +
-        "frame's slots and starts executing it.",
+        'Pops the arguments and calls the static method named by the constant pool, with no ' +
+        'receiver. A method of the loaded class opens a frame with the arguments in its first ' +
+        'slots; the few standard-library methods this machine knows run without one.',
       pushedKind: 'descriptor',
       frame: 'call',
       varies: callDelta(0),
@@ -398,11 +415,11 @@ function slotNotes(): readonly (readonly [string, OpcodeNote])[] {
     return [
       [
         `iload_${number}`,
-        { help: `Pushes local variable slot ${number} onto the operand stack.` },
+        { help: `Pushes the int in local variable slot ${number} onto the operand stack.` },
       ] as const,
       [
         `istore_${number}`,
-        { help: `Pops the top of the operand stack into local variable slot ${number}.` },
+        { help: `Pops an int off the operand stack into local variable slot ${number}.` },
       ] as const,
       [
         `aload_${number}`,
@@ -413,7 +430,7 @@ function slotNotes(): readonly (readonly [string, OpcodeNote])[] {
       ] as const,
       [
         `astore_${number}`,
-        { help: `Pops the top of the operand stack into local variable slot ${number}.` },
+        { help: `Pops a reference off the operand stack into local variable slot ${number}.` },
       ] as const,
     ];
   });

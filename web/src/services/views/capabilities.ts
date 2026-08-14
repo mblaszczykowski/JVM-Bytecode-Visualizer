@@ -19,7 +19,7 @@ export interface CapabilitySummary {
 }
 
 export const CALL_SCOPE_NOTE =
-  'Everything must resolve inside the uploaded class or in the small slice of the standard library this machine models. Its objects, constructors, instance methods and fields run, and so do System.out printing and the Math helpers; anything else stops the run.';
+  'Everything must resolve inside the loaded class or in the small slice of the standard library this machine models. Its objects, constructors, instance methods and fields run, and so do System.out printing and the Math helpers; anything else stops the run.';
 
 type OpcodeRange = readonly [first: number, last: number];
 

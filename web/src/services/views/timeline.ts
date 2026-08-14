@@ -76,10 +76,10 @@ function eventBetween(before: Snapshot, after: Snapshot): TimelineEventKind | un
   if (next < depth) {
     return 'return';
   }
-  if (consoleGrew(before.consoleOutput ?? [], after.consoleOutput ?? [])) {
+  if (consoleGrew(before.consoleOutput, after.consoleOutput)) {
     return 'print';
   }
-  if (heapChanged(before.heap ?? [], after.heap ?? [])) {
+  if (heapChanged(before.heap, after.heap)) {
     return 'heap-write';
   }
   return branchWasTaken(before, after) ? 'branch' : undefined;
@@ -145,12 +145,8 @@ export function bucketEvents(
     while (index < buckets.length && event.step > (buckets[index]?.lastStep ?? -1)) {
       index++;
     }
-    const bucket = buckets[index];
-    if (bucket === undefined) {
+    if (buckets[index] === undefined) {
       break;
-    }
-    if (event.step < bucket.firstStep) {
-      continue;
     }
     const current = marks[index];
     if (current === undefined || MARK_ORDER.indexOf(event.kind) < MARK_ORDER.indexOf(current)) {

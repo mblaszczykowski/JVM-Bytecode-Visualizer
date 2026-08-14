@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
 
 import { OPCODES } from '../../core/disassembler';
 
-import { GLOSSARY, glossaryEntry, glossaryTermForPanel, type GlossaryTermId } from './glossary';
+import { GLOSSARY, glossaryEntry } from './glossary';
 
 function primerText(): string {
   const candidates = [
@@ -68,23 +68,6 @@ describe('glossary', () => {
         expect(related).not.toBe(entry.id);
       }
     }
-  });
-
-  it('answers for the panels that draw a mechanism, and stays quiet for the rest', () => {
-    const panels: Readonly<Record<string, GlossaryTermId>> = {
-      Source: 'line-number-table',
-      'Class file': 'constant-pool',
-      Bytecode: 'opcode',
-      'Call stack': 'call-stack',
-      'Operand stack': 'operand-stack',
-      Locals: 'local-variable-slot',
-    };
-
-    for (const [panel, term] of Object.entries(panels)) {
-      expect(glossaryTermForPanel(panel), panel).toBe(term);
-    }
-    expect(glossaryTermForPanel('Console')).toBeUndefined();
-    expect(glossaryTermForPanel('Heap')).toBeUndefined();
   });
 
   it('counts the operand-free instructions out of the opcode table', () => {

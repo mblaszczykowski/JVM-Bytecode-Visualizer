@@ -8,7 +8,8 @@ import {
 
 import { readExampleBytes, readExampleText } from '../__fixtures__/example-files';
 import { constantPoolComments, constantPoolIndexOf, resolveConstant } from './constant-pool';
-import { buildProgram, findListing, type LoadedProgram } from '../loading/program';
+import { buildProgram, type LoadedProgram } from '../loading/program';
+import { findListing } from './program-view';
 
 function factorialProgram(): LoadedProgram {
   return buildProgram({

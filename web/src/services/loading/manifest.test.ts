@@ -126,6 +126,38 @@ describe('manifest schema', () => {
     expect(result.success).toBe(false);
   });
 
+  it.each([
+    { name: 'a relative path out of the examples directory', classFile: '../../secret.class' },
+    { name: 'an absolute path', classFile: '/etc/passwd.class' },
+    { name: 'a query string', classFile: 'A.class?x=1' },
+    { name: 'a percent-encoded traversal', classFile: 'A%2e%2e.class' },
+    { name: 'a fragment', classFile: 'A.class#frag' },
+  ])('refuses $name as a class file name', ({ classFile }) => {
+    const manifest = readManifest();
+    const [first, ...rest] = manifest.examples;
+
+    const result = exampleManifestSchema.safeParse({
+      ...manifest,
+      examples: [{ ...first, classFile }, ...rest],
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it('refuses a source file name that is not a plain .java file beside the class', () => {
+    const manifest = readManifest();
+    const [first, ...rest] = manifest.examples;
+
+    for (const sourceFile of ['../Factorial.java', '/Factorial.java', 'Factorial.java?x=1']) {
+      const result = exampleManifestSchema.safeParse({
+        ...manifest,
+        examples: [{ ...first, sourceFile }, ...rest],
+      });
+
+      expect(result.success, sourceFile).toBe(false);
+    }
+  });
+
   it('rejects duplicate identifiers', () => {
     const manifest = readManifest();
     const [first] = manifest.examples;
