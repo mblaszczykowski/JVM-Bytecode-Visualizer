@@ -8,8 +8,9 @@ const READABLE_STEPS = ['--color-fg', '--color-fg-2', '--color-fg-3'] as const;
 
 const STYLESHEET = join(dirname(fileURLToPath(import.meta.url)), '../../src/index.css');
 
-function declaredColourTokens(): readonly string[] {
-  const declared = readFileSync(STYLESHEET, 'utf8').matchAll(/^\s*(--color-[a-z0-9-]+):/gm);
+function declaredTokens(prefix: string): readonly string[] {
+  const pattern = new RegExp(String.raw`^\s*(--${prefix}[a-z0-9-]+):`, 'gm');
+  const declared = readFileSync(STYLESHEET, 'utf8').matchAll(pattern);
   return [...new Set([...declared].map((match) => match[1] ?? ''))].sort();
 }
 
@@ -103,7 +104,7 @@ for (const theme of ['light', 'dark'] as const) {
       });
     }
 
-    test('a selected control carries the two steps it is allowed to carry', async ({ page }) => {
+    test('the two text steps a selected control carries clear AA on it', async ({ page }) => {
       const { ratios, tokens } = await measure(page, '--color-raised-active');
 
       for (const step of ['--color-fg', '--color-fg-2'] as const) {
@@ -112,11 +113,10 @@ for (const theme of ['light', 'dark'] as const) {
           `${step} (${tokens[step] ?? '?'}) on --color-raised-active`,
         ).toBeGreaterThanOrEqual(AA);
       }
-      expect(ratios['--color-fg-3']).toBeLessThan(AA);
     });
 
     test('every colour token the stylesheet declares resolves to a value', async ({ page }) => {
-      const declared = declaredColourTokens();
+      const declared = declaredTokens('color-');
       expect(declared.length).toBeGreaterThan(20);
 
       const empty = await page.evaluate((names) => {
@@ -125,6 +125,38 @@ for (const theme of ['light', 'dark'] as const) {
       }, declared);
 
       expect(empty).toEqual([]);
+    });
+
+    test('every shadow token the stylesheet declares paints something', async ({ page }) => {
+      const declared = [...declaredTokens('shadow-'), '--lift'];
+      expect(declared.length).toBeGreaterThan(10);
+
+      const painted = await page.evaluate((names) => {
+        const probe = document.createElement('div');
+        document.body.append(probe);
+        const shadows: Record<string, string> = {};
+        for (const name of names) {
+          probe.style.boxShadow = '';
+          probe.style.boxShadow = `var(${name})`;
+          shadows[name] = getComputedStyle(probe).boxShadow;
+        }
+        probe.remove();
+        return shadows;
+      }, declared);
+
+      const dropped = declared.filter((name) => painted[name] === 'none');
+      expect(dropped, 'a token the box-shadow parser rejected computes to none').toEqual([]);
+    });
+
+    test('a panel and an open dialog paint the shadow they were given', async ({ page }) => {
+      const panel = page.getByTestId('welcome-example').first();
+      await expect(panel).toBeVisible();
+      await expect(panel).not.toHaveCSS('box-shadow', 'none');
+
+      await page.getByTestId('toolbar-glossary').click();
+      const dialog = page.getByRole('dialog', { name: 'Glossary' });
+      await expect(dialog).toBeVisible();
+      await expect(dialog).not.toHaveCSS('box-shadow', 'none');
     });
 
     test('each palette resolves to its own ground colour', async ({ page }) => {

@@ -29,6 +29,7 @@
   --color-accent-text: light-dark(#2f379e, #c3caff);
   --color-accent-wash: light-dark(#e9ebfa, #171a2c);
   --color-accent-fill: light-dark(#d3d6f4, #212649);
+  /* Carries an alpha because the current-row wash sits over whatever row surface is beneath it. */
   --color-now: light-dark(rgb(79 91 213 / 0.13), rgb(91 108 240 / 0.1));
 
   --color-ok: light-dark(#1a7f37, #3fb950);
@@ -51,24 +52,23 @@
   --radius-control: 6px;
   --radius-chip: 4px;
 
+  /* Each alias names a use of its base, so one of them can change without touching the rest. */
   --shadow-panel: inset 0 0 0 1px var(--color-line), var(--lift);
-  --shadow-panel-ink: inset 0 0 0 1px var(--color-line), var(--lift);
-  --shadow-panel-raised: inset 0 0 0 1px var(--color-line), var(--lift);
+  --shadow-panel-ink: var(--shadow-panel);
+  --shadow-panel-raised: var(--shadow-panel);
   --shadow-row-outline: inset 0 0 0 1px var(--color-line);
-  --shadow-control-inset: inset 0 0 0 1px var(--color-line);
+  --shadow-control-inset: var(--shadow-row-outline);
   --shadow-control-raised: inset 0 0 0 1px var(--color-line-strong);
   --shadow-current: inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 34%, transparent);
   --shadow-current-strong: inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 50%, transparent);
   --shadow-drop-target: inset 0 0 0 1px var(--color-accent);
-  --shadow-glow-ok: 0 0 0 3px color-mix(in srgb, var(--color-ok) 18%, transparent);
   --shadow-banner-error: inset 0 0 0 1px color-mix(in srgb, var(--color-error) 42%, transparent);
   --shadow-banner-warn: inset 0 0 0 1px color-mix(in srgb, var(--color-warn) 42%, transparent);
   --shadow-overlay:
-    light-dark(0 16px 48px rgb(0 0 0 / 0.16), 0 16px 48px rgb(0 0 0 / 0.6)),
-    inset 0 0 0 1px var(--color-line);
+    0 16px 48px light-dark(rgb(0 0 0 / 0.16), rgb(0 0 0 / 0.6)), inset 0 0 0 1px var(--color-line);
 
   --font-ui: 'Inter Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --font-sans: 'Inter Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-sans: var(--font-ui);
   --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 
   --text-legend: 10px;
@@ -95,7 +95,7 @@
   :root {
     color-scheme: light dark;
 
-    --lift: light-dark(0 1px 2px rgb(16 20 28 / 0.06), 0 0 rgb(0 0 0 / 0));
+    --lift: 0 1px 2px light-dark(rgb(16 20 28 / 0.06), rgb(0 0 0 / 0));
   }
 
   :root[data-theme='light'] {
@@ -131,8 +131,7 @@
   button,
   label,
   summary,
-  [role='tab'],
-  [role='radio'] {
+  [role='tab'] {
     font-weight: 500;
   }
 
@@ -184,8 +183,7 @@
 }
 
 @utility scroll-visible {
-  scrollbar-width: thin;
-  scrollbar-color: var(--color-scrollbar) transparent;
+  @apply scroll-slim;
 
   &::-webkit-scrollbar {
     width: 8px;
