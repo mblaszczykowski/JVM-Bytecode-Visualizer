@@ -55,4 +55,19 @@ describe('the run worker', () => {
     expect(() => structuredClone(command)).not.toThrow();
     expect(structuredClone(command).classFile.thisClassName).toBe(classFile.thisClassName);
   });
+
+  it('answers a command it cannot read with a failure the boundary can carry', async () => {
+    const posted = await postedFor({} as unknown as RunCommand);
+
+    const failed = posted.at(-1);
+    if (failed?.kind !== 'failed') {
+      throw new Error('the worker reported no failure');
+    }
+    expect(posted).toHaveLength(1);
+    expect(failed.error.stack).toMatch(/^TypeError: /);
+
+    const carried = structuredClone(failed);
+    expect(carried.error.message).toBe(failed.error.message);
+    expect(carried.error.stack).toBe(failed.error.stack);
+  });
 });

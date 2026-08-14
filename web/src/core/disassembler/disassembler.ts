@@ -88,6 +88,10 @@ interface DecodedOperands {
   readonly branchTarget: number | undefined;
 }
 
+function recordedOperandCount(specs: readonly OperandSpec[]): number {
+  return specs.at(-1)?.role === 'mandated-zero' ? specs.length - 1 : specs.length;
+}
+
 function readOperands(
   view: DataView,
   start: number,
@@ -95,12 +99,15 @@ function readOperands(
   instructionOffset: number,
 ): DecodedOperands {
   const operands: number[] = [];
+  const recorded = recordedOperandCount(specs);
   let branchTarget: number | undefined;
   let cursor = start;
 
-  for (const spec of specs) {
+  for (const [position, spec] of specs.entries()) {
     const value = readOperand(view, cursor, spec.type);
-    operands.push(value);
+    if (position < recorded) {
+      operands.push(value);
+    }
     if (spec.role === 'branch-offset') {
       branchTarget = instructionOffset + value;
     }

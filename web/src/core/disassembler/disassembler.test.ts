@@ -46,17 +46,16 @@ function codeOf(methodName: string): Uint8Array {
 
 function renderDecoded(instruction: Instruction): string {
   const specs = lookupOpcode(instruction.opcode)?.operands ?? [];
-  const shown = specs.at(-1)?.role === 'mandated-zero' ? specs.slice(0, -1) : specs;
 
-  const operands = shown.map((spec, index) => {
-    const value = instruction.operands[index] ?? 0;
-    if (spec.role === 'branch-offset') {
+  const operands = instruction.operands.map((value, position) => {
+    const role = specs[position]?.role;
+    if (role === 'branch-offset') {
       return String(instruction.branchTarget ?? 0);
     }
-    if (spec.role === 'constant-pool-index') {
+    if (role === 'constant-pool-index') {
       return `#${String(value)}`;
     }
-    return spec.role === 'array-type' ? (arrayTypeName(value) ?? String(value)) : String(value);
+    return role === 'array-type' ? (arrayTypeName(value) ?? String(value)) : String(value);
   });
   return `${String(instruction.offset)}: ${instruction.mnemonic} ${operands.join(', ')}`.trimEnd();
 }
@@ -227,8 +226,17 @@ describe('disassemble: javap parity on OpcodeZoo.class', () => {
     expect(withOperands.get('checkcast')).toEqual([15]);
     expect(withOperands.get('instanceof')).toEqual([15]);
     expect(withOperands.get('multianewarray')).toEqual([13, 2]);
-    expect(withOperands.get('invokeinterface')).toEqual([42, 1, 0]);
-    expect(withOperands.get('invokedynamic')).toEqual([46, 0, 0]);
+    expect(withOperands.get('invokeinterface')).toEqual([42, 1]);
+    expect(withOperands.get('invokedynamic')).toEqual([46, 0]);
+  });
+
+  it('drops the mandated zero byte the call instructions end with, as javap does', () => {
+    const invokeinterface = disassemble(codeIn(OPCODE_ZOO, 'size')).instructions.find(
+      (instruction) => instruction.mnemonic === 'invokeinterface',
+    );
+
+    expect(lookupOpcode(0xb9)?.operands.at(-1)?.role).toBe('mandated-zero');
+    expect(invokeinterface?.operands).toEqual([36, 2]);
   });
 
   it('decodes both switches with all their arms', () => {

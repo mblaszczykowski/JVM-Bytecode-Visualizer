@@ -1,20 +1,19 @@
 /**
- * Disassembler fixture: a class that walks straight out of the interpreter's int-only
- * subset. Nothing here is executable by the VM in this project; the point is the decoder,
- * which has to list every one of these instructions with the right mnemonic and skip its
- * operands by the right number of bytes.
- *
- * Between them the methods below make javac emit operands of every fixed width the opcode
- * table knows (1, 2, 3 and 4 bytes) plus both variable-length switches, which the decoder
- * is expected to stop at:
+ * Disassembler fixture: between them these methods make javac emit an operand of every fixed
+ * width the opcode table knows, plus both variable-length switches. Some of them decode
+ * entirely inside the interpreter's int-only subset (table, lookup, array) and some reach well
+ * outside it (ldc2_w, anewarray, multianewarray, invokeinterface, invokedynamic). The decoder
+ * has to list either kind with the right mnemonic and skip its operands by the right number of
+ * bytes:
  *
  *   ldc, newarray            - 1 operand byte
  *   ldc2_w, getstatic, invokevirtual, invokespecial, new, anewarray, checkcast, instanceof
  *                            - 2 operand bytes
  *   multianewarray           - 3 operand bytes
  *   invokeinterface, invokedynamic
- *                            - 4 operand bytes
- *   tableswitch, lookupswitch - variable length, sized by padding and operands
+ *                            - 4 operand bytes, the last of which javap does not print
+ *   tableswitch, lookupswitch - variable length: the decoder steps over the padding and every
+ *                              arm rather than stopping at the instruction
  *
  * Compilation (this exact command produces the committed OpcodeZoo.class):
  *   javac -g --release 21 OpcodeZoo.java
