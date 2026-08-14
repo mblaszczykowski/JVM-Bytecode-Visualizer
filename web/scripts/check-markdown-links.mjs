@@ -3,39 +3,27 @@
 // Every relative link and image in the committed markdown has to resolve, and every fragment has
 // to name a heading that exists. Nothing here touches the network: external URLs are left alone.
 
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { readFileSync, statSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
-const SKIPPED_DIRECTORIES = new Set([
-  '.git',
-  '.idea',
-  '.local',
-  'blob-report',
-  'coverage',
-  'dist',
-  'node_modules',
-  'playwright-report',
-  'target',
-  'test-results',
-]);
-
 const EXTERNAL_SCHEME = /^[a-z][a-z0-9+.-]*:/i;
 
+// git decides what counts: tracked files plus new ones that are not ignored. That is exactly the
+// set a fresh clone would carry, so nothing gitignored is walked and no file has to be named here.
 function markdownFiles(directory) {
-  const found = [];
-  for (const entry of readdirSync(directory, { withFileTypes: true })) {
-    if (entry.isDirectory()) {
-      if (!SKIPPED_DIRECTORIES.has(entry.name)) {
-        found.push(...markdownFiles(join(directory, entry.name)));
-      }
-    } else if (entry.name.endsWith('.md')) {
-      found.push(join(directory, entry.name));
-    }
-  }
-  return found;
+  const listed = execFileSync(
+    'git',
+    ['ls-files', '--cached', '--others', '--exclude-standard', '-z', '*.md'],
+    { cwd: directory, encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 },
+  );
+  return listed
+    .split('\0')
+    .filter(Boolean)
+    .map((name) => join(directory, name));
 }
 
 function withoutCode(markdown) {
@@ -50,11 +38,24 @@ function targetsIn(markdown) {
   const inline = /!?\[[^\]]*\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)/g;
   const reference = /^\s{0,3}\[[^\]]+\]:\s*<?(\S+)>?/gm;
 
+  // The rendered diagrams are embedded with <picture>, so their paths sit in HTML attributes
+  // rather than in markdown image syntax.
+  const htmlImage = /<(?:img|source)\b[^>]*\b(?:src|srcset)\s*=\s*"([^"]*)"/gi;
+
   for (const pattern of [inline, reference]) {
     for (const match of markdown.matchAll(pattern)) {
       const target = match[1];
       if (target !== undefined) {
         targets.push(target);
+      }
+    }
+  }
+
+  for (const match of markdown.matchAll(htmlImage)) {
+    for (const candidate of (match[1] ?? '').split(',')) {
+      const url = candidate.trim().split(/\s+/)[0];
+      if (url !== undefined && url !== '') {
+        targets.push(url);
       }
     }
   }

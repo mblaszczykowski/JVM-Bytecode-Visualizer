@@ -58,6 +58,7 @@ export default defineConfig({
       thresholds: {
         perFile: true,
         'src/core/**/*.ts': { lines: 90, branches: 90, functions: 90 },
+        'src/services/**/*.ts': { lines: 80, branches: 40, functions: 85 },
       },
     },
   },

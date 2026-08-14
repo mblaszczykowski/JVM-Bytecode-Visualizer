@@ -18,21 +18,31 @@ const REACT_PACKAGES = [
 const CORE_FORBIDDEN_IMPORTS = [
   {
     group: REACT_PACKAGES,
-    message: 'src/core stays pure TypeScript: no React, DOM or animation imports (ADR-0001).',
+    message: 'src/core stays pure TypeScript: no React, DOM or animation imports.',
   },
   {
-    group: ['**/components/**', '**/hooks/**', '**/services/**', '**/app/**', '**/App', '**/main'],
+    group: [
+      '**/components/**',
+      '**/hooks/**',
+      '**/services/**',
+      '**/workers/**',
+      '**/app/**',
+      '**/App',
+      '**/main',
+    ],
     message:
-      'src/core must not depend on the UI/application layer; dependencies flow UI to core only (ADR-0001).',
+      'src/core must not depend on the UI/application layer; dependencies flow UI to core only.',
   },
 ];
 
 const REACT_LAYER_MODULES = String.raw`(^|/)(components|hooks)/(?!__fixtures__/)|(^|/)(App|main)$`;
 
 // Everything outside src/core reaches core through the three barrels. A deep import of a module
-// the barrel already re-exports is drift, and it is how a boundary stops being one.
+// the barrel already re-exports is drift, and it is how a boundary stops being one. The tail
+// allows digits and further path segments, so int32 and a future opcodes/iadd are caught too.
+// Every block outside src/core attaches it.
 const CORE_DEEP_IMPORT = {
-  regex: String.raw`(^|/)core/(classfile|disassembler|interpreter)/(?!index$)(?!__fixtures__/)[a-z-]+$`,
+  regex: String.raw`(^|/)core/(classfile|disassembler|interpreter)/(?!index$)(?!__fixtures__/)[a-z0-9-]+(/[a-z0-9-]+)*$`,
   message:
     'Import from the module barrel (core/classfile, core/disassembler, core/interpreter) rather than reaching past it.',
 };
@@ -47,6 +57,31 @@ const SERVICES_FORBIDDEN_IMPORTS = [
     regex: REACT_LAYER_MODULES,
     message:
       'src/services must not depend on the React layer above it; dependencies flow components and hooks to services to core. A recorded run under __fixtures__ is test data and stays allowed.',
+  },
+];
+
+// The three buckets under src/services run in one direction. loading assembles a program,
+// views derive what the panels read from one that is already assembled, and session holds the
+// state that outlives any of them. So a view may name the loader's types and never call into
+// it, and session may do neither with the other two. Both rules allow a type import, because
+// erased edges cost nothing at run time and a view model is described in the loader's terms.
+// A `.test.ts` is exempt: building a real program from a committed class file is how these
+// derivations are exercised, and that needs buildProgram itself.
+const VIEWS_FORBIDDEN_IMPORTS = [
+  {
+    regex: String.raw`(^|/)loading/`,
+    allowTypeImports: true,
+    message:
+      'services/views derives view models from a program that is already loaded. Take what the derivation needs as an argument, or import the type; calling into services/loading is how program-view.ts ended up with thirteen of its ingredients on the other side of the boundary.',
+  },
+];
+
+const SESSION_FORBIDDEN_IMPORTS = [
+  {
+    regex: String.raw`(^|/)(loading|views)/`,
+    allowTypeImports: true,
+    message:
+      'services/session is the leaf: the theme, the deep link, the glossary and telemetry outlive any one program, so nothing in it may call into services/loading or services/views. A type import is fine.',
   },
 ];
 
@@ -65,7 +100,7 @@ const WORKER_FORBIDDEN_IMPORTS = [
 const NO_DOM_GLOBALS = ['window', 'document', 'localStorage'].map((name) => ({
   name,
   message:
-    'No DOM here: src/core is plain TypeScript (ADR-0001) and a worker has no window (ADR-0006). Take what you need as an argument from the layer that does have a DOM.',
+    'No DOM here: src/core is plain TypeScript and a worker has no window. Take what you need as an argument from the layer that does have a DOM.',
 }));
 
 const BANNED_CLASSNAMES = [
@@ -192,14 +227,16 @@ export default tseslint.config(
   },
 
   {
-    files: ['src/**/*.{ts,tsx}', 'tests/**/*.ts'],
+    files: ['tests/**/*.ts'],
     rules: {
       'no-restricted-syntax': ['error', ...PROSE_RULES],
     },
   },
 
+  // A flat-config rule entry replaces rather than merges, so every block that sets
+  // no-restricted-syntax has to repeat PROSE_RULES.
   {
-    files: ['src/**/*.tsx', 'src/components/**/*.ts'],
+    files: ['src/**/*.{ts,tsx}'],
     rules: {
       'no-restricted-syntax': ['error', ...PROSE_RULES, ...BANNED_CLASSNAME_RULES],
     },
@@ -224,7 +261,34 @@ export default tseslint.config(
   },
 
   {
-    files: ['src/{components,hooks}/**/*.{ts,tsx}'],
+    files: ['src/services/views/**/*.ts'],
+    ignores: ['src/services/**/*.test.ts'],
+    rules: {
+      '@typescript-eslint/no-restricted-imports': [
+        'error',
+        {
+          patterns: [...SERVICES_FORBIDDEN_IMPORTS, ...VIEWS_FORBIDDEN_IMPORTS, CORE_DEEP_IMPORT],
+        },
+      ],
+    },
+  },
+
+  {
+    files: ['src/services/session/**/*.ts'],
+    ignores: ['src/services/**/*.test.ts'],
+    rules: {
+      '@typescript-eslint/no-restricted-imports': [
+        'error',
+        {
+          patterns: [...SERVICES_FORBIDDEN_IMPORTS, ...SESSION_FORBIDDEN_IMPORTS, CORE_DEEP_IMPORT],
+        },
+      ],
+    },
+  },
+
+  // src/App.tsx and src/main.tsx match neither of the directory globs above.
+  {
+    files: ['src/{components,hooks}/**/*.{ts,tsx}', 'src/*.{ts,tsx}'],
     rules: {
       '@typescript-eslint/no-restricted-imports': ['error', { patterns: [CORE_DEEP_IMPORT] }],
     },
@@ -233,7 +297,10 @@ export default tseslint.config(
   {
     files: ['src/workers/**/*.ts'],
     rules: {
-      '@typescript-eslint/no-restricted-imports': ['error', { patterns: WORKER_FORBIDDEN_IMPORTS }],
+      '@typescript-eslint/no-restricted-imports': [
+        'error',
+        { patterns: [...WORKER_FORBIDDEN_IMPORTS, CORE_DEEP_IMPORT] },
+      ],
       // The DOM lib is in scope here and these tests run under jsdom, so a DOM reference would
       // otherwise typecheck and pass, then throw in the real worker. The worker's own globals
       // (self, postMessage, addEventListener) are not restricted.

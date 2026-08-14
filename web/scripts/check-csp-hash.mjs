@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
 // The script-src directive in vercel.json allows the inline theme script in web/index.html by
-// sha256 (ADR-0010). Editing the script without recomputing the hash leaves the deployed page
-// ignoring the stored theme, and nothing else would report it.
+// sha256. Editing the script without recomputing the hash leaves the deployed page ignoring the
+// stored theme, and nothing else would report it.
 
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
@@ -115,8 +115,7 @@ function main() {
   }
   fail(
     'The CSP hash and the script it is meant to allow have drifted apart. Put the ' +
-      'web/index.html value into the script-src directive of vercel.json, and update the policy ' +
-      'quoted in docs/adr/0010-security-headers-for-the-page.md to match. The hash covers the ' +
+      'web/index.html value into the script-src directive of vercel.json. The hash covers the ' +
       "script's text content exactly, whitespace and all.",
   );
 }

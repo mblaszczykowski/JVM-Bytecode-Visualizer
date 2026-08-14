@@ -2,6 +2,10 @@
 // until the day one of the modules reads the other's binding during evaluation, at which point
 // it is a TDZ crash in a build nobody changed. Cheaper to refuse the cycle.
 //
+// This reads text rather than the TypeScript AST, so an `import type` edge counts like any other.
+// A type-level loop is erased at compile time, so refusing one is a false positive. Telling the
+// two apart would mean running the compiler here; breaking the edge instead is cheaper.
+//
 // Run by `npm run imports -w web`, and by the web workflow.
 
 import { readFileSync, readdirSync, statSync } from 'node:fs';
@@ -12,8 +16,10 @@ const WEB = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SRC = join(WEB, 'src');
 
 const SOURCE = /\.tsx?$/;
-const TEST = /\.test\.tsx?$/;
-const RELATIVE_IMPORT = /(?:\bfrom\s*|\bimport\s*\(\s*)['"](\.[^'"]*)['"]/g;
+
+// `from './x'`, `import('./x')` and the bare side-effect form `import './x'`. A self-registering
+// module is pulled in with the last one, and a loop through it is the crash this script refuses.
+const RELATIVE_IMPORT = /(?:\bfrom\s*|\bimport\s*(?:\(\s*)?)['"](\.[^'"]*)['"]/g;
 
 function sourceFiles(dir) {
   return readdirSync(dir).flatMap((name) => {
@@ -21,7 +27,7 @@ function sourceFiles(dir) {
     if (statSync(path).isDirectory()) {
       return sourceFiles(path);
     }
-    return SOURCE.test(name) && !TEST.test(name) ? [path] : [];
+    return SOURCE.test(name) ? [path] : [];
   });
 }
 

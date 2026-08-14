@@ -2,6 +2,7 @@
 
 import {
   copyFileSync,
+  mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
@@ -10,7 +11,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { basename, dirname, join } from 'node:path';
+import { basename, dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
@@ -88,6 +89,26 @@ const FIXTURES = Object.freeze([
     javap: undefined,
     runs: true,
   },
+  // Read as bytes by the unit tests of the loading layer: no expected stdout, no javap dump.
+  // Counter and Library have no main, and InfiniteLoop never returns from the one it has.
+  {
+    className: 'Counter',
+    directory: 'src/services/__fixtures__',
+    javap: undefined,
+    runs: false,
+  },
+  {
+    className: 'InfiniteLoop',
+    directory: 'src/services/__fixtures__',
+    javap: undefined,
+    runs: false,
+  },
+  {
+    className: 'Library',
+    directory: 'src/services/__fixtures__',
+    javap: undefined,
+    runs: false,
+  },
   // The end-to-end fixtures are loaded through the file input, so only the class file is read:
   // no expected stdout, no javap dump. Counter and Library have no main to run at all.
   {
@@ -110,40 +131,58 @@ const FIXTURES = Object.freeze([
   },
 ]);
 
+// Scanned whole rather than one declared directory at a time: a scan driven by FIXTURES cannot
+// see a fixture directory that is missing from FIXTURES, which is the case worth catching.
+const FIXTURE_ROOTS = Object.freeze(['src', 'tests/e2e/fixtures']);
+
 function sourcePath(fixture) {
   return join(WEB_DIR, fixture.directory, `${fixture.className}.java`);
 }
 
+function fixtureDirectories() {
+  return [...new Set(FIXTURES.map((fixture) => fixture.directory))];
+}
+
+function javaSourcesUnder(directory) {
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) {
+      return javaSourcesUnder(path);
+    }
+    return entry.name.endsWith('.java') ? [path] : [];
+  });
+}
+
 function requireEverySourceDeclared() {
   const declared = new Set(FIXTURES.map((fixture) => sourcePath(fixture)));
-  const undeclared = [];
-
-  for (const directory of new Set(FIXTURES.map((fixture) => fixture.directory))) {
-    for (const entry of readdirSync(join(WEB_DIR, directory))) {
-      const path = join(WEB_DIR, directory, entry);
-      if (entry.endsWith('.java') && !declared.has(path)) {
-        undeclared.push(`${directory}/${entry}`);
-      }
-    }
-  }
+  const undeclared = FIXTURE_ROOTS.flatMap((root) => javaSourcesUnder(join(WEB_DIR, root)))
+    .filter((path) => !declared.has(path))
+    .map((path) => relative(WEB_DIR, path))
+    .sort();
 
   if (undeclared.length > 0) {
     throw new FixtureBuildError(
       `These fixture sources are not declared in build-test-fixtures.mjs, so their class file ` +
         `and expected output are not rebuilt:\n${undeclared.map((path) => `  • ${path}`).join('\n')}\n\n` +
-        'Add them to FIXTURES.',
+        `Add them to FIXTURES, and add their directory to the drift check in ` +
+        '.github/workflows/web.yml.',
     );
   }
 }
 
-function compileAll(classesDir) {
+// One javac run per directory, not one for everything: tests/e2e/fixtures and
+// src/services/__fixtures__ both hold a Counter.java and a Library.java, and javac refuses two
+// sources declaring the same class.
+function compileDirectory(directory, classesDir) {
   runTool('javac', [
     '-g',
     '--release',
     JAVA_RELEASE,
     '-d',
     classesDir,
-    ...FIXTURES.map((fixture) => sourcePath(fixture)),
+    ...FIXTURES.filter((fixture) => fixture.directory === directory).map((fixture) =>
+      sourcePath(fixture),
+    ),
   ]);
 }
 
@@ -216,13 +255,21 @@ function main() {
   const jdk = requirePinnedJdk();
   requireEverySourceDeclared();
 
-  const classesDir = mkdtempSync(join(tmpdir(), 'jvm-bytecode-test-fixtures-'));
+  const classesRoot = mkdtempSync(join(tmpdir(), 'jvm-bytecode-test-fixtures-'));
   try {
-    console.log(`javac -g --release ${JAVA_RELEASE} → ${classesDir}  (${jdk})`);
-    compileAll(classesDir);
+    console.log(`javac -g --release ${JAVA_RELEASE} → ${classesRoot}  (${jdk})`);
+
+    const classesDirOf = new Map();
+    for (const directory of fixtureDirectories()) {
+      const classesDir = join(classesRoot, directory.replaceAll('/', '_'));
+      mkdirSync(classesDir, { recursive: true });
+      compileDirectory(directory, classesDir);
+      classesDirOf.set(directory, classesDir);
+    }
 
     for (const fixture of FIXTURES) {
       const { className } = fixture;
+      const classesDir = classesDirOf.get(fixture.directory);
       requireExpectedMajorVersion(classesDir, className);
 
       const classFile = `${className}.class`;
@@ -241,7 +288,7 @@ function main() {
 
     console.log(`\nDone: ${FIXTURES.length} fixtures rebuilt from their sources.`);
   } finally {
-    rmSync(classesDir, { recursive: true, force: true });
+    rmSync(classesRoot, { recursive: true, force: true });
   }
 }
 

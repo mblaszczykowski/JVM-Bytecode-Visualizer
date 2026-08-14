@@ -4,8 +4,23 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="light dark" />
-    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f4f5f7" />
-    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#08090a" />
+    <!--
+      Browser chrome for a reader following the system. An explicit light or dark choice adds a
+      media-less meta ahead of these, because the browser uses the first one whose media matches;
+      see applyTheme in web/src/services/session/theme.ts.
+    -->
+    <meta
+      name="theme-color"
+      media="(prefers-color-scheme: light)"
+      content="#f4f5f7"
+      data-scheme="light"
+    />
+    <meta
+      name="theme-color"
+      media="(prefers-color-scheme: dark)"
+      content="#08090a"
+      data-scheme="dark"
+    />
     <!--
       Applies the stored theme before the first paint. It has to be inline and here: a module runs
       after the document is painted, so a reader who chose dark would see a white flash first.
@@ -33,8 +48,8 @@
     />
     <!--
       Root-relative so it resolves under any host. Facebook, X and Slack all require an absolute
-      URL here, so replace it with https://<deployed-domain>/og-image.jpg once the domain is
-      fixed. Until then the preview stays blank.
+      URL, so a deploy has to replace this with https://<domain>/og-image.jpg for link previews
+      to resolve.
     -->
     <meta property="og:image" content="/og-image.jpg" />
     <meta property="og:image:width" content="1200" />
@@ -43,6 +58,9 @@
   </head>
   <body>
     <div id="root"></div>
+    <noscript>
+      This page parses and runs Java bytecode in your browser, so it needs JavaScript enabled.
+    </noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

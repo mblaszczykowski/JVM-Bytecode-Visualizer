@@ -1,8 +1,11 @@
 import { execFileSync } from 'node:child_process';
 
 // The class files both fixture builders write are committed and byte-diffed by CI, and both read
-// javap output back with regexes. One JDK produces them; anything else is drift.
-export const REQUIRED_JDK_FEATURE = 25;
+// javap output back with regexes. One JDK produces them; anything else is drift. The patch
+// number is part of the pin because a single StackMapTable byte or a reordered javap line inside
+// a feature release is enough to turn the fixtures job red on a change that touched nothing
+// related. .github/workflows/web.yml installs this exact version.
+export const REQUIRED_JDK_VERSION = '25.0.4';
 export const JAVA_RELEASE = '21';
 export const EXPECTED_MAJOR_VERSION = 65;
 
@@ -42,18 +45,19 @@ export function requirePinnedJdk() {
   }));
 
   for (const { tool, version } of reported) {
-    if (Number(/(\d+)/.exec(version)?.[1]) === REQUIRED_JDK_FEATURE) {
+    if (version === REQUIRED_JDK_VERSION) {
       continue;
     }
     throw new FixtureBuildError(
       `${tool} ${version} cannot reproduce the committed fixtures. They were compiled by a JDK ` +
-        `${REQUIRED_JDK_FEATURE} javac and disassembled by its javap: the class files are ` +
-        'byte-diffed in CI, and the javap layout the builders parse changed between ' +
-        `releases.\nInstall JDK ${REQUIRED_JDK_FEATURE} and put it on PATH. The class files ` +
-        `still target Java ${JAVA_RELEASE} (major version ${EXPECTED_MAJOR_VERSION}) through ` +
-        '--release, so the bytecode is unchanged. Moving to another JDK means regenerating ' +
-        `every fixture with it and committing the result, plus raising REQUIRED_JDK_FEATURE in ` +
-        'fixtures/jdk.mjs and the JDK version of the fixtures job in .github/workflows/web.yml.',
+        `${REQUIRED_JDK_VERSION} javac and disassembled by its javap: the class files are ` +
+        'byte-diffed in CI, and both the bytecode and the javap layout the builders parse can ' +
+        `move between releases.\nInstall Temurin ${REQUIRED_JDK_VERSION} and put it on PATH. ` +
+        `The class files still target Java ${JAVA_RELEASE} (major version ` +
+        `${EXPECTED_MAJOR_VERSION}) through --release, so the bytecode is unchanged. Moving to ` +
+        'another JDK means regenerating every fixture with it and committing the result, plus ' +
+        'raising REQUIRED_JDK_VERSION in fixtures/jdk.mjs and the java-version of the fixtures ' +
+        'job in .github/workflows/web.yml.',
     );
   }
 

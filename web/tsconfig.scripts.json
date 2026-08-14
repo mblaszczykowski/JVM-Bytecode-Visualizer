@@ -24,5 +24,11 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["scripts/**/*.mjs", "fixtures/**/*.mjs", "fixtures/**/*.ts", "corpus/**/*.mjs"]
+  "include": [
+    "eslint.config.js",
+    "scripts/**/*.mjs",
+    "fixtures/**/*.mjs",
+    "fixtures/**/*.ts",
+    "corpus/**/*.mjs"
+  ]
 }

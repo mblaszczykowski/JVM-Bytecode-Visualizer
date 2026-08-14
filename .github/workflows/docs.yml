@@ -21,10 +21,10 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '20'
           cache: 'npm'
@@ -37,3 +37,62 @@ jobs:
 
       - name: Check every relative link in the documentation
         run: node web/scripts/check-markdown-links.mjs
+
+      # eslint bans the em-dash in the TypeScript under web/src and web/tests. Markdown, the build
+      # scripts and these workflows are outside it, so they are checked here. web/eslint.config.js
+      # is excluded because it holds the character its own rule matches on, and the pattern is
+      # built with printf so this file does not match itself.
+      - name: Check for em-dashes
+        run: |
+          if git grep -n -F "$(printf '\u2014')" -- \
+            '*.md' '*.mmd' '*.js' '*.mjs' '*.yml' '*.yaml' ':!web/eslint.config.js'; then
+            echo 'Em-dashes are banned: use a period, a comma, a colon or parentheses.'
+            exit 1
+          fi
+
+  diagrams:
+    name: diagrams match their sources
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Restore the browser
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      # --with-deps also brings in fonts-liberation, which is what Arial resolves to here. Without
+      # it the labels would be measured against a different font and every box would move.
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Re-render the diagrams
+        run: npm run diagrams -w web
+
+      # git add first, so the diff sees a newly added diagram too.
+      - name: Fail on any drift
+        run: |
+          git add --all docs/diagrams
+          git diff --cached --exit-code docs/diagrams
+
+      # Rendering needs a browser and a Linux font set, so hand back what this job produced rather
+      # than asking whoever broke it to reproduce the environment.
+      - name: Upload the fresh render
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: diagrams
+          path: docs/diagrams/
+          retention-days: 7

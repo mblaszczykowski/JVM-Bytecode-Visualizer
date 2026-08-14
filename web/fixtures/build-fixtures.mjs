@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -211,6 +211,25 @@ const EXAMPLES = Object.freeze([
       'the operand stack doing the work.',
   },
 ]);
+
+// writeArtifacts empties public/examples first, so an example deleted from EXAMPLES shows up in
+// the CI diff. One added to fixtures/src and nowhere else would not: it would compile into
+// nothing and sit there as a dead source file.
+function requireEveryExampleDeclared() {
+  const declared = new Set(EXAMPLES.map((example) => `${example.className}.java`));
+  const undeclared = readdirSync(SOURCE_DIR)
+    .filter((entry) => entry.endsWith('.java') && !declared.has(entry))
+    .sort();
+
+  if (undeclared.length > 0) {
+    throw new FixtureBuildError(
+      'These example sources are not declared in build-fixtures.mjs, so nothing compiles them ' +
+        'and no manifest entry describes them:\n' +
+        `${undeclared.map((name) => `  • fixtures/src/${name}`).join('\n')}\n\n` +
+        'Add them to EXAMPLES, with a title, tagline and description, or delete them.',
+    );
+  }
+}
 
 function compileAll(classesDir) {
   const sources = [
@@ -531,6 +550,7 @@ function writeArtifacts(classesDir, expectedResults, printedOutput) {
 
 function main() {
   const jdk = requirePinnedJdk();
+  requireEveryExampleDeclared();
 
   const classesDir = mkdtempSync(join(tmpdir(), 'jvm-bytecode-fixtures-'));
   try {
