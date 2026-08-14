@@ -1,0 +1,11 @@
+%% The call stack of the Factorial example at its deepest: main at the top, then factorial(4), factorial(3), factorial(2) and the base case factorial(1), each frame holding its own operand stack.
+flowchart TB
+  subgraph after["Call stack at its deepest"]
+    direction TB
+    f0["main (pc past the invokestatic)<br/>operand stack: (empty)"]
+    f1["factorial(4)<br/>operand stack: 4"]
+    f2["factorial(3)<br/>operand stack: 3"]
+    f3["factorial(2)<br/>operand stack: 2"]
+    f4["factorial(1), the base case<br/>operand stack: (empty)"]
+    f0 --> f1 --> f2 --> f3 --> f4
+  end

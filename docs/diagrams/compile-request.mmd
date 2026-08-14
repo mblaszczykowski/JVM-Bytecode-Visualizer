@@ -1,0 +1,14 @@
+%% One compile request: the service takes a slot in a bounded pool, spawns a child JVM with the source on stdin, arms a watchdog that kills it at the deadline, and answers with class bytes, diagnostics or a timeout.
+sequenceDiagram
+  participant Client
+  participant Parent as ForkedCompiler
+  participant Watchdog as watchdog
+  participant Child as child JVM
+  Client->>Parent: POST /api/compile
+  Parent->>Parent: submit to a bounded pool
+  Note over Parent: saturated pool answers 503
+  Parent->>Child: spawn, {typeName, source} on stdin
+  Parent->>Watchdog: arm the deadline
+  Child-->>Parent: result document on stdout
+  Watchdog-->>Child: destroyForcibly at the deadline
+  Parent-->>Client: class bytes, diagnostics, or timed out

@@ -1,0 +1,10 @@
+%% Resolving invokestatic #7 through the constant pool: entry #7 is a Methodref pointing at a Class and a NameAndType, whose Utf8 entries spell out Factorial.factorial:(I)I.
+flowchart LR
+  cp["#7"] --> mr["Methodref"]
+  mr --> cls["#8 Class → #10 Utf8 'Factorial'"]
+  mr --> nat["#9 NameAndType"]
+  nat --> nm["#11 Utf8 'factorial'"]
+  nat --> desc["#12 Utf8 '(I)I'"]
+  cls --> out["Factorial.factorial:(I)I"]
+  nm --> out
+  desc --> out

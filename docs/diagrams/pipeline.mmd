@@ -1,0 +1,17 @@
+%% How a class file reaches the screen: bundled examples, uploads and the optional compile service supply the bytes, which the parser, disassembler and interpreter turn into a snapshot history the React UI replays by index.
+flowchart LR
+  subgraph browser["Browser"]
+    examples["Bundled examples"] --> bytes
+    upload["Uploaded .class"] --> bytes
+    editor["Java editor"]
+    bytes[".class bytes"] --> parser["Parser<br/>DataView cursor"]
+    parser --> disasm["Disassembler<br/>Instruction list"]
+    disasm --> interp["Interpreter<br/>int subset, arrays, objects"]
+    interp --> history["Snapshot history<br/>one per step"]
+    history --> ui["React UI<br/>replay = index lookup"]
+  end
+  subgraph backend["compile-service (optional)"]
+    javac["javac in a child JVM<br/>in memory, never executes"]
+  end
+  editor -->|"POST /api/compile"| javac
+  javac -->|"class bytes, base64"| bytes

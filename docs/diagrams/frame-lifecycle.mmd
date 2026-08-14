@@ -1,0 +1,12 @@
+%% One invokestatic, step by step: the execution loop records a snapshot, advances the caller's pc, pushes a callee frame, and resumes the caller at the stored pc once the callee returns.
+sequenceDiagram
+  participant Machine as execution loop
+  participant Caller as caller frame
+  participant Callee as callee frame
+  Machine->>Caller: fetch at pc, record snapshot
+  Machine->>Caller: pc = nextOffset
+  Machine->>Caller: dispatch invokestatic
+  Caller->>Callee: pop n args, push new frame
+  Note over Callee: runs to ireturn
+  Callee->>Caller: pop frame, push return value
+  Machine->>Caller: resume at the stored pc

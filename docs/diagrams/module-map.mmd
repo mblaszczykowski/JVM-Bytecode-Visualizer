@@ -1,0 +1,31 @@
+%% The four layers of the frontend and the direction of their dependencies: components and hooks depend on services and on core; services depend on core and on the worker; the worker depends on core; core depends on nothing above it.
+flowchart TD
+  subgraph core["web/src/core: pure TypeScript domain"]
+    classfile["classfile<br/>ByteReader, parser, descriptors"]
+    disassembler["disassembler<br/>opcode table, decoding"]
+    interpreter["interpreter<br/>execute, frames, heap, int32"]
+    classfile --> disassembler
+    disassembler --> interpreter
+    classfile --> interpreter
+  end
+  subgraph worker["web/src/workers: the run, off the main thread"]
+    protocol["run-protocol.ts<br/>runAndStream, batches of 2,000"]
+    shim["run-program.worker.ts<br/>message wiring"]
+    shim --> protocol
+  end
+  subgraph app["web/src/services: application layer, 28 modules"]
+    program["loading/program.ts<br/>parse, disassemble, listings"]
+    runner["loading/program-runner.ts<br/>inline or worker, cancellation"]
+    derive["views/opcode-notes.ts, views/derivations.ts<br/>views/operand-roles.ts, views/constant-pool.ts<br/>views/timeline.ts, what the panels read"]
+    state["loading/app-state.ts, session/deep-link.ts<br/>session/embed.ts, session/theme.ts"]
+    compileClient["loading/compile-client.ts<br/>optional service"]
+  end
+  subgraph ui["web/src/components + hooks: React"]
+    player["useExecutionPlayer<br/>index, play, seek"]
+    panels["panels/, transport/, chrome/<br/>dialogs/, welcome/, ui/"]
+  end
+  app --> core
+  app --> worker
+  worker --> core
+  ui --> app
+  ui --> core
