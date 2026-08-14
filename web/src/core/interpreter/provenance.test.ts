@@ -78,14 +78,14 @@ describe('local slot provenance', () => {
   it('stamps a slot with the step that stored into it', () => {
     const snapshots = run([BIPUSH, 7, ISTORE_0, ILOAD_0, IRETURN]);
 
-    expect(frameAt(snapshots, 2).localOrigins?.[0]).toBe(1);
+    expect(frameAt(snapshots, 2).localOrigins[0]).toBe(1);
   });
 
   it('moves the origin forward when the slot is written again', () => {
     const snapshots = run([ICONST_1, ISTORE_0, ICONST_2, ISTORE_0, ILOAD_0, IRETURN]);
 
-    expect(frameAt(snapshots, 2).localOrigins?.[0]).toBe(1);
-    expect(frameAt(snapshots, 4).localOrigins?.[0]).toBe(3);
+    expect(frameAt(snapshots, 2).localOrigins[0]).toBe(1);
+    expect(frameAt(snapshots, 4).localOrigins[0]).toBe(3);
   });
 
   it('leaves an uninitialised slot without an origin', () => {
@@ -93,8 +93,8 @@ describe('local slot provenance', () => {
 
     const frame = frameAt(snapshots, 2);
     expect(frame.locals[0]).toBeUndefined();
-    expect(frame.localOrigins?.[0]).toBeUndefined();
-    expect(frame.localOrigins?.[1]).toBe(1);
+    expect(frame.localOrigins[0]).toBeUndefined();
+    expect(frame.localOrigins[1]).toBe(1);
   });
 });
 
@@ -115,7 +115,7 @@ describe('provenance across a call', () => {
     const callee = snapshots[entered]?.callStack[1];
 
     expect(callee?.locals[0]).toBe(3);
-    expect(callee?.localOrigins?.[0]).toBe(entered - 1);
+    expect(callee?.localOrigins[0]).toBe(entered - 1);
   });
 
   it('dates a returned value from the return, on the caller stack', () => {
@@ -139,6 +139,6 @@ describe('provenance across a call', () => {
     const caller = snapshots[returned]?.callStack[0];
 
     expect(caller?.operandStack).toEqual([1]);
-    expect(caller?.operandOrigins?.[0]).toBe(returned - 1);
+    expect(caller?.operandOrigins[0]).toBe(returned - 1);
   });
 });

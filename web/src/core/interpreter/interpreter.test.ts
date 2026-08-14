@@ -350,6 +350,30 @@ describe('execute: instruction semantics', () => {
     expect(expectCompleted(execute(classFile)).returnValue).toBe(7);
   });
 
+  it('refuses a call whose arguments do not fit the max_locals the callee declares', () => {
+    const pool = new ConstantPoolBuilder();
+    const add3 = pool.methodref(SYNTHETIC_CLASS_NAME, 'add3', '(III)I');
+    const classFile = syntheticClass({
+      pool,
+      methods: [
+        { name: 'main', descriptor: '()I', code: [0x04, 0x05, 0x06, 0xb8, 0x00, add3, 0xac] },
+        {
+          name: 'add3',
+          descriptor: '(III)I',
+          maxLocals: 0,
+          code: [0x1a, 0x1b, 0x60, 0x1c, 0x60, 0xac],
+        },
+      ],
+    });
+
+    expect(expectVmError(execute(classFile))).toMatchObject({
+      kind: 'invalid-state',
+      message: 'add3() was called with 3 argument slots, outside max_locals = 0',
+      offset: 3,
+      methodName: 'main',
+    });
+  });
+
   it('resumes the caller after a void call', () => {
     const pool = new ConstantPoolBuilder();
     const noop = pool.methodref(SYNTHETIC_CLASS_NAME, 'noop', '()V');

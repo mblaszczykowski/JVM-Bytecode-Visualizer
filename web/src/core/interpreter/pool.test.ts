@@ -8,7 +8,6 @@ import {
   classNameAt,
   describeConstant,
   parameterKinds,
-  poolEntry,
   resolveMemberReference,
   resolveMethodref,
   utf8,
@@ -34,26 +33,6 @@ function notA(index: number, expected: string): VmFaultDetail {
     message: `constant pool entry #${String(index)} is not a ${expected}`,
   };
 }
-
-describe('poolEntry', () => {
-  it('reads the entry an index names', () => {
-    const pool = new ConstantPoolBuilder();
-    const index = pool.utf8('hello');
-
-    expect(poolEntry(pool.build(), index)).toEqual({ tag: ConstantTag.Utf8, value: 'hello' });
-  });
-
-  it.each([
-    { case: 'the reserved slot 0', index: 0 },
-    { case: 'an index past the end', index: 200 },
-    { case: 'a negative index', index: -1 },
-  ])('returns undefined for $case', ({ index }) => {
-    const pool = new ConstantPoolBuilder();
-    pool.utf8('hello');
-
-    expect(poolEntry(pool.build(), index)).toBeUndefined();
-  });
-});
 
 describe('utf8', () => {
   it('reads the string of a Utf8 entry', () => {

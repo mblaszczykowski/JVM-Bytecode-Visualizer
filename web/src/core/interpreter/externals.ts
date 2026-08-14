@@ -180,7 +180,7 @@ function nonZero(divisor: number): number {
 const ROWS: readonly ExternalRow[] = [
   mathRow('max', '(II)I', (left, right) => (left >= right ? left : right)),
   mathRow('min', '(II)I', (left, right) => (left <= right ? left : right)),
-  mathRow('abs', '(I)I', (value) => iabs(value)),
+  mathRow('abs', '(I)I', iabs),
   mathRow('floorDiv', '(II)I', (left, right) => ifloorDiv(left, nonZero(right))),
   mathRow('floorMod', '(II)I', (left, right) => ifloorMod(left, nonZero(right))),
   ...printStreamRows(),

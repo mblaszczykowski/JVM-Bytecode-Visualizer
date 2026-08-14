@@ -9,6 +9,7 @@ export {
 } from './interpreter';
 export {
   DEFAULT_MAX_STEPS,
+  NO_CONSOLE_OUTPUT,
   NO_EXTERNALS,
   NO_HEAP,
   NO_SNAPSHOTS,

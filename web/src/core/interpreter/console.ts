@@ -21,11 +21,12 @@ export class ConsoleOutput {
       if (index < last) {
         this.completed.push((this.open ?? '') + part);
         this.open = undefined;
-      } else if (part !== '' || this.open !== undefined) {
+        this.revision += 1;
+      } else if (part !== '') {
         this.open = (this.open ?? '') + part;
+        this.revision += 1;
       }
     }
-    this.revision += 1;
   }
 
   writeLine(text: string): void {

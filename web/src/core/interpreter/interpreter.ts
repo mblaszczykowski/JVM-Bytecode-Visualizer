@@ -1,6 +1,7 @@
 import {
   ConstantTag,
   isStatic,
+  poolEntry,
   type ClassFile,
   type CodeAttribute,
   type ExceptionTableEntry,
@@ -32,6 +33,7 @@ import {
   prepareMethod,
   push,
   setPc,
+  sourceLineAt,
   storeLocal,
   type Frame,
   type RunClock,
@@ -61,18 +63,12 @@ import {
   classNameAt,
   describeConstant,
   parameterKinds,
-  poolEntry,
   resolveMemberReference,
   resolveMethodref,
   utf8,
   type MethodReference,
 } from './pool';
-import {
-  createTerminalSnapshot,
-  SnapshotWriter,
-  sourceLineAt,
-  type MachineState,
-} from './snapshot';
+import { createTerminalSnapshot, SnapshotWriter, type MachineState } from './snapshot';
 import { catches, isThrowableClass } from './throwable';
 import {
   DEFAULT_MAX_CALL_DEPTH,
@@ -104,7 +100,8 @@ export function execute(classFile: ClassFile, options: ExecuteOptions = {}): Exe
   }
 
   const snapshots: Snapshot[] = [];
-  const writer = new SnapshotWriter();
+  const budget = new RecordingBudget();
+  const writer = new SnapshotWriter(budget);
   const prepared = new Map<MethodInfo, PreparedMethod>();
 
   const clock: RunClock = { step: 0 };
@@ -115,7 +112,6 @@ export function execute(classFile: ClassFile, options: ExecuteOptions = {}): Exe
     return failedRun(error, snapshots, 0, entry.method.name);
   }
 
-  const budget = new RecordingBudget();
   const machine: Machine = {
     classFile,
     prepared,
@@ -149,7 +145,7 @@ export function execute(classFile: ClassFile, options: ExecuteOptions = {}): Exe
           machine.callStack,
           machine,
           fetched.instruction,
-          sourceLineAt(frame),
+          sourceLineAt(frame.method, frame.pc),
         ),
       );
       frame.currentPc = offset;

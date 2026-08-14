@@ -3,6 +3,7 @@ import type { Instruction } from '../disassembler';
 export const NO_SNAPSHOTS: readonly Snapshot[] = Object.freeze([]);
 export const NO_HEAP: readonly HeapObject[] = Object.freeze([]);
 export const NO_EXTERNALS: readonly ExternalValue[] = Object.freeze([]);
+export const NO_CONSOLE_OUTPUT: readonly string[] = Object.freeze([]);
 
 export type ValueKind = 'int' | 'ref' | 'external';
 
@@ -41,10 +42,10 @@ export interface StackFrame {
   readonly operandStack: readonly number[];
   readonly locals: readonly (number | undefined)[];
   readonly localNames: readonly (string | undefined)[];
-  readonly operandKinds?: readonly ValueKind[];
-  readonly localKinds?: readonly (ValueKind | undefined)[];
-  readonly operandOrigins?: readonly number[];
-  readonly localOrigins?: readonly (number | undefined)[];
+  readonly operandKinds: readonly ValueKind[];
+  readonly localKinds: readonly (ValueKind | undefined)[];
+  readonly operandOrigins: readonly number[];
+  readonly localOrigins: readonly (number | undefined)[];
 }
 
 export interface Snapshot {
@@ -52,9 +53,9 @@ export interface Snapshot {
   readonly callStack: readonly StackFrame[];
   readonly currentInstruction?: Instruction;
   readonly sourceLine?: number;
-  readonly heap?: readonly HeapObject[];
-  readonly consoleOutput?: readonly string[];
-  readonly externals?: readonly ExternalValue[];
+  readonly heap: readonly HeapObject[];
+  readonly consoleOutput: readonly string[];
+  readonly externals: readonly ExternalValue[];
 }
 
 export type VmFaultDetail =

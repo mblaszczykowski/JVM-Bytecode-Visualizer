@@ -3,7 +3,7 @@ import {
   ConstantTag,
   isClassFileError,
   parseMethodDescriptor,
-  poolEntry as entryAt,
+  poolEntry,
   utf8At,
   type ConstantPool,
   type ConstantPoolEntry,
@@ -100,10 +100,6 @@ export function resolveMemberReference(
     name: utf8(pool, nameAndType.nameIndex),
     descriptor: utf8(pool, nameAndType.descriptorIndex),
   };
-}
-
-export function poolEntry(pool: ConstantPool, index: number): ConstantPoolEntry | undefined {
-  return entryAt(pool, index);
 }
 
 export function utf8(pool: ConstantPool, index: number): string {

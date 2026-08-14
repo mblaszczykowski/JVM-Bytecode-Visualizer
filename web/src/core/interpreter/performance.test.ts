@@ -83,7 +83,7 @@ function actualFrameCopies(snapshots: readonly Snapshot[]): number {
   return seen.size;
 }
 
-describe('snapshot history allocation (ADR-0001)', () => {
+describe('snapshot history allocation', () => {
   it('allocates 89 times fewer frames than per-step copying would', () => {
     const snapshots = deepRecursion();
     const naive = naiveFrameCopies(snapshots);

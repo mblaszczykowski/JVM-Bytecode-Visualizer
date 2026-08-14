@@ -22,6 +22,7 @@ export interface PreparedMethod {
   readonly localVariables: readonly LocalVariableEntry[];
   readonly localNamesByPc: Map<number, readonly (string | undefined)[]>;
   readonly lineNumbers: readonly LineNumberEntry[];
+  readonly sourceLinesByPc: Map<number, number | undefined>;
 }
 
 export interface RunClock {
@@ -49,6 +50,11 @@ export interface StackValue {
 
 export function prepareMethod(method: MethodInfo, code: CodeAttribute): PreparedMethod {
   const disassembled = disassemble(code.code);
+  for (const instruction of disassembled.instructions) {
+    Object.freeze(instruction.operands);
+    Object.freeze(instruction);
+  }
+
   const flow = flowOf(disassembled, code.code.length);
   checkBranchTargets(method.name, disassembled.instructions, flow, code.exceptionTable ?? []);
 
@@ -60,6 +66,7 @@ export function prepareMethod(method: MethodInfo, code: CodeAttribute): Prepared
     localVariables: code.localVariableTable ?? [],
     localNamesByPc: new Map(),
     lineNumbers: code.lineNumberTable ?? [],
+    sourceLinesByPc: new Map(),
   };
 }
 
@@ -68,9 +75,17 @@ export function createFrame(
   args: readonly StackValue[],
   clock: RunClock,
 ): Frame {
-  const locals = new Array<number | undefined>(method.code.maxLocals).fill(undefined);
-  const localKinds = new Array<ValueKind | undefined>(method.code.maxLocals).fill(undefined);
-  const localOrigins = new Array<number | undefined>(method.code.maxLocals).fill(undefined);
+  const { maxLocals } = method.code;
+  if (args.length > maxLocals) {
+    throw new VmFault({
+      kind: 'invalid-state',
+      message: `${method.name}() was called with ${String(args.length)} argument slots, outside max_locals = ${String(maxLocals)}`,
+    });
+  }
+
+  const locals = new Array<number | undefined>(maxLocals).fill(undefined);
+  const localKinds = new Array<ValueKind | undefined>(maxLocals).fill(undefined);
+  const localOrigins = new Array<number | undefined>(maxLocals).fill(undefined);
   for (let slot = 0; slot < args.length; slot += 1) {
     locals[slot] = args[slot]?.value;
     localKinds[slot] = args[slot]?.kind;
@@ -218,6 +233,24 @@ export function localNamesAt(method: PreparedMethod, pc: number): readonly (stri
   const frozen = Object.freeze(names);
   method.localNamesByPc.set(pc, frozen);
   return frozen;
+}
+
+export function sourceLineAt(method: PreparedMethod, pc: number): number | undefined {
+  if (method.sourceLinesByPc.has(pc)) {
+    return method.sourceLinesByPc.get(pc);
+  }
+
+  let line: number | undefined;
+  let bestStartPc = -1;
+  for (const entry of method.lineNumbers) {
+    if (entry.startPc <= pc && entry.startPc > bestStartPc) {
+      bestStartPc = entry.startPc;
+      line = entry.lineNumber;
+    }
+  }
+
+  method.sourceLinesByPc.set(pc, line);
+  return line;
 }
 
 function checkSlot(frame: Frame, slot: number): void {

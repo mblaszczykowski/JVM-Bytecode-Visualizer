@@ -90,7 +90,7 @@ function topKindAfter(snapshots: readonly Snapshot[], mnemonic: string): ValueKi
   if (step < 0) {
     throw new Error(`the run never executes ${mnemonic}`);
   }
-  return snapshots[step + 1]?.callStack.at(-1)?.operandKinds?.at(-1);
+  return snapshots[step + 1]?.callStack.at(-1)?.operandKinds.at(-1);
 }
 
 function distinctArrays(snapshots: readonly Snapshot[]): number {
@@ -311,7 +311,7 @@ describe('execute: value kinds', () => {
       (snapshot) => snapshot.currentInstruction?.mnemonic === 'aload_0',
     );
 
-    expect(stored?.callStack.at(-1)?.localKinds?.[0]).toBe('ref');
+    expect(stored?.callStack.at(-1)?.localKinds[0]).toBe('ref');
     expect(topKindAfter(snapshots, 'aload_0')).toBe('ref');
   });
 
@@ -321,8 +321,11 @@ describe('execute: value kinds', () => {
     for (const snapshot of snapshots) {
       for (const frame of snapshot.callStack) {
         expect(frame.operandKinds).toHaveLength(frame.operandStack.length);
+        expect(frame.operandOrigins).toHaveLength(frame.operandStack.length);
         expect(frame.localKinds).toHaveLength(frame.locals.length);
-        expect(frame.localKinds?.map((kind) => kind !== undefined)).toEqual(
+        expect(frame.localOrigins).toHaveLength(frame.locals.length);
+        expect(frame.localNames).toHaveLength(frame.locals.length);
+        expect(frame.localKinds.map((kind) => kind !== undefined)).toEqual(
           frame.locals.map((value) => value !== undefined),
         );
       }
@@ -508,11 +511,5 @@ describe('execute: heap memory limits', () => {
       limit: MAX_RECORDED_ELEMENTS,
     });
     expect(result.snapshots.length).toBeLessThan(20_000);
-  });
-
-  it('lets a run that never allocates through both budgets', () => {
-    const snapshots = run([0x04, 0x3b, 0xb1]);
-
-    expect(snapshots).not.toHaveLength(0);
   });
 });

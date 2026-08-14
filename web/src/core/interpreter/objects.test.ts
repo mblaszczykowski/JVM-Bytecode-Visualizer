@@ -8,6 +8,7 @@ import {
   SYNTHETIC_CLASS_NAME,
   type SyntheticMethod,
 } from './__fixtures__/synthetic-class';
+import { MAX_HEAP_ELEMENTS } from './heap';
 import { execute } from './interpreter';
 import type { ExecutionResult, HeapObject, Snapshot } from './types';
 
@@ -84,7 +85,7 @@ function allocate(pool: ConstantPoolBuilder): readonly number[] {
 }
 
 function instanceAt(snapshot: Snapshot | undefined, handle: number): HeapObject | undefined {
-  return snapshot?.heap?.[handle];
+  return snapshot?.heap[handle];
 }
 
 describe('execute: objects of the loaded class', () => {
@@ -182,6 +183,47 @@ describe('execute: objects of the loaded class', () => {
     expect(expectVmError(result)).toMatchObject({
       kind: 'unsupported-call',
       target: 'new java/util/ArrayList',
+    });
+  });
+
+  it('refuses the super constructor call a class with a superclass makes', () => {
+    const pool = new ConstantPoolBuilder();
+    const baseInit = pool.methodref('Base', '<init>', '()V');
+    const result = run({
+      pool,
+      methods: [
+        {
+          name: '<init>',
+          descriptor: '()V',
+          accessFlags: AccessFlag.Public,
+          code: [0x2a, 0xb7, ...u2(baseInit), 0xb1],
+        },
+      ],
+      code: [...allocate(pool), 0x57, 0x03, 0xac],
+    });
+
+    expect(expectVmError(result)).toMatchObject({
+      kind: 'unsupported-call',
+      target: 'Base.<init>()V',
+      methodName: '<init>',
+    });
+  });
+
+  it('refuses a new instance once the heap is full', () => {
+    const pool = new ConstantPoolBuilder();
+    const length = pool.integer(MAX_HEAP_ELEMENTS);
+    const result = run({
+      pool,
+      descriptor: '()V',
+      methods: [CONSTRUCTOR],
+      code: [...[0x12, length, 0xbc, T_INT, 0x4b], ...allocate(pool), 0xb1],
+    });
+
+    expect(expectVmError(result)).toMatchObject({
+      kind: 'out-of-memory',
+      resource: 'heap',
+      requested: MAX_HEAP_ELEMENTS + 1,
+      limit: MAX_HEAP_ELEMENTS,
     });
   });
 

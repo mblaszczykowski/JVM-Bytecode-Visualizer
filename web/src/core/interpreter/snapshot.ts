@@ -1,4 +1,5 @@
 import type { Instruction } from '../disassembler';
+import type { RecordingBudget } from './budget';
 import type { ConsoleOutput } from './console';
 import type { ExternalPool } from './externals';
 import { localNamesAt, type Frame } from './frame';
@@ -11,8 +12,15 @@ export interface MachineState {
   readonly externals: ExternalPool;
 }
 
+const RECORDED_ARRAYS_PER_SLOT = 3;
+
 export class SnapshotWriter {
+  private readonly budget: RecordingBudget;
   private readonly emitted: (EmittedFrame | undefined)[] = [];
+
+  constructor(budget: RecordingBudget) {
+    this.budget = budget;
+  }
 
   next(
     step: number,
@@ -21,6 +29,7 @@ export class SnapshotWriter {
     currentInstruction: Instruction,
     sourceLine: number | undefined,
   ): Snapshot {
+    this.budget.charge(callStack.length);
     const frames = callStack.map((frame, depth) => this.copyOrReuse(depth, frame));
     this.emitted.length = callStack.length;
 
@@ -28,7 +37,7 @@ export class SnapshotWriter {
       step,
       callStack: Object.freeze(frames),
       ...machineView(state),
-      currentInstruction: freezeInstruction(currentInstruction),
+      currentInstruction,
       ...(sourceLine === undefined ? {} : { sourceLine }),
     });
   }
@@ -38,6 +47,9 @@ export class SnapshotWriter {
     if (previous?.source === frame && previous.version === frame.version) {
       return previous.stackFrame;
     }
+    this.budget.charge(
+      RECORDED_ARRAYS_PER_SLOT * (frame.locals.length + frame.operandStack.length),
+    );
 
     const stackFrame = toStackFrame(frame);
     this.emitted[depth] = { source: frame, version: frame.version, stackFrame };
@@ -63,18 +75,6 @@ function machineView(state: MachineState) {
   };
 }
 
-export function sourceLineAt(frame: Frame): number | undefined {
-  let line: number | undefined;
-  let bestStartPc = -1;
-  for (const entry of frame.method.lineNumbers) {
-    if (entry.startPc <= frame.pc && entry.startPc > bestStartPc) {
-      bestStartPc = entry.startPc;
-      line = entry.lineNumber;
-    }
-  }
-  return line;
-}
-
 function toStackFrame(frame: Frame): StackFrame {
   return Object.freeze({
     methodName: frame.method.name,
@@ -88,9 +88,4 @@ function toStackFrame(frame: Frame): StackFrame {
     operandOrigins: Object.freeze([...frame.operandOrigins]),
     localOrigins: Object.freeze([...frame.localOrigins]),
   });
-}
-
-function freezeInstruction(instruction: Instruction): Instruction {
-  Object.freeze(instruction.operands);
-  return Object.freeze(instruction);
 }

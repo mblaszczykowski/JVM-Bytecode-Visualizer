@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 import { parseClassFile } from '../classfile';
-import { execute, type HeapObject, type Snapshot } from './index';
+import { execute, NO_HEAP, type HeapObject, type Snapshot } from './index';
 import { expectCompleted, lastFrameOf, localValue } from './__fixtures__/expect-execution';
 
 const EXAMPLES = new URL('../../../public/examples/', import.meta.url);
@@ -125,7 +125,7 @@ describe('execute: console output, differential against the real JVM', () => {
     const final = expectedOutput(program);
 
     for (const snapshot of snapshots) {
-      const output = snapshot.consoleOutput ?? [];
+      const output = snapshot.consoleOutput;
       const completed = output.slice(0, -1);
       const open = output.at(-1);
 
@@ -139,7 +139,7 @@ describe('execute: console output, differential against the real JVM', () => {
   it('shares one console array across every step that prints nothing', () => {
     const snapshots = runProgram(BITS);
     const distinct = new Set(snapshots.map((snapshot) => snapshot.consoleOutput));
-    const lines = snapshots.at(-1)?.consoleOutput?.length ?? 0;
+    const lines = snapshots.at(-1)?.consoleOutput.length ?? 0;
 
     expect(distinct.size).toBeLessThanOrEqual(lines + 2);
     expect(snapshots.length).toBeGreaterThan(distinct.size * 5);
@@ -153,7 +153,7 @@ function lastLiveHeap(snapshots: readonly Snapshot[]): readonly HeapObject[] {
   if (live === undefined) {
     throw new Error('the run has no snapshot with a frame');
   }
-  return live.heap ?? [];
+  return live.heap;
 }
 
 function arrayElementsAt(heap: readonly HeapObject[], handle: number): readonly number[] {
@@ -182,7 +182,7 @@ describe('execute: the array BubbleSort leaves on the heap', () => {
       (snapshot) => snapshot.currentInstruction?.mnemonic === 'arraylength',
     );
 
-    expect(arrayElementsAt(beforeSorting?.heap ?? [], 0)).toEqual(BUBBLE_SORT_INPUT);
+    expect(arrayElementsAt(beforeSorting?.heap ?? NO_HEAP, 0)).toEqual(BUBBLE_SORT_INPUT);
   });
 
   it('needs a few hundred steps for five elements', () => {
