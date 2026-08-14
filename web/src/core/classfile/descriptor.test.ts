@@ -91,6 +91,18 @@ describe('parseMethodDescriptor: errors', () => {
     });
   }
 
+  it('accepts an array with exactly 255 dimensions (JVMS §4.3.2)', () => {
+    let type: JvmType = parseFieldDescriptor(`${'['.repeat(255)}I`);
+    let dimensions = 0;
+    while (type.kind === 'array') {
+      dimensions += 1;
+      type = type.elementType;
+    }
+
+    expect(dimensions).toBe(255);
+    expect(type).toEqual(int);
+  });
+
   it('rejects an array with more than 255 dimensions (JVMS §4.3.2)', () => {
     const tooDeep = `(${'['.repeat(256)}I)V`;
 

@@ -1,5 +1,4 @@
-import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -22,10 +21,9 @@ function corpusFiles(): readonly string[] {
   if (!existsSync(CLASSES)) {
     return [];
   }
-  return execFileSync('find', [CLASSES, '-name', '*.class'], { maxBuffer: 64 * 1024 * 1024 })
-    .toString()
-    .split('\n')
-    .filter(Boolean);
+  return readdirSync(CLASSES, { encoding: 'utf8', recursive: true })
+    .filter((name) => name.endsWith('.class'))
+    .map((name) => join(CLASSES, name));
 }
 
 const files = corpusFiles();

@@ -3,9 +3,10 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 import { expectClassFileError } from './__fixtures__/expect-class-file-error';
+import { isStatic } from './access-flags';
 import { isClassFileError } from './errors';
 import { parseClassFile } from './parser';
-import { ConstantTag, isStatic, type ClassFile, type MethodInfo } from './types';
+import { ConstantTag, type ClassFile, type MethodInfo } from './types';
 
 const FACTORIAL_CLASS = new URL('./__fixtures__/Factorial.class', import.meta.url);
 const OPCODE_ZOO_CLASS = new URL('../disassembler/__fixtures__/OpcodeZoo.class', import.meta.url);
@@ -202,6 +203,30 @@ function buildClassFile(spec: SyntheticClass): ArrayBuffer {
     ...attributes.flat(),
   ]).buffer;
 }
+
+describe('parseClassFile: super_class = 0 (JVMS §4.1)', () => {
+  it('leaves superClassName off, as java/lang/Object and module-info do', () => {
+    const buffer = buildClassFile({
+      constantPoolCount: 3,
+      constantPool: [utf8Entry('module-info'), classEntry(1)],
+      thisClass: 2,
+      superClass: 0,
+    });
+
+    const classFile = parseClassFile(buffer);
+
+    expect(classFile.thisClassName).toBe('module-info');
+    expect(classFile.superClassName).toBeUndefined();
+    expect('superClassName' in classFile).toBe(false);
+  });
+
+  it('carries the resolved name for every other class', () => {
+    const classFile = parseFactorial();
+
+    expect('superClassName' in classFile).toBe(true);
+    expect(classFile.superClassName).toBe('java/lang/Object');
+  });
+});
 
 describe('parseClassFile: the value constants javac wrote into OpcodeZoo', () => {
   const { constantPool } = parseClassFile(new Uint8Array(readFileSync(OPCODE_ZOO_CLASS)).buffer);
@@ -574,6 +599,7 @@ describe('parseClassFile: errors', () => {
     expect(expectClassFileError(() => parseClassFile(buffer))).toMatchObject({
       kind: 'malformed-structure',
       offset: 8,
+      reason: expect.stringContaining('1-indexed') as string,
     });
   });
 
@@ -663,7 +689,55 @@ describe('parseClassFile: errors', () => {
 
     expect(expectClassFileError(() => parseClassFile(emptyCode))).toMatchObject({
       kind: 'malformed-structure',
+      reason: expect.stringContaining('code_length') as string,
     });
+  });
+
+  it('rejects a method with two Code attributes (JVMS §4.7.3)', () => {
+    const codeAttribute = (): number[] =>
+      attribute(5, [...u2(1), ...u2(0), ...u4(1), 0xb1, ...u2(0), ...u2(0)]);
+    const twoCodeAttributes = buildClassFile({
+      constantPoolCount: 6,
+      constantPool: [
+        utf8Entry('Synth'),
+        classEntry(1),
+        utf8Entry('m'),
+        utf8Entry('()V'),
+        utf8Entry('Code'),
+      ],
+      thisClass: 2,
+      superClass: 0,
+      methods: [member(0x0008, 3, 4, [codeAttribute(), codeAttribute()])],
+    });
+
+    expect(expectClassFileError(() => parseClassFile(twoCodeAttributes))).toMatchObject({
+      kind: 'malformed-structure',
+      reason: expect.stringContaining('more than one Code attribute') as string,
+    });
+  });
+
+  it('accepts the same method with a single Code attribute', () => {
+    const oneCodeAttribute = buildClassFile({
+      constantPoolCount: 6,
+      constantPool: [
+        utf8Entry('Synth'),
+        classEntry(1),
+        utf8Entry('m'),
+        utf8Entry('()V'),
+        utf8Entry('Code'),
+      ],
+      thisClass: 2,
+      superClass: 0,
+      methods: [
+        member(0x0008, 3, 4, [
+          attribute(5, [...u2(1), ...u2(0), ...u4(1), 0xb1, ...u2(0), ...u2(0)]),
+        ]),
+      ],
+    });
+
+    expect(Array.from(parseClassFile(oneCodeAttribute).methods[0]?.code?.code ?? [])).toEqual([
+      0xb1,
+    ]);
   });
 
   it('reports malformed-utf8 on an invalid byte sequence', () => {
@@ -738,7 +812,7 @@ describe('parseClassFile: modified UTF-8 decoding (JVMS §4.4.7)', () => {
   });
 
   it('keeps the two-byte form of U+0000, which is the shortest one it has', () => {
-    expect(parseClassFile(classWithName([0xc0, 0x80])).thisClassName).toBe(' ');
+    expect(parseClassFile(classWithName([0xc0, 0x80])).thisClassName).toBe('\u0000');
   });
 
   it('accepts a lone surrogate, which a class loader also accepts', () => {

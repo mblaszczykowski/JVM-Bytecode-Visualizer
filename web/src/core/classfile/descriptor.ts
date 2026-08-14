@@ -51,13 +51,13 @@ export function parseMethodDescriptor(descriptor: string): MethodDescriptor {
 
   const params: JvmType[] = [];
   let position = 1;
-  while (descriptor[position] !== ')') {
-    if (position >= descriptor.length) {
-      throw malformed(descriptor, position, 'missing closing ")" of the parameter list');
-    }
+  while (position < descriptor.length && descriptor[position] !== ')') {
     const parsed = parseFieldType(descriptor, position);
     params.push(parsed.type);
     position = parsed.next;
+  }
+  if (position >= descriptor.length) {
+    throw malformed(descriptor, position, 'missing closing ")" of the parameter list');
   }
   position += 1;
 

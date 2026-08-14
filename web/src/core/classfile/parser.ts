@@ -38,13 +38,13 @@ export function parseClassFile(buffer: ArrayBuffer): ClassFile {
   const superClassIndex = reader.readU2('super_class');
   const superClassName =
     superClassIndex === 0
-      ? ''
+      ? undefined
       : resolveClassName(constantPool, superClassIndex, superClassAt, 'super_class');
 
   const interfaceNames = readInterfaces(reader, constantPool);
   const fields = readFields(reader, constantPool);
   const methods = readMethods(reader, constantPool);
-  readAttributes(reader, constantPool, 'ClassFile', () => undefined);
+  readAttributes(reader, constantPool, 'ClassFile');
   if (reader.remaining > 0) {
     throw new ClassFileError({
       kind: 'malformed-structure',
@@ -59,7 +59,7 @@ export function parseClassFile(buffer: ArrayBuffer): ClassFile {
     constantPool,
     accessFlags,
     thisClassName,
-    superClassName,
+    ...(superClassName === undefined ? {} : { superClassName }),
     interfaceNames,
     fields,
     methods,
@@ -307,13 +307,7 @@ function readInterfaces(reader: ByteReader, pool: ConstantPool): readonly string
   return names;
 }
 
-interface MemberHeader {
-  readonly accessFlags: number;
-  readonly name: string;
-  readonly descriptor: string;
-}
-
-function readMemberHeader(reader: ByteReader, pool: ConstantPool, owner: string): MemberHeader {
+function readMemberHeader(reader: ByteReader, pool: ConstantPool, owner: string): FieldInfo {
   const accessFlags = reader.readU2(`${owner}.access_flags`);
   const nameAt = reader.offset;
   const nameIndex = reader.readU2(`${owner}.name_index`);
@@ -334,7 +328,7 @@ function readFields(reader: ByteReader, pool: ConstantPool): readonly FieldInfo[
   for (let i = 0; i < count; i += 1) {
     const owner = `fields[${String(i)}]`;
     const header = readMemberHeader(reader, pool, owner);
-    readAttributes(reader, pool, owner, () => undefined);
+    readAttributes(reader, pool, owner);
     fields.push(header);
   }
 
@@ -351,9 +345,17 @@ function readMethods(reader: ByteReader, pool: ConstantPool): readonly MethodInf
 
     let code: CodeAttribute | undefined;
     readAttributes(reader, pool, owner, (name, body) => {
-      if (name === 'Code' && code === undefined) {
-        code = readCodeAttribute(body, pool);
+      if (name !== 'Code') {
+        return;
       }
+      if (code !== undefined) {
+        throw new ClassFileError({
+          kind: 'malformed-structure',
+          offset: body.offset,
+          reason: `${owner} carries more than one Code attribute, but JVMS §4.7.3 allows exactly one`,
+        });
+      }
+      code = readCodeAttribute(body, pool);
     });
 
     methods.push(code === undefined ? header : { ...header, code });
@@ -366,7 +368,7 @@ function readAttributes(
   reader: ByteReader,
   pool: ConstantPool,
   owner: string,
-  visit: (name: string, body: ByteReader) => void,
+  visit?: (name: string, body: ByteReader) => void,
 ): void {
   const count = reader.readU2(`${owner}.attributes_count`);
 
@@ -376,7 +378,7 @@ function readAttributes(
     const name = resolveUtf8(pool, nameIndex, nameAt, `${owner}.attributes[${String(i)}].name`);
     const length = reader.readU4(`${owner}.attributes[${String(i)}].attribute_length`);
     const body = reader.subReader(length, `${owner}.attributes[${String(i)}] (${name})`);
-    visit(name, body);
+    visit?.(name, body);
   }
 }
 
