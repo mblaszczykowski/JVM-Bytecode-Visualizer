@@ -1,17 +1,16 @@
 # A JVM primer
 
-This document explains the machine the visualizer draws. The audience is a programmer who is
-comfortable in some language and has never opened the JVM specification: no Java experience is
-assumed beyond reading a `for` loop, and no bytecode experience at all.
+The audience is a programmer who is comfortable in some language and has never opened the JVM
+specification: no Java experience is assumed beyond reading a `for` loop, and no bytecode
+experience at all.
 
-Every rule asserted here cites the section of the _Java Virtual Machine Specification_ (Java SE 21)
-that states it, so you can go and read the original. Everything is illustrated with the panels of
-this application (**Source**, **Bytecode**, **Call stack**, **Operand stack**, **Locals** and the
-**Next** card) and with `javap` output you can reproduce on your own machine.
+Every rule here cites the section of the _Java Virtual Machine Specification_ (Java SE 21) that
+states it, and every listing is `javap` output you can reproduce on your own machine. Names in bold
+(**Source**, **Bytecode**, **Call stack**, **Operand stack**, **Locals**, the **Next** card) are
+panels of the running application.
 
-The instruction subset this project actually executes is narrower than the specification; see
-[Scope and limitations](../README.md#scope-and-limitations). The concepts below are not narrower:
-they are how every JVM works.
+The instruction subset this project executes is narrower than the specification; see
+[Scope and limitations](../README.md#scope-and-limitations). The concepts below apply to any JVM.
 
 ## 1. A stack machine has no registers
 
@@ -47,8 +46,8 @@ Two consequences show up immediately in the **Bytecode** panel:
 
 ## 2. The JVM has two stacks
 
-This is the single most common confusion, so it gets the most room. The JVM has two structures with
-"stack" in the name and they have nothing to do with each other.
+The JVM has two structures with "stack" in the name and they have nothing to do with each other.
+This is the most common confusion about the machine.
 
 |                | Operand stack                                     | Call stack (the "JVM stack")                     |
 | -------------- | ------------------------------------------------- | ------------------------------------------------ |
@@ -146,18 +145,10 @@ The bundled `Factorial` example calls `factorial(4)`, which calls itself down to
 call pushes a frame; each `ireturn` pops one and pushes the returned value onto the caller's operand
 stack (JVMS §2.6.4, §6.5 `ireturn`):
 
-```mermaid
-flowchart TB
-  subgraph after["Call stack at its deepest"]
-    direction TB
-    f0["main (pc past the invokestatic)<br/>operand stack: (empty)"]
-    f1["factorial(4)<br/>operand stack: 4"]
-    f2["factorial(3)<br/>operand stack: 3"]
-    f3["factorial(2)<br/>operand stack: 2"]
-    f4["factorial(1), the base case<br/>operand stack: (empty)"]
-    f0 --> f1 --> f2 --> f3 --> f4
-  end
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="diagrams/call-stack-dark.svg">
+  <img alt="The call stack of the Factorial example at its deepest: main at the top, then factorial(4), factorial(3), factorial(2) and the base case factorial(1), each frame holding its own operand stack." src="diagrams/call-stack-light.svg">
+</picture>
 
 The depth chart under the scrubber is exactly this number over time: the length of the call stack in
 every snapshot, which is why a recursive program draws a rise and a fall.
@@ -190,13 +181,13 @@ The sizes are fixed when the frame is created, from `max_locals` and `max_stack`
 `Code` attribute (JVMS §4.7.3). A frame cannot grow. In the **Locals** panel, `4 slots` means javac
 proved that four is enough for every path through the method.
 
-The `pc` deserves a note, because the specification and this implementation differ in where they put
-it. JVMS §2.5.1 gives each _thread_ one `pc` register. But when a method calls another and later
-resumes, the offset it resumes at has to survive the callee, so the frame is where that state
-belongs (JVMS §2.6); this interpreter stores a `pc` on every frame, which is why the **Call stack**
-panel can tell you what each suspended caller is waiting on. One ordering detail makes it correct:
-the `pc` is advanced past the call instruction _before_ the callee frame is pushed. Otherwise the
-call would re-execute forever when the callee returned.
+The specification and this implementation differ in where they put the `pc`. JVMS §2.5.1 gives each
+_thread_ one `pc` register. But when a method calls another and later resumes, the offset it
+resumes at has to survive the callee, so the frame is where that state belongs (JVMS §2.6); this
+interpreter stores a `pc` on every frame, which is why the **Call stack** panel can tell you what
+each suspended caller is waiting on. One ordering detail makes it correct: the `pc` is advanced
+past the call instruction _before_ the callee frame is pushed. Otherwise the call would re-execute
+forever when the callee returned.
 
 ## 4. Local variable slots
 
@@ -238,7 +229,7 @@ public static void main(String[] args) {
 }
 ```
 
-and `javap -l` reports:
+and `javap -l -c` reports:
 
 ```text
 LocalVariableTable:
@@ -284,20 +275,13 @@ dump:
 
 Read the instruction `invokestatic #7` as a walk down that chain:
 
-```mermaid
-flowchart LR
-  cp["#7"] --> mr["Methodref"]
-  mr --> cls["#8 Class → #10 Utf8 'Factorial'"]
-  mr --> nat["#9 NameAndType"]
-  nat --> nm["#11 Utf8 'factorial'"]
-  nat --> desc["#12 Utf8 '(I)I'"]
-  cls --> out["Factorial.factorial:(I)I"]
-  nm --> out
-  desc --> out
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="diagrams/constant-pool-chain-dark.svg">
+  <img alt="Resolving invokestatic #7 through the constant pool: entry #7 is a Methodref pointing at a Class and a NameAndType, whose Utf8 entries spell out Factorial.factorial:(I)I." src="diagrams/constant-pool-chain-light.svg">
+</picture>
 
 For whichever instruction is about to execute, the **Next** card renders the collapsed version of
-that walk: `#7 → Methodref → Factorial.factorial:(I)I`. That is a symbolic name being resolved.
+that walk: `#7 → Methodref → Factorial.factorial:(I)I`.
 
 Two details that catch people out when reading a raw dump: the pool is **1-indexed**, index 0 is
 never valid, and a `Long` or `Double` entry occupies **two** slots with the second one unused (JVMS
@@ -339,10 +323,10 @@ The parentheses are what make it parseable: parameters are read until the `)`, s
 needed and no ambiguity arises. `(II)Z` is two parameters; `(I)IZ` is not a valid descriptor at all.
 
 The parser implements the whole grammar, which is what lets the application read a descriptor it
-cannot execute. `parameterKinds` in the interpreter then decides
-whether a call is one the machine can make: `int` and reference types pass, and anything else stops
-the run at the call with `Unsupported call:` and the method it names. A method declared `(J)J` is
-therefore listed, disassembled and readable, and calling it stops the run.
+cannot execute. `parameterKinds` in the interpreter then decides whether a call is one the machine
+can make: `int` and reference types pass, and anything else stops the run at the call with
+`Unsupported call:` and the method it names. A method declared `(J)J` is therefore listed,
+disassembled and readable, and calling it stops the run.
 
 ## 7. From a byte offset back to a line of source
 
@@ -356,7 +340,7 @@ monotonically. From the two-loop example above, with the source annotated in by 
 ```text
 LineNumberTable:
   line 3: 0        // int total = 0
-  line 4: 2        // for (int i = 0; …    (initialiser)
+  line 4: 2        // for (int i = 0; …    (initializer)
   line 5: 9        //   total += i
   line 4: 13       // for (…; i++)         (increment, same line again)
   line 7: 19
@@ -365,7 +349,7 @@ LineNumberTable:
   line 10: 36
 ```
 
-Line 4 appears twice, at offsets 2 and 13, because a `for` loop compiles its initialiser and its
+Line 4 appears twice, at offsets 2 and 13, because a `for` loop compiles its initializer and its
 increment into different parts of the method. To find the line for a given `pc`, take the entry with
 the **largest `start_pc` that is not greater than `pc`**. The entries are ordered by offset, and an
 entry stays in force until the next one begins. That rule is why the highlighted source line appears
@@ -384,7 +368,7 @@ to check any claim here against the reference tooling.
 | `javap Foo.class` | the public API, no code                                              | (none)                           |
 | `javap -c Foo`    | the disassembled `Code` of each method: offsets, mnemonics, operands | **Bytecode**                     |
 | `javap -c -p Foo` | the same, including private methods                                  | **Bytecode**                     |
-| `javap -l Foo`    | `LineNumberTable` and `LocalVariableTable`                           | **Source**, **Locals**           |
+| `javap -l -c Foo` | `LineNumberTable` and `LocalVariableTable`                           | **Source**, **Locals**           |
 | `javap -v Foo`    | all of the above plus the constant pool, `max_stack`, `max_locals`   | the **Next** card, panel headers |
 
 A worked cross-check, using this repository:
@@ -410,24 +394,22 @@ parser and disassembler tests are transcribed from, so it can be read without a 
 This interpreter executes the integer instructions, objects of the class in front of it, and control
 flow. It has no `long`/`float`/`double`, no second class file, no `invokedynamic`, no interface
 dispatch and no verifier (JVMS §4.10): it checks the few invariants it needs and reports a typed
-error instead of running off its own rails.
+error where a real JVM would have rejected the class before running it.
 
 Exception _dispatch_ it does have. `athrow` runs, the `exception_table` of a method is read, and a
 fault the machine raises (`ArithmeticException`, `ArrayIndexOutOfBoundsException`,
-`NullPointerException`, `NegativeArraySizeException`) unwinds the call stack a visible step at a
-time looking for a handler, matching by class hierarchy. What is missing is the other half:
-constructing an exception object of your own, which needs a class the file does not contain.
+`NullPointerException`, `NegativeArraySizeException`) searches outwards for a handler, matching by
+class hierarchy. The search happens inside one step: the operand stack is discarded, every frame
+between the throw and the handler is popped, and the next step you can scrub to is the handler
+itself. What is missing is the other half: constructing an exception object of your own, which needs
+a class the file does not contain.
 
 None of that changes the model this document describes. Frames, slots, the operand stack, the
 constant pool and descriptors work the same way in a production JVM; what a production JVM adds is
 more types, more instructions and a JIT compiler that eventually stops interpreting altogether.
 
 For the precise boundary, and for what happens when a given Java construct crosses it, see
-[Scope and limitations](../README.md#scope-and-limitations). Four records draw it:
-[ADR-0002](adr/0002-int-only-mvp-without-heap.md) set it at `int` with no heap,
-[ADR-0005](adr/0005-heap-of-int-arrays.md) moved it when arrays arrived,
-[ADR-0007](adr/0007-exceptions-without-an-object-model.md) added catching, and
-[ADR-0008](adr/0008-objects-of-the-loaded-class.md) added objects of the loaded class.
+[Scope and limitations](../README.md#scope-and-limitations).
 
 ## Further reading
 
