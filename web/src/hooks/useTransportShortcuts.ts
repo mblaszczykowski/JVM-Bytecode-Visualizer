@@ -57,7 +57,13 @@ export function useTransportShortcuts(shortcuts: TransportShortcuts): void {
     }
 
     function handleKeyDown(event: KeyboardEvent): void {
-      if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) {
+      if (
+        event.defaultPrevented ||
+        event.altKey ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.shiftKey
+      ) {
         return;
       }
       if (handlesKeyItself(event.target, event.key)) {

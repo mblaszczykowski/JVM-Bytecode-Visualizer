@@ -1,10 +1,10 @@
-import { useMemo, useReducer, useRef, useState } from 'react';
+import { useReducer, useRef, useState } from 'react';
 
 import { AppShell } from './components/chrome/AppShell';
 import { BytecodePanel } from './components/panels/BytecodePanel';
 import { ClassPanel } from './components/panels/ClassPanel';
 import { CompileEditor, SEED_SOURCE } from './components/dialogs/CompileEditor';
-import { ErrorBanner } from './components/chrome/ErrorBanner';
+import { ErrorBanner } from './components/ui/ErrorBanner';
 import { ErrorBoundary } from './components/chrome/ErrorBoundary';
 import type { ExampleOption } from './components/dialogs/ExamplePicker';
 import { LoadingPanels } from './components/panels/LoadingPanels';
@@ -13,11 +13,7 @@ import { StateColumn } from './components/panels/StateColumn';
 import type { ShortcutGroup } from './components/dialogs/KeyboardHelp';
 import { Toolbar, type CompilerStatus, type PanelName } from './components/chrome/Toolbar';
 import { EmbedBar } from './components/chrome/EmbedBar';
-import {
-  structureVisibilityOf,
-  useStructureTabs,
-  type StructureView,
-} from './components/chrome/StructureTabs';
+import { structureVisibilityOf, useStructureTabs } from './components/chrome/StructureTabs';
 import { TourStrip } from './components/transport/TourStrip';
 import { TransportControls } from './components/transport/TransportControls';
 import { WelcomeScreen, type WelcomeExample } from './components/welcome/WelcomeScreen';
@@ -31,12 +27,12 @@ import { useGuidedTour } from './hooks/useGuidedTour';
 import { useOpenedLink } from './hooks/useOpenedLink';
 import { useUrlSync } from './hooks/useUrlSync';
 import { useProgramView } from './hooks/useProgramView';
+import { useSelection } from './hooks/useSelection';
 import { useTransportShortcuts } from './hooks/useTransportShortcuts';
 import {
   appReducer,
   exampleEntriesOf,
   examplesErrorOf,
-  failedState,
   initialAppModel,
   loadCompiledState,
   loadExampleState,
@@ -57,19 +53,14 @@ import {
   describeAppError,
   describeCompileDiagnostics,
   describeCompileFailure,
-  toAppError,
 } from './services/loading/errors';
 import { shortTitleOf } from './services/loading/examples';
-import {
-  listingToShow,
-  methodKeyOf,
-  type LoadedProgram,
-  type MethodListing,
-} from './services/loading/program';
-import type { ProgramContext } from './services/session/telemetry';
+import type { MethodListing } from './services/loading/program';
+import { stackEffectOf } from './services/views/bytecode-format';
+import { listingToShow } from './services/views/program-view';
+import { telemetryContextOf } from './services/session/telemetry';
 import {
   defaultProgramRunner,
-  isRunCancelled,
   type LoadContext,
   type ProgramRunner,
 } from './services/loading/program-runner';
@@ -110,28 +101,8 @@ const SHORTCUTS: readonly ShortcutGroup[] = [
   },
 ];
 
-function telemetryContextOf(program: LoadedProgram): ProgramContext {
-  const { origin } = program;
-  switch (origin.kind) {
-    case 'example':
-      return { origin: 'example', exampleId: origin.entry.id };
-    case 'upload':
-      return { origin: 'upload', methods: program.methods.length };
-    case 'compiled':
-      return { origin: 'compiled', methods: program.methods.length };
-  }
-}
-
 function visibilityOf(panel: PanelName, selected: PanelName): string {
   return panel === selected ? '' : 'hidden md:flex';
-}
-
-async function settle(load: () => Promise<AppState>): Promise<AppState | undefined> {
-  try {
-    return await load();
-  } catch (error) {
-    return isRunCancelled(error) ? undefined : failedState(toAppError(error));
-  }
 }
 
 interface AppProps {
@@ -146,13 +117,9 @@ export function App({
   const [model, dispatch] = useReducer(appReducer, compileApiUrl !== undefined, initialAppModel);
   const { editor, compiler } = model;
   const state = model.load;
+  const program = programOf(state);
   const [draft, setDraft] = useState(SEED_SOURCE);
-  const [visiblePanel, setVisiblePanel] = useState<PanelName>('bytecode');
-  const [structureChoice, setStructureChoice] = useState<StructureView | undefined>(undefined);
-  const [viewedMethodKey, setViewedMethodKey] = useState<string | undefined>(undefined);
-  const [selectedConstant, setSelectedConstant] = useState<number | undefined>(undefined);
-  const [linkedLine, setLinkedLine] = useState<number | undefined>(undefined);
-  const [dismissed, setDismissed] = useState<string | undefined>(undefined);
+  const selection = useSelection(program?.origin.kind === 'upload' ? 'class' : 'source');
 
   const tokenRef = useRef(0);
   const issueToken = (): number => {
@@ -168,7 +135,7 @@ export function App({
   const running = useRef<AbortController | undefined>(undefined);
   const startLoad = async (
     label: string,
-    load: (context: LoadContext) => Promise<AppState>,
+    load: (context: LoadContext) => Promise<AppState | undefined>,
     compileDiagnostics: readonly CompileDiagnostic[] = NO_DIAGNOSTICS,
   ): Promise<void> => {
     const token = issueToken();
@@ -183,21 +150,15 @@ export function App({
       cancellable: programRunner.cancellable,
       compileDiagnostics,
     });
-    setViewedMethodKey(undefined);
-    setSelectedConstant(undefined);
-    setLinkedLine(undefined);
-    setStructureChoice(undefined);
-    setDismissed(undefined);
+    selection.reset();
 
-    const state = await settle(() =>
-      load({
-        runner: programRunner,
-        signal: controller.signal,
-        onProgress: (steps) => {
-          dispatch({ kind: 'load-progress', token, steps });
-        },
-      }),
-    );
+    const state = await load({
+      runner: programRunner,
+      signal: controller.signal,
+      onProgress: (steps) => {
+        dispatch({ kind: 'load-progress', token, steps });
+      },
+    });
     if (state !== undefined) {
       dispatch({ kind: 'load-settled', token, state });
     }
@@ -239,7 +200,7 @@ export function App({
       return;
     }
     const token = issueToken();
-    setDismissed(undefined);
+    selection.dismiss(undefined);
     dispatch({ kind: 'compile-started', token });
 
     const result = await compile(compileApiUrl, draft);
@@ -266,7 +227,6 @@ export function App({
     void compileDraft();
   };
 
-  const program = programOf(state);
   const snapshots = program?.snapshots ?? NO_SNAPSHOTS;
   const player = useExecutionPlayer(snapshots);
   const { seekTo, stepCount } = player;
@@ -314,12 +274,11 @@ export function App({
     onSeekToEnd: seekToEnd,
   });
 
-  const previews = useExamplePreviews(examples);
+  const previews = useExamplePreviews(examples, programRunner);
 
   const exampleOptions: readonly ExampleOption[] = examples.map((entry) => ({
     id: entry.id,
     name: shortTitleOf(entry),
-    tagline: entry.tagline,
     description: entry.description,
   }));
   const welcomeExamples: readonly WelcomeExample[] = examples.map((entry) => ({
@@ -329,10 +288,14 @@ export function App({
     preview: previews.get(entry.id),
   }));
 
-  const listing = useMemo(
-    () => (program === undefined ? undefined : listingToShow(program, snapshot, viewedMethodKey)),
-    [program, snapshot, viewedMethodKey],
-  );
+  const listing =
+    program === undefined ? undefined : listingToShow(program, snapshot, selection.viewedMethodKey);
+
+  const currentInstruction = snapshot?.currentInstruction;
+  const stackEffect =
+    program === undefined || currentInstruction === undefined
+      ? undefined
+      : stackEffectOf(currentInstruction, program.classFile.constantPool);
 
   const {
     comments,
@@ -354,29 +317,11 @@ export function App({
     topFrame,
   } = useProgramView(program, snapshot, listing);
 
-  const selectPanel = (panel: PanelName) => {
-    setVisiblePanel(panel);
-    if (panel === 'source' || panel === 'class') {
-      setStructureChoice(panel);
-    }
-  };
-
-  const selectMethod = (method: MethodListing) => {
-    setViewedMethodKey(methodKeyOf(method));
-    setLinkedLine(undefined);
-    setVisiblePanel('bytecode');
-  };
-
   const runMethod = (method: MethodListing) => {
     if (program === undefined) {
       return;
     }
     void startLoad(`Running ${method.name}`, (context) => runFromState(program, method, context));
-  };
-
-  const followConstantFromListing = (index: number) => {
-    setSelectedConstant(index);
-    selectPanel('class');
   };
 
   const failure = state.status === 'error' ? describeAppError(state.error) : undefined;
@@ -393,8 +338,6 @@ export function App({
   const canExplore = program !== undefined && listing !== undefined;
   const canReplay = canExplore && snapshots.length > 0;
   const smoothHighlight = player.speed <= SMOOTH_HIGHLIGHT_UP_TO;
-  const structureView: StructureView =
-    structureChoice ?? (program?.origin.kind === 'upload' ? 'class' : 'source');
 
   const compilerIsUsable = compiler === 'online' || compiler === 'degraded';
   const compilerStatus: CompilerStatus =
@@ -402,12 +345,12 @@ export function App({
   const writeJava = compilerIsUsable ? openEditor : undefined;
 
   const raised = compileNotice ?? failure ?? examplesFailure ?? javacNotice;
-  const notice = raised?.message === dismissed ? undefined : raised;
+  const notice = raised?.message === selection.dismissed ? undefined : raised;
   const dismissNotice = () => {
-    setDismissed(raised?.message);
+    selection.dismiss(raised?.message);
   };
 
-  const structureTabs = useStructureTabs(structureView, selectPanel);
+  const structureTabs = useStructureTabs(selection.structureView, selection.selectPanel);
 
   const raiseLimit =
     compileNotice !== undefined || nextStepLimit === undefined || program === undefined
@@ -422,7 +365,9 @@ export function App({
           },
         };
 
-  const showsWelcome = editor.kind === 'closed' && state.status !== 'loading' && !canExplore;
+  const showsEditor = editor.kind !== 'closed';
+  const showsProgress = state.status === 'loading';
+  const showsWelcome = !showsEditor && !showsProgress && !canExplore;
   const welcomeNotice =
     showsWelcome && notice !== undefined
       ? { severity: notice.severity, message: notice.message, onDismiss: dismissNotice }
@@ -449,7 +394,11 @@ export function App({
             onFileSelected={selectFile}
             compilerStatus={compilerStatus}
             onWriteJava={writeJava}
-            panelSwitch={canExplore ? { selected: visiblePanel, onSelect: selectPanel } : undefined}
+            panelSwitch={
+              canExplore
+                ? { selected: selection.visiblePanel, onSelect: selection.selectPanel }
+                : undefined
+            }
             shortcuts={SHORTCUTS}
           />
         )
@@ -480,7 +429,7 @@ export function App({
           {canReplay ? (
             <TransportControls
               stepIndex={player.stepIndex}
-              stepCount={player.stepCount}
+              stepCount={stepCount}
               isPlaying={player.isPlaying}
               speed={player.speed}
               depths={player.depths}
@@ -499,7 +448,7 @@ export function App({
         </>
       }
     >
-      {editor.kind !== 'closed' ? (
+      {showsEditor ? (
         <CompileEditor
           source={draft}
           onSourceChange={setDraft}
@@ -508,7 +457,7 @@ export function App({
           onCompile={requestCompile}
           onClose={closeEditor}
         />
-      ) : state.status === 'loading' ? (
+      ) : showsProgress ? (
         <LoadingPanels
           label={state.label}
           steps={state.steps}
@@ -520,7 +469,7 @@ export function App({
           context={{
             program: telemetryContextOf(program),
             step: player.stepIndex,
-            totalSteps: player.stepCount,
+            totalSteps: stepCount,
           }}
           fallback={(error) => (
             <div className="col-span-full row-span-full flex items-center justify-center p-6">
@@ -539,23 +488,31 @@ export function App({
             lineMappingNote={mappingNote}
             stepForLine={stepForLine}
             onSeek={seekTo}
-            linkedLine={linkedLine}
-            onLinkedLineChange={setLinkedLine}
+            linkedLine={selection.linkedLine}
+            onLinkedLineChange={selection.linkLine}
             animateHighlight={smoothHighlight}
-            titleControl={structureView === 'source' ? structureTabs : undefined}
-            className={structureVisibilityOf('source', visiblePanel, structureView)}
+            titleControl={selection.structureView === 'source' ? structureTabs : undefined}
+            className={structureVisibilityOf(
+              'source',
+              selection.visiblePanel,
+              selection.structureView,
+            )}
           />
           <ClassPanel
             classFile={program.classFile}
             methods={program.methods}
             selectedMethod={listing}
-            onSelectMethod={selectMethod}
+            onSelectMethod={selection.selectMethod}
             onRunMethod={runMethod}
             entryMethod={program.entry}
-            selectedConstant={selectedConstant}
-            onSelectConstant={setSelectedConstant}
-            titleControl={structureView === 'class' ? structureTabs : undefined}
-            className={structureVisibilityOf('class', visiblePanel, structureView)}
+            selectedConstant={selection.selectedConstant}
+            onSelectConstant={selection.selectConstant}
+            titleControl={selection.structureView === 'class' ? structureTabs : undefined}
+            className={structureVisibilityOf(
+              'class',
+              selection.visiblePanel,
+              selection.structureView,
+            )}
           />
           <BytecodePanel
             methodName={listing.name}
@@ -574,27 +531,28 @@ export function App({
             constantPool={program.classFile.constantPool}
             constructs={constructs}
             sourceLineForOffset={sourceLineForOffset}
-            linkedLine={linkedLine}
-            onLinkedLineChange={setLinkedLine}
-            selectedConstant={selectedConstant}
-            onSelectConstant={followConstantFromListing}
+            linkedLine={selection.linkedLine}
+            onLinkedLineChange={selection.linkLine}
+            selectedConstant={selection.selectedConstant}
+            onSelectConstant={selection.followConstantFromListing}
             animateHighlight={smoothHighlight}
-            isPlaying={player.isPlaying}
-            className={visibilityOf('bytecode', visiblePanel)}
+            className={visibilityOf('bytecode', selection.visiblePanel)}
           />
           <StateColumn
             frames={snapshot?.callStack ?? NO_FRAMES}
             operandAnnotations={operandRoles}
             heap={snapshot?.heap}
             externals={snapshot?.externals}
-            mnemonic={snapshot?.currentInstruction?.mnemonic}
+            mnemonic={currentInstruction?.mnemonic}
+            stackEffect={stackEffect}
             lastLiveFrames={lastLive?.callStack}
             summary={summary}
             consoleLines={consoleLines}
             isPlaying={player.isPlaying}
+            stepIndex={player.stepIndex}
             onSeekToStep={seekTo}
             noRunNote={snapshots.length === 0 ? NO_RUN_NOTE : undefined}
-            className={`md:col-span-2 lg:col-span-1 ${visibilityOf('state', visiblePanel)}`}
+            className={`md:col-span-2 lg:col-span-1 ${visibilityOf('state', selection.visiblePanel)}`}
           />
         </ErrorBoundary>
       ) : (

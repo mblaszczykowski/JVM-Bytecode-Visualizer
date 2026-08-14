@@ -6,8 +6,7 @@ import {
   type HeapObject,
   type InstanceObject,
 } from '../../core/interpreter';
-import { describeValue } from '../../services/views/derivations';
-import { objectLabel, type HeapFocus } from '../../services/views/heap-view';
+import { describeValue, objectLabel, type HeapFocus } from '../../services/views/heap-view';
 
 import { Pill } from '../ui/Pill';
 import { PulseOverlay } from '../ui/PulseOverlay';

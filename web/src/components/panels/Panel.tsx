@@ -1,13 +1,15 @@
 import type { ReactNode, RefObject } from 'react';
 
-import { glossaryTermForPanel } from '../../services/views/glossary';
+import type { GlossaryTermId } from '../../services/views/glossary';
 
-import { GlossaryButton } from '../chrome/GlossaryButton';
+import { GlossaryButton } from './GlossaryButton';
+import { PANEL_INSET } from '../ui/rhythm';
 
-export type PanelVariant = 'code' | 'state';
+type PanelVariant = 'code' | 'state';
 
 interface PanelProps {
   readonly title: string;
+  readonly term?: GlossaryTermId | undefined;
   readonly meta?: ReactNode;
   readonly titleControl?: ReactNode;
   readonly variant?: PanelVariant;
@@ -26,6 +28,7 @@ const SURFACE: Record<PanelVariant, string> = {
 
 export function Panel({
   title,
+  term,
   meta,
   titleControl,
   variant = 'code',
@@ -39,7 +42,6 @@ export function Panel({
   const body = scrolls
     ? 'focus-ring scroll-visible min-h-0 flex-initial overflow-auto'
     : 'shrink-0';
-  const term = glossaryTermForPanel(title);
 
   return (
     <section
@@ -85,7 +87,7 @@ interface EmptyStateProps {
 
 export function EmptyState({ status, detail }: EmptyStateProps) {
   return (
-    <div className="px-2.5 pb-0.5">
+    <div className={`${PANEL_INSET} pb-0.5`}>
       <p className="text-label text-fg-2">{status}</p>
       <p className="mt-0.5 max-w-[46ch] text-body text-fg-3">{detail}</p>
     </div>

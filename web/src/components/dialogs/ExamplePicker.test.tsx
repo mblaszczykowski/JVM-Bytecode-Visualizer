@@ -8,22 +8,26 @@ const examples = exampleOptions();
 
 const last = examples[examples.length - 1] ?? { id: '', name: '' };
 
+function options(): HTMLElement[] {
+  return screen.getAllByTestId('example-option');
+}
+
 describe('ExamplePicker', () => {
   it('renders the examples it is given', () => {
     render(
       <ExamplePicker examples={examples} selectedId={undefined} onExampleSelected={vi.fn()} />,
     );
 
-    expect(screen.getByRole('radiogroup', { name: 'Example programs' })).toBeInTheDocument();
-    expect(screen.getAllByRole('radio')).toHaveLength(examples.length);
-    expect(screen.getByRole('radio', { name: 'Fibonacci' })).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'Example programs' })).toBeInTheDocument();
+    expect(options()).toHaveLength(examples.length);
+    expect(screen.getByRole('button', { name: 'Fibonacci' })).toBeInTheDocument();
   });
 
-  it('marks the selected example', () => {
+  it('marks the selected example the way every other single-select control does', () => {
     render(<ExamplePicker examples={examples} selectedId="gcd" onExampleSelected={vi.fn()} />);
 
-    expect(screen.getByRole('radio', { name: 'GCD', checked: true })).toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: 'Factorial', checked: false })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'GCD', pressed: true })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Factorial', pressed: false })).toBeInTheDocument();
   });
 
   it('keeps one tab stop and moves the focus with the arrow keys', () => {
@@ -36,25 +40,23 @@ describe('ExamplePicker', () => {
       />,
     );
 
-    const options = screen.getAllByRole('radio');
-    expect(options.map((option) => option.getAttribute('tabindex'))).toEqual(
+    expect(options().map((option) => option.getAttribute('tabindex'))).toEqual(
       examples.map((_, index) => (index === examples.length - 1 ? '0' : '-1')),
     );
 
-    fireEvent.keyDown(screen.getByRole('radio', { name: last.name }), { key: 'ArrowRight' });
+    fireEvent.keyDown(screen.getByRole('button', { name: last.name }), { key: 'ArrowRight' });
 
-    expect(screen.getAllByRole('radio')[0]).toHaveFocus();
+    expect(options()[0]).toHaveFocus();
     expect(onExampleSelected).not.toHaveBeenCalled();
   });
 
   it('keeps every option on one rail rather than wrapping some of them out of reach', () => {
     render(<ExamplePicker examples={examples} selectedId="gcd" onExampleSelected={vi.fn()} />);
 
-    const group = screen.getByRole('radiogroup', { name: 'Example programs' });
-    const options = screen.getAllByRole('radio');
+    const group = screen.getByRole('group', { name: 'Example programs' });
 
-    expect(options).toHaveLength(examples.length);
-    expect(options.every((option) => option.parentElement === group)).toBe(true);
+    expect(options()).toHaveLength(examples.length);
+    expect(options().every((option) => option.parentElement === group)).toBe(true);
   });
 
   it('reports the id of the example that was clicked', () => {
@@ -67,7 +69,7 @@ describe('ExamplePicker', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('radio', { name: 'Sum of products' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Sum of products' }));
 
     expect(onExampleSelected).toHaveBeenCalledWith('sum-of-products');
   });
@@ -109,19 +111,19 @@ describe('the folded picker', () => {
     expect(trigger).toHaveAttribute('aria-expanded', 'true');
   });
 
-  it('keeps exactly one radiogroup, open or shut', () => {
+  it('keeps exactly one group of options, open or shut', () => {
     const { trigger } = renderCollapsed();
 
-    expect(screen.getAllByRole('radiogroup')).toHaveLength(1);
+    expect(screen.getAllByRole('group', { name: 'Example programs' })).toHaveLength(1);
     fireEvent.click(trigger);
-    expect(screen.getAllByRole('radiogroup')).toHaveLength(1);
+    expect(screen.getAllByRole('group', { name: 'Example programs' })).toHaveLength(1);
   });
 
-  it('keeps Tab inside the sheet, though only one radio is tabbable', () => {
+  it('keeps Tab inside the sheet, though only one option is tabbable', () => {
     const { trigger } = renderCollapsed();
     fireEvent.click(trigger);
     const sheet = screen.getByRole('dialog');
-    const tabbable = screen.getAllByRole('radio').filter((radio) => radio.tabIndex >= 0);
+    const tabbable = options().filter((option) => option.tabIndex >= 0);
 
     expect(tabbable).toHaveLength(1);
     const anchor = tabbable[0];
@@ -163,7 +165,7 @@ describe('the folded picker', () => {
     trigger.focus();
     fireEvent.click(trigger);
 
-    fireEvent.click(screen.getByRole('radio', { name: 'GCD' }));
+    fireEvent.click(screen.getByRole('button', { name: 'GCD' }));
 
     expect(onExampleSelected).toHaveBeenCalledWith('gcd');
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
@@ -175,10 +177,10 @@ describe('the folded picker', () => {
     fireEvent.click(trigger);
 
     const [first, second] = examples;
-    fireEvent.keyDown(screen.getByRole('radio', { name: first?.name ?? '' }), {
+    fireEvent.keyDown(screen.getByRole('button', { name: first?.name ?? '' }), {
       key: 'ArrowDown',
     });
 
-    expect(screen.getByRole('radio', { name: second?.name ?? '' })).toHaveFocus();
+    expect(screen.getByRole('button', { name: second?.name ?? '' })).toHaveFocus();
   });
 });

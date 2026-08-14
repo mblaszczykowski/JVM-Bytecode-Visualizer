@@ -1,7 +1,9 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
+import type { ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 
-import { consoleLinesOf } from '../../services/loading/program';
+import { stackEffectOf } from '../../services/views/bytecode-format';
+import { consoleLinesOf } from '../../services/views/program-view';
 
 import {
   firstStepOf,
@@ -17,9 +19,12 @@ import {
   snapshotAt as collatzSnapshotAt,
 } from '../__fixtures__/collatz-run';
 import {
+  factorialProgram,
+  firstStepOf as factorialStepOf,
   snapshotAt as factorialSnapshotAt,
   snapshots as factorialSnapshots,
 } from '../__fixtures__/factorial-run';
+import { AppShell } from '../chrome/AppShell';
 import { StateColumn } from './StateColumn';
 
 const sortingStep = firstStepOf('iaload');
@@ -29,6 +34,26 @@ function sections(): string[] {
     .getAllByRole('region')
     .map((region) => region.getAttribute('aria-label') ?? '')
     .filter((label) => label !== '');
+}
+
+function inShell(column: ReactNode) {
+  return (
+    <AppShell toolbar={null} footer={null}>
+      {column}
+    </AppShell>
+  );
+}
+
+function announcement(): HTMLElement {
+  return screen.getByTestId('app-status');
+}
+
+function factorialStackEffect(step: number) {
+  const instruction = factorialSnapshotAt(step).currentInstruction;
+  if (instruction === undefined) {
+    throw new Error(`the Factorial run executes nothing at step ${String(step)}`);
+  }
+  return stackEffectOf(instruction, factorialProgram().classFile.constantPool);
 }
 
 describe('StateColumn', () => {
@@ -43,6 +68,14 @@ describe('StateColumn', () => {
 
     expect(sections()).toEqual(['Call stack', 'Operand stack', 'Locals', 'Heap']);
     expect(screen.getAllByTestId('heap-cell')).toHaveLength(5);
+  });
+
+  it('gives each state panel the glossary term it is about', () => {
+    render(<StateColumn frames={factorialSnapshotAt(20).callStack} />);
+
+    expect(
+      screen.getAllByTestId('glossary-trigger').map((trigger) => trigger.dataset.term),
+    ).toEqual(['call-stack', 'operand-stack', 'local-variable-slot']);
   });
 
   it('leaves the int-only runs exactly as they were', () => {
@@ -166,17 +199,57 @@ describe('StateColumn', () => {
   });
 
   it('says what the step did to the top frame, for a reader who cannot see it', () => {
-    const { rerender } = render(<StateColumn frames={factorialSnapshotAt(20).callStack} />);
+    const { rerender } = render(
+      inShell(<StateColumn frames={factorialSnapshotAt(20).callStack} />),
+    );
 
-    const announcement = screen.getByTestId('state-announcement');
-    expect(announcement).toHaveAttribute('aria-live', 'polite');
-    expect(announcement).toHaveTextContent(
+    expect(announcement()).toHaveAttribute('aria-live', 'polite');
+    expect(announcement()).toHaveTextContent(
       'In factorial; n is now 2; operand stack 2 deep, top 1.',
     );
 
-    rerender(<StateColumn frames={factorialSnapshotAt(21).callStack} />);
+    rerender(inShell(<StateColumn frames={factorialSnapshotAt(21).callStack} />));
 
-    expect(screen.getByTestId('state-announcement')).toHaveTextContent('operand stack empty.');
+    expect(announcement()).toHaveTextContent('operand stack empty.');
+  });
+
+  it('speaks from the shell, where no panel the layout hides can silence it', () => {
+    render(inShell(<StateColumn frames={factorialSnapshotAt(20).callStack} />));
+
+    expect(announcement()).toHaveTextContent('In factorial');
+    expect(screen.getByTestId('state-column')).not.toContainElement(announcement());
+    expect(screen.getAllByRole('status')).toHaveLength(1);
+  });
+
+  it('carries the pc and the instruction, so the listing needs no region of its own', () => {
+    const step = firstStepOf('iaload');
+    render(
+      inShell(
+        <StateColumn
+          frames={snapshotAt(step).callStack}
+          heap={heapAt(step)}
+          mnemonic={mnemonicAt(step)}
+        />,
+      ),
+    );
+
+    const pc = snapshotAt(step).callStack.at(-1)?.pc;
+    expect(announcement().textContent).toMatch(new RegExp(`^pc ${String(pc)}, iaload\\. `));
+  });
+
+  it('announces the stack effect of the current instruction', () => {
+    const step = factorialStepOf('imul');
+    render(
+      inShell(
+        <StateColumn
+          frames={factorialSnapshotAt(step).callStack}
+          mnemonic="imul"
+          stackEffect={factorialStackEffect(step)}
+        />,
+      ),
+    );
+
+    expect(announcement().textContent).toMatch(/^pc 14, imul, stack: pops 2, pushes 1\. /);
   });
 
   it('says a call and a return moved the frame, rather than reporting an assignment', () => {
@@ -186,24 +259,25 @@ describe('StateColumn', () => {
       (snapshot, step) => step > callStep && snapshot.callStack.length === 2,
     );
     const { rerender } = render(
-      <StateColumn frames={factorialSnapshotAt(callStep - 1).callStack} />,
+      inShell(<StateColumn frames={factorialSnapshotAt(callStep - 1).callStack} />),
     );
 
-    rerender(<StateColumn frames={factorialSnapshotAt(callStep).callStack} />);
-    expect(screen.getByTestId('state-announcement')).toHaveTextContent(
-      /^Called factorial, 3 frames deep;/,
-    );
+    rerender(inShell(<StateColumn frames={factorialSnapshotAt(callStep).callStack} />));
+    expect(announcement()).toHaveTextContent(/^Called factorial, 3 frames deep;/);
 
-    rerender(<StateColumn frames={factorialSnapshotAt(returnStep).callStack} />);
-    const announcement = screen.getByTestId('state-announcement');
-    expect(announcement).toHaveTextContent(/^Returned to factorial, 2 frames deep;/);
-    expect(announcement).not.toHaveTextContent('n is now');
+    rerender(inShell(<StateColumn frames={factorialSnapshotAt(returnStep).callStack} />));
+    expect(announcement()).toHaveTextContent(/^Returned to factorial, 2 frames deep;/);
+    expect(announcement()).not.toHaveTextContent('n is now');
   });
 
   it('names the locals by the value they hold, references included', () => {
-    render(<StateColumn frames={snapshotAt(sortingStep).callStack} heap={heapAt(sortingStep)} />);
+    render(
+      inShell(
+        <StateColumn frames={snapshotAt(sortingStep).callStack} heap={heapAt(sortingStep)} />,
+      ),
+    );
 
-    expect(screen.getByTestId('state-announcement')).toHaveTextContent(
+    expect(announcement()).toHaveTextContent(
       'In sortedMinimum; a is now int[5]@0; i is now 0; j is now 0; operand stack 2 deep, top 0.',
     );
   });
@@ -211,38 +285,45 @@ describe('StateColumn', () => {
   it('names an interned object in the announcement rather than its handle', () => {
     const step = collatzInternedStep();
     render(
-      <StateColumn
-        frames={collatzSnapshotAt(step).callStack}
-        externals={collatzExternalsAt(step)}
-      />,
+      inShell(
+        <StateColumn
+          frames={collatzSnapshotAt(step).callStack}
+          externals={collatzExternalsAt(step)}
+        />,
+      ),
     );
 
-    expect(screen.getByTestId('state-announcement')).toHaveTextContent(
-      'operand stack 1 deep, top System.out.',
-    );
+    expect(announcement()).toHaveTextContent('operand stack 1 deep, top System.out.');
   });
 
   it('reads what the run printed, once, on the step that printed it', () => {
     const frames = factorialSnapshotAt(20).callStack;
-    const { rerender } = render(<StateColumn frames={frames} consoleLines={[]} />);
+    const { rerender } = render(inShell(<StateColumn frames={frames} consoleLines={[]} />));
 
-    rerender(<StateColumn frames={factorialSnapshotAt(21).callStack} consoleLines={['24']} />);
-    expect(screen.getByTestId('state-announcement')).toHaveTextContent('printed 24');
+    rerender(
+      inShell(<StateColumn frames={factorialSnapshotAt(21).callStack} consoleLines={['24']} />),
+    );
+    expect(announcement()).toHaveTextContent('printed 24');
 
-    rerender(<StateColumn frames={factorialSnapshotAt(22).callStack} consoleLines={['24']} />);
-    expect(screen.getByTestId('state-announcement')).not.toHaveTextContent('printed 24');
+    rerender(
+      inShell(<StateColumn frames={factorialSnapshotAt(22).callStack} consoleLines={['24']} />),
+    );
+    expect(announcement()).not.toHaveTextContent('printed 24');
   });
 
   it('holds the announcement back while the run is playing itself', () => {
-    render(<StateColumn frames={factorialSnapshotAt(20).callStack} isPlaying />);
+    render(inShell(<StateColumn frames={factorialSnapshotAt(20).callStack} isPlaying />));
 
-    expect(screen.getByTestId('state-announcement')).toHaveAttribute('aria-live', 'off');
+    expect(announcement()).toHaveAttribute('aria-live', 'off');
   });
 
-  it('says nothing about state for a class file that was never run', () => {
-    render(<StateColumn frames={[]} noRunNote="Nothing was executed." />);
+  it('says that nothing ran for a class file that was never executed', () => {
+    render(inShell(<StateColumn frames={[]} noRunNote="Nothing was executed." />));
 
-    expect(screen.queryByTestId('state-announcement')).not.toBeInTheDocument();
+    expect(announcement()).toHaveTextContent(
+      'Nothing was executed, so there is no active instruction.',
+    );
+    expect(announcement()).not.toHaveTextContent('the run has finished');
   });
 
   it('renders no console output for a snapshot whose interpreter records none', () => {

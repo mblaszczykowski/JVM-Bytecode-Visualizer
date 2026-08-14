@@ -5,6 +5,7 @@ import type { StackFrame } from '../../core/interpreter';
 
 import { EmptyState, Panel } from './Panel';
 import { Pill } from '../ui/Pill';
+import { PANEL_INSET } from '../ui/rhythm';
 
 interface CallStackPanelProps {
   readonly frames: readonly StackFrame[];
@@ -60,6 +61,7 @@ export function CallStackPanel({ frames }: CallStackPanelProps) {
   return (
     <Panel
       title="Call stack"
+      term="call-stack"
       meta={`depth ${String(frames.length)}`}
       variant="state"
       className="grow"
@@ -70,7 +72,10 @@ export function CallStackPanel({ frames }: CallStackPanelProps) {
           detail="Execution finished: returning from the entry method popped the last frame."
         />
       ) : (
-        <ol data-testid="call-frame-list" className="flex flex-col-reverse gap-0.5 px-2">
+        <ol
+          data-testid="call-frame-list"
+          className={`flex flex-col-reverse gap-0.5 ${PANEL_INSET}`}
+        >
           <AnimatePresence initial={false} mode="popLayout">
             {rows.map((row) => {
               if (row.kind === 'collapsed') {

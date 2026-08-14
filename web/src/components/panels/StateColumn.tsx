@@ -7,8 +7,10 @@ import {
   type HeapObject,
   type StackFrame,
 } from '../../core/interpreter';
-import { describeValue } from '../../services/views/derivations';
-import type { RunSummary } from '../../services/loading/program';
+import { describeStackEffect } from '../../services/views/bytecode-format';
+import { describeValue } from '../../services/views/heap-view';
+import type { StackDelta } from '../../services/views/opcode-notes';
+import type { RunSummary } from '../../services/views/program-view';
 
 import { CallStackPanel } from './CallStackPanel';
 import { CompletionCard } from './CompletionCard';
@@ -17,6 +19,8 @@ import { HeapPanel } from './HeapPanel';
 import { LocalsPanel } from './LocalsPanel';
 import { OperandStackPanel } from './OperandStackPanel';
 import { EmptyState, Panel } from './Panel';
+import { usePublishedStatus } from '../ui/app-status';
+import { Hairline } from '../ui/Hairline';
 
 interface StateColumnProps {
   readonly frames: readonly StackFrame[];
@@ -25,6 +29,8 @@ interface StateColumnProps {
   readonly externals?: readonly ExternalValue[] | undefined;
   readonly consoleLines?: readonly string[] | undefined;
   readonly mnemonic?: string | undefined;
+  readonly stackEffect?: StackDelta | 'varies' | undefined;
+  readonly stepIndex?: number | undefined;
   readonly lastLiveFrames?: readonly StackFrame[] | undefined;
   readonly summary?: RunSummary | undefined;
   readonly noRunNote?: string | undefined;
@@ -33,18 +39,13 @@ interface StateColumnProps {
   readonly className?: string;
 }
 
-function Hairline() {
-  return (
-    <div
-      aria-hidden="true"
-      className="mx-3 h-px shrink-0 bg-line md:mx-0 md:my-3 md:h-auto md:w-px lg:mx-3 lg:my-0 lg:h-px lg:w-auto"
-    />
-  );
-}
+const SEAM = 'mx-3 md:mx-0 md:my-3 md:h-auto md:w-px lg:mx-3 lg:my-0 lg:h-px lg:w-auto';
 
 const SECTION = 'flex min-h-[84px] flex-col md:min-w-0 md:flex-1 lg:flex-initial';
 
 const LAST_SECTION = 'pb-1.5';
+
+const NOTHING_RAN = 'Nothing was executed, so there is no active instruction.';
 
 function describeLocals(
   frame: StackFrame,
@@ -53,12 +54,12 @@ function describeLocals(
   externals: readonly ExternalValue[],
 ): readonly string[] {
   return frame.locals.flatMap((value, slot) => {
-    if (value === undefined || previous?.locals[slot] === value) {
+    const kind = frame.localKinds[slot];
+    if (value === undefined || kind === undefined || previous?.locals[slot] === value) {
       return [];
     }
     const name = frame.localNames[slot] ?? `slot ${String(slot)}`;
-    const label = describeValue(frame.localKinds?.[slot], value, heap, externals);
-    return [`${name} is now ${label}`];
+    return [`${name} is now ${describeValue(kind, value, heap, externals)}`];
   });
 }
 
@@ -97,11 +98,12 @@ function describeState(
   }
 
   const top = frame.operandStack.at(-1);
+  const topKind = frame.operandKinds.at(-1);
   parts.push(
-    top === undefined
+    top === undefined || topKind === undefined
       ? 'operand stack empty'
       : `operand stack ${String(frame.operandStack.length)} deep, top ${describeValue(
-          frame.operandKinds?.[frame.operandStack.length - 1],
+          topKind,
           top,
           heap,
           externals,
@@ -114,8 +116,22 @@ function describeState(
   return `${parts.join('; ')}.`;
 }
 
+function describeInstruction(
+  frames: readonly StackFrame[],
+  mnemonic: string | undefined,
+  stackEffect: StackDelta | 'varies' | undefined,
+): string {
+  const frame = frames.at(-1);
+  if (frame === undefined || mnemonic === undefined) {
+    return '';
+  }
+  const effect = describeStackEffect(stackEffect);
+  return `pc ${String(frame.pc)}, ${mnemonic}${effect === undefined ? '' : `, ${effect}`}. `;
+}
+
 interface Announced {
   readonly frames: readonly StackFrame[];
+  readonly mnemonic: string | undefined;
   readonly printedCount: number;
   readonly text: string;
 }
@@ -125,20 +141,32 @@ function useStateAnnouncement(
   heap: readonly HeapObject[],
   externals: readonly ExternalValue[],
   consoleLines: readonly string[] | undefined,
+  mnemonic: string | undefined,
+  stackEffect: StackDelta | 'varies' | undefined,
 ): string {
   const printedCount = consoleLines?.length ?? 0;
   const [announced, setAnnounced] = useState<Announced>(() => ({
     frames,
+    mnemonic,
     printedCount,
-    text: describeState(frames, undefined, heap, externals, undefined),
+    text:
+      describeInstruction(frames, mnemonic, stackEffect) +
+      describeState(frames, undefined, heap, externals, undefined),
   }));
 
-  if (announced.frames !== frames || announced.printedCount !== printedCount) {
+  if (
+    announced.frames !== frames ||
+    announced.mnemonic !== mnemonic ||
+    announced.printedCount !== printedCount
+  ) {
     const printed = printedCount > announced.printedCount ? consoleLines?.at(-1) : undefined;
     setAnnounced({
       frames,
+      mnemonic,
       printedCount,
-      text: describeState(frames, announced.frames, heap, externals, printed),
+      text:
+        describeInstruction(frames, mnemonic, stackEffect) +
+        describeState(frames, announced.frames, heap, externals, printed),
     });
   }
 
@@ -148,7 +176,7 @@ function useStateAnnouncement(
 function ConsoleSection({ lines }: { readonly lines: readonly string[] }) {
   return (
     <>
-      <Hairline />
+      <Hairline className={SEAM} />
       <div className={`${SECTION} ${LAST_SECTION}`}>
         <ConsolePanel lines={lines} />
       </div>
@@ -163,6 +191,8 @@ export function StateColumn({
   externals = NO_EXTERNALS,
   consoleLines,
   mnemonic,
+  stackEffect,
+  stepIndex,
   lastLiveFrames,
   summary,
   noRunNote,
@@ -176,26 +206,27 @@ export function StateColumn({
   const finalFrame = lastLiveFrames?.[0];
   const hasHeap = heap.length > 0;
   const hasConsole = consoleLines !== undefined;
-  const announcement = useStateAnnouncement(frames, heap, externals, consoleLines);
+  const announcement = useStateAnnouncement(
+    frames,
+    heap,
+    externals,
+    consoleLines,
+    mnemonic,
+    stackEffect,
+  );
+  usePublishedStatus(
+    noRunNote === undefined ? announcement : NOTHING_RAN,
+    isPlaying ? 'off' : 'polite',
+  );
 
   return (
     <div
       data-testid="state-column"
       className={`flex max-h-full min-h-0 flex-col rounded-panel bg-panel shadow-panel-raised md:flex-row lg:flex-col ${className}`}
     >
-      {noRunNote === undefined ? (
-        <p
-          data-testid="state-announcement"
-          className="sr-only"
-          aria-live={isPlaying ? 'off' : 'polite'}
-        >
-          {announcement}
-        </p>
-      ) : null}
-
       {noRunNote !== undefined ? (
         <div className={`${SECTION} ${LAST_SECTION}`}>
-          <Panel title="Run state" meta="no run" variant="state" className="grow">
+          <Panel title="Run state" term="frame" meta="no run" variant="state" className="grow">
             <EmptyState status="nothing executed" detail={noRunNote} />
           </Panel>
         </div>
@@ -204,11 +235,12 @@ export function StateColumn({
           <div className={SECTION}>
             <CompletionCard summary={summary} heap={heap} externals={externals} />
           </div>
-          <Hairline />
+          <Hairline className={SEAM} />
           <div className={`${SECTION} ${hasConsole ? '' : LAST_SECTION}`}>
             <LocalsPanel
               frame={finalFrame}
               frameIndex={0}
+              stepIndex={stepIndex}
               heap={heap}
               externals={externals}
               caption={`Left behind by ${finalFrame?.methodName ?? 'the entry method'}`}
@@ -222,7 +254,7 @@ export function StateColumn({
           <div className={SECTION}>
             <CallStackPanel frames={frames} />
           </div>
-          <Hairline />
+          <Hairline className={SEAM} />
           <div className={SECTION}>
             <OperandStackPanel
               frame={topFrame}
@@ -233,11 +265,12 @@ export function StateColumn({
               onSeekToStep={onSeekToStep}
             />
           </div>
-          <Hairline />
+          <Hairline className={SEAM} />
           <div className={`${SECTION} ${hasHeap || hasConsole ? '' : LAST_SECTION}`}>
             <LocalsPanel
               frame={topFrame}
               frameIndex={topIndex}
+              stepIndex={stepIndex}
               heap={heap}
               externals={externals}
               onSeekToStep={onSeekToStep}
@@ -245,9 +278,15 @@ export function StateColumn({
           </div>
           {hasHeap ? (
             <>
-              <Hairline />
+              <Hairline className={SEAM} />
               <div className={`${SECTION} ${hasConsole ? '' : LAST_SECTION}`}>
-                <HeapPanel heap={heap} frame={topFrame} externals={externals} mnemonic={mnemonic} />
+                <HeapPanel
+                  heap={heap}
+                  frame={topFrame}
+                  stepIndex={stepIndex}
+                  externals={externals}
+                  mnemonic={mnemonic}
+                />
               </div>
             </>
           ) : null}

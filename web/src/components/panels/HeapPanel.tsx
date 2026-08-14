@@ -10,10 +10,12 @@ import { cellValuesOf, heapFocusOf, type HeapFocus } from '../../services/views/
 
 import { HeapArrayRow, HeapInstanceRow } from './HeapRows';
 import { Panel } from './Panel';
+import { PANEL_INSET } from '../ui/rhythm';
 
 interface HeapPanelProps {
   readonly heap: readonly HeapObject[];
   readonly frame?: StackFrame | undefined;
+  readonly stepIndex?: number | undefined;
   readonly externals?: readonly ExternalValue[] | undefined;
   readonly mnemonic?: string | undefined;
 }
@@ -21,6 +23,7 @@ interface HeapPanelProps {
 type Pulses = readonly (readonly number[])[];
 
 interface Tracked {
+  readonly stepIndex: number | undefined;
   readonly heap: readonly HeapObject[];
   readonly pulses: Pulses;
 }
@@ -52,11 +55,21 @@ function nextPulses(previous: Tracked, heap: readonly HeapObject[]): Pulses {
   });
 }
 
-function usePulses(heap: readonly HeapObject[]): Pulses {
-  const [tracked, setTracked] = useState<Tracked>(() => ({ heap, pulses: restingPulses(heap) }));
+function usePulses(stepIndex: number | undefined, heap: readonly HeapObject[]): Pulses {
+  const [tracked, setTracked] = useState<Tracked>(() => ({
+    stepIndex,
+    heap,
+    pulses: restingPulses(heap),
+  }));
 
   if (tracked.heap !== heap) {
-    setTracked({ heap, pulses: nextPulses(tracked, heap) });
+    const advanced =
+      tracked.stepIndex === undefined || stepIndex === undefined || stepIndex > tracked.stepIndex;
+    setTracked({
+      stepIndex,
+      heap,
+      pulses: advanced ? nextPulses(tracked, heap) : restingPulses(heap),
+    });
   }
 
   return tracked.pulses;
@@ -85,8 +98,14 @@ function HeapObjectRow({ object, handle, heap, externals, focus, pulses }: HeapO
   );
 }
 
-export function HeapPanel({ heap, frame, externals = NO_EXTERNALS, mnemonic }: HeapPanelProps) {
-  const pulses = usePulses(heap);
+export function HeapPanel({
+  heap,
+  frame,
+  stepIndex,
+  externals = NO_EXTERNALS,
+  mnemonic,
+}: HeapPanelProps) {
+  const pulses = usePulses(stepIndex, heap);
 
   if (heap.length === 0) {
     return null;
@@ -101,7 +120,7 @@ export function HeapPanel({ heap, frame, externals = NO_EXTERNALS, mnemonic }: H
       variant="state"
       className="grow"
     >
-      <ol className="flex flex-col gap-3 px-2.5 pb-0.5">
+      <ol className={`flex flex-col gap-3 pb-0.5 ${PANEL_INSET}`}>
         {heap.map((object, handle) => (
           <HeapObjectRow
             key={handle}

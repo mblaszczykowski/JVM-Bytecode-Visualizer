@@ -2,9 +2,10 @@ import { methodModifiersOf } from '../../services/views/class-view';
 import { describeNotRunnable, type MethodListing } from '../../services/loading/program';
 
 import { Button } from '../ui/Button';
+import { SELECTED_SURFACE } from '../ui/button-surface';
 import { Pill } from '../ui/Pill';
 
-export interface MethodPickerProps {
+interface MethodPickerProps {
   readonly methods: readonly MethodListing[];
   readonly selected: MethodListing | undefined;
   readonly onSelect: (method: MethodListing) => void;
@@ -40,7 +41,7 @@ export function MethodPicker({ methods, selected, onSelect, onRun, entry }: Meth
             data-testid="method-row"
             data-method={signature}
             className={`flex items-center gap-2 rounded-row px-3 py-2 text-label ${
-              isSelected ? 'bg-raised-active text-fg shadow-control-raised' : 'bg-raised'
+              isSelected ? SELECTED_SURFACE : 'bg-raised'
             }`}
           >
             <button

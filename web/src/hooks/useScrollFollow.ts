@@ -1,6 +1,6 @@
 import { type RefObject, useLayoutEffect, useRef } from 'react';
 
-import { ROW_HEIGHT } from '../components/rhythm';
+import { ROW_HEIGHT } from '../components/ui/rhythm';
 
 export type RowTop = number | ((container: HTMLElement) => number | undefined);
 

@@ -4,11 +4,13 @@ import { parseClassFile } from '../core/classfile';
 import { fetchExampleClass } from '../services/loading/examples';
 import type { ExampleEntry } from '../services/loading/manifest';
 import { previewProgram, type RunPreview } from '../services/loading/program';
+import type { ProgramRunner } from '../services/loading/program-runner';
 
 const NONE: ReadonlyMap<string, RunPreview> = new Map();
 
 export function useExamplePreviews(
   entries: readonly ExampleEntry[],
+  runner: ProgramRunner,
 ): ReadonlyMap<string, RunPreview> {
   const [previews, setPreviews] = useState<ReadonlyMap<string, RunPreview>>(NONE);
 
@@ -16,26 +18,40 @@ export function useExamplePreviews(
     if (entries.length === 0) {
       return;
     }
-    let active = true;
+    const abandon = new AbortController();
+    const { signal } = abandon;
 
-    void Promise.all(
-      entries.map(async (entry): Promise<readonly [string, RunPreview] | undefined> => {
-        try {
-          return [entry.id, previewProgram(parseClassFile(await fetchExampleClass(entry)))];
-        } catch {
-          return undefined;
-        }
-      }),
-    ).then((results) => {
-      if (active) {
-        setPreviews(new Map(results.filter((result) => result !== undefined)));
+    const measure = async (entry: ExampleEntry): Promise<RunPreview | undefined> => {
+      try {
+        return await previewProgram(parseClassFile(await fetchExampleClass(entry)), {
+          runner,
+          signal,
+        });
+      } catch {
+        return undefined;
       }
-    });
+    };
+
+    const measureInTurn = async (): Promise<void> => {
+      const measured = new Map<string, RunPreview>();
+      for (const entry of entries) {
+        const preview = await measure(entry);
+        if (signal.aborted) {
+          return;
+        }
+        if (preview !== undefined) {
+          measured.set(entry.id, preview);
+          setPreviews(new Map(measured));
+        }
+      }
+    };
+
+    void measureInTurn();
 
     return () => {
-      active = false;
+      abandon.abort();
     };
-  }, [entries]);
+  }, [entries, runner]);
 
   return previews;
 }

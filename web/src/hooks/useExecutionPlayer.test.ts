@@ -2,26 +2,31 @@ import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { Snapshot, StackFrame } from '../core/interpreter';
-import { BASE_STEP_INTERVAL_MS, useExecutionPlayer } from './useExecutionPlayer';
+import { frameOf, snapshotOf } from '../core/interpreter/__fixtures__/snapshots';
+import {
+  BASE_STEP_INTERVAL_MS,
+  nextSpeed,
+  PLAYBACK_SPEEDS,
+  useExecutionPlayer,
+} from './useExecutionPlayer';
 
 function historyOf(steps: number): readonly Snapshot[] {
-  return Array.from({ length: steps }, (_, step) => ({ step, callStack: [] }));
+  return Array.from({ length: steps }, (_, step) => snapshotOf({ step, callStack: [] }));
 }
 
-const FRAME: StackFrame = {
+const FRAME: StackFrame = frameOf({
   methodName: 'f',
   methodDescriptor: '()V',
   pc: 0,
   operandStack: [],
   locals: [],
   localNames: [],
-};
+});
 
 function historyOfDepths(depths: readonly number[]): readonly Snapshot[] {
-  return depths.map((depth, step) => ({
-    step,
-    callStack: Array.from({ length: depth }, () => FRAME),
-  }));
+  return depths.map((depth, step) =>
+    snapshotOf({ step, callStack: Array.from({ length: depth }, () => FRAME) }),
+  );
 }
 
 function renderPlayer(snapshots: readonly Snapshot[]) {
@@ -72,7 +77,7 @@ describe('useExecutionPlayer', () => {
     const { result } = renderPlayer(historyOf(10));
 
     act(() => {
-      result.current.play();
+      result.current.togglePlay();
     });
     expect(result.current.isPlaying).toBe(true);
 
@@ -90,12 +95,12 @@ describe('useExecutionPlayer', () => {
     const { result } = renderPlayer(historyOf(10));
 
     act(() => {
-      result.current.play();
+      result.current.togglePlay();
     });
     advance(BASE_STEP_INTERVAL_MS * 2);
 
     act(() => {
-      result.current.pause();
+      result.current.togglePlay();
     });
     advance(BASE_STEP_INTERVAL_MS * 5);
 
@@ -122,7 +127,7 @@ describe('useExecutionPlayer', () => {
     const { result } = renderPlayer(historyOf(20));
 
     act(() => {
-      result.current.play();
+      result.current.togglePlay();
     });
     advance(BASE_STEP_INTERVAL_MS / 2);
     expect(result.current.stepIndex).toBe(0);
@@ -159,7 +164,7 @@ describe('useExecutionPlayer', () => {
     const { result } = renderPlayer(historyOf(4));
 
     act(() => {
-      result.current.play();
+      result.current.togglePlay();
     });
     advance(BASE_STEP_INTERVAL_MS * 10);
 
@@ -168,14 +173,14 @@ describe('useExecutionPlayer', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it('replays from the top when play is pressed on the last step', () => {
+  it('replays from the top when playback starts on the last step', () => {
     const { result } = renderPlayer(historyOf(3));
 
     act(() => {
       result.current.seekTo(2);
     });
     act(() => {
-      result.current.play();
+      result.current.togglePlay();
     });
 
     expect(result.current.stepIndex).toBe(0);
@@ -297,7 +302,7 @@ describe('useExecutionPlayer', () => {
     const { result } = renderPlayer(historyOf(20));
 
     act(() => {
-      result.current.play();
+      result.current.togglePlay();
     });
 
     act(() => {
@@ -318,7 +323,7 @@ describe('useExecutionPlayer', () => {
     const { result } = renderPlayer(historyOf(8));
 
     act(() => {
-      result.current.play();
+      result.current.togglePlay();
     });
     act(() => {
       result.current.seekTo(7);
@@ -335,7 +340,7 @@ describe('useExecutionPlayer', () => {
       result.current.seekTo(5);
     });
     act(() => {
-      result.current.play();
+      result.current.togglePlay();
     });
 
     rerender({ history: historyOf(10) });
@@ -361,7 +366,7 @@ describe('useExecutionPlayer', () => {
     const { result, unmount } = renderPlayer(historyOf(50));
 
     act(() => {
-      result.current.play();
+      result.current.togglePlay();
     });
     expect(vi.getTimerCount()).toBe(1);
 
@@ -379,7 +384,7 @@ describe('useExecutionPlayer', () => {
     expect(result.current.canStepOut).toBe(false);
 
     act(() => {
-      result.current.play();
+      result.current.togglePlay();
       result.current.stepForward();
       result.current.stepBack();
       result.current.stepOver();
@@ -393,5 +398,11 @@ describe('useExecutionPlayer', () => {
 
     rerender({ history: [] });
     expect(result.current.stepIndex).toBe(0);
+  });
+});
+
+describe('the speed ladder', () => {
+  it('steps up one rung at a time and wraps round from the fastest', () => {
+    expect(PLAYBACK_SPEEDS.map((speed) => nextSpeed(speed))).toEqual([1, 2, 4, 8, 0.5]);
   });
 });

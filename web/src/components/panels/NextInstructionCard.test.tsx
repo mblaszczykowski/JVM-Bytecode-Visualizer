@@ -33,7 +33,7 @@ describe('NextInstructionCard', () => {
   });
 
   it('resolves the constant pool reference of invokestatic down to the method name', () => {
-    render(<NextInstructionCard {...detailsAt(firstStepOf('invokestatic', 2))} />);
+    render(<NextInstructionCard {...detailsAt(firstStepOf('invokestatic', { depth: 2 }))} />);
 
     const chain = within(screen.getByTestId('cp-chain'));
 

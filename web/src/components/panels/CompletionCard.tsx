@@ -1,8 +1,9 @@
 import { NO_EXTERNALS, NO_HEAP, type ExternalValue, type HeapObject } from '../../core/interpreter';
-import type { RunSummary } from '../../services/loading/program';
+import type { RunSummary } from '../../services/views/program-view';
 
 import { HeapArrayRow, HeapInstanceRow } from './HeapRows';
 import { Panel } from './Panel';
+import { PANEL_INSET } from '../ui/rhythm';
 
 interface CompletionCardProps {
   readonly summary: RunSummary;
@@ -29,11 +30,11 @@ export function CompletionCard({
   heap = NO_HEAP,
   externals = NO_EXTERNALS,
 }: CompletionCardProps) {
-  const { resultName, resultValue, totalSteps, maxDepth, referenceValue } = summary;
+  const { resultName, resultValue, totalSteps, maxDepth, reference } = summary;
 
   return (
     <Panel title="Result" meta="run complete" variant="state" scrolls={false} className="grow">
-      <div data-testid="completion-card" className="px-2.5 pb-1">
+      <div data-testid="completion-card" className={`pb-1 ${PANEL_INSET}`}>
         <div className="rounded-row bg-accent-wash px-3 py-2.5 shadow-current">
           <div className="flex items-baseline gap-2">
             <span className="font-mono text-code text-accent-soft">{resultName}</span>
@@ -45,12 +46,22 @@ export function CompletionCard({
               {resultValue ?? '–'}
             </span>
           </div>
-          {referenceValue === undefined ? null : (
+          {reference?.matches === true ? (
             <p className="mt-1.5 text-micro text-accent-soft">
               Matches the value a real JVM computed for this example when the fixtures were built.
             </p>
-          )}
+          ) : null}
         </div>
+
+        {reference === undefined || reference.matches ? null : (
+          <p
+            data-testid="reference-mismatch"
+            className="mt-2.5 rounded-row bg-warn-wash px-3 py-2.5 text-micro text-warn shadow-banner-warn"
+          >
+            A real JVM computed {reference.expected} for this example when the fixtures were built;
+            this run did not.
+          </p>
+        )}
 
         {heap.length === 0 ? null : (
           <div className="mt-2.5 rounded-row bg-raised px-3 py-2.5">

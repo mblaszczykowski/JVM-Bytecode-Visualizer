@@ -25,7 +25,7 @@ async function seekTo(page: Page, index: number, total: number): Promise<void> {
 
 async function openPrintingExample(page: Page): Promise<number> {
   await page.goto('/');
-  await page.getByRole('radio', { name: NAME, exact: true }).click();
+  await page.getByRole('button', { name: NAME, exact: true }).click();
   await expect(counter(page)).toHaveText(/^step 1 \/ \d+$/);
   return stepCount(page);
 }
@@ -66,7 +66,7 @@ test('a program that prints nothing gets no console', async ({ page }) => {
   await seekTo(page, total - 1, total);
   await expect(page.getByRole('region', { name: 'Console' })).toBeVisible();
 
-  await page.getByRole('radio', { name: 'Factorial', exact: true }).click();
+  await page.getByRole('button', { name: 'Factorial', exact: true }).click();
   await expect(counter(page)).toHaveText('step 1 / 40');
 
   await expect(page.getByRole('region', { name: 'Console' })).toHaveCount(0);

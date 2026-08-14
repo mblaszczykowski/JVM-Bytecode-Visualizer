@@ -5,7 +5,7 @@ import type { Instruction } from '../../core/disassembler';
 
 import { factorialListing } from '../__fixtures__/factorial-run';
 import { BranchGutter } from './BranchGutter';
-import { ROW_HEIGHT } from '../rhythm';
+import { ROW_HEIGHT } from '../ui/rhythm';
 
 const backwardJump: readonly Instruction[] = [
   { offset: 0, opcode: 0x1a, mnemonic: 'iload_0', operands: [] },

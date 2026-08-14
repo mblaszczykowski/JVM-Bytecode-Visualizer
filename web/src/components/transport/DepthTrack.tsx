@@ -1,4 +1,4 @@
-import { type ChangeEvent, useMemo } from 'react';
+import type { ChangeEvent } from 'react';
 
 import {
   bucketEvents,
@@ -91,14 +91,11 @@ export function DepthTrack({
   onSeek,
   label,
 }: DepthTrackProps) {
-  const buckets = useMemo(() => stepBucketsOf(depths.length, MAX_BARS), [depths.length]);
-  const bars = useMemo(() => bucketDepths(depths, buckets), [depths, buckets]);
-  const marks = useMemo(() => bucketEvents(events, buckets), [events, buckets]);
-  const maxDepth = useMemo(
-    () => depths.reduce((high, value) => Math.max(high, value), 1),
-    [depths],
-  );
-  const spans = useMemo(() => frameSpansOf(depths), [depths]);
+  const buckets = stepBucketsOf(depths.length, MAX_BARS);
+  const bars = bucketDepths(depths, buckets);
+  const marks = bucketEvents(events, buckets);
+  const maxDepth = depths.reduce((high, value) => Math.max(high, value), 1);
+  const spans = frameSpansOf(depths);
   const currentDepth = depths[stepIndex] ?? 0;
   const spanFrom = spans.from[stepIndex];
   const spanTo = spans.to[stepIndex];

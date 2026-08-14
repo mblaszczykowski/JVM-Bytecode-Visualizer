@@ -8,6 +8,11 @@ export const PLAYBACK_SPEEDS = [0.5, 1, 2, 4, 8] as const;
 
 export type PlaybackSpeed = (typeof PLAYBACK_SPEEDS)[number];
 
+export function nextSpeed(current: PlaybackSpeed): PlaybackSpeed {
+  const index = PLAYBACK_SPEEDS.indexOf(current);
+  return PLAYBACK_SPEEDS[index + 1] ?? PLAYBACK_SPEEDS[0];
+}
+
 export const BASE_STEP_INTERVAL_MS = 600;
 
 const DEFAULT_SPEED: PlaybackSpeed = 1;
@@ -18,8 +23,6 @@ export interface ExecutionPlayer {
   readonly isPlaying: boolean;
   readonly speed: PlaybackSpeed;
   readonly depths: readonly number[];
-  readonly play: () => void;
-  readonly pause: () => void;
   readonly togglePlay: () => void;
   readonly stepForward: () => void;
   readonly stepBack: () => void;
@@ -70,7 +73,7 @@ export function useExecutionPlayer(snapshots: readonly Snapshot[]): ExecutionPla
     };
   }, [isPlaying, speed, lastIndex]);
 
-  const play = useCallback(() => {
+  function play(): void {
     if (stepCount === 0) {
       return;
     }
@@ -78,43 +81,39 @@ export function useExecutionPlayer(snapshots: readonly Snapshot[]): ExecutionPla
       setStepIndex(0);
     }
     setIsPlaying(true);
-  }, [stepIndex, lastIndex, stepCount]);
+  }
 
-  const pause = useCallback(() => {
-    setIsPlaying(false);
-  }, []);
-
-  const togglePlay = useCallback(() => {
+  function togglePlay(): void {
     if (isPlaying) {
-      pause();
+      setIsPlaying(false);
     } else {
       play();
     }
-  }, [isPlaying, pause, play]);
+  }
 
-  const stepForward = useCallback(() => {
+  function stepForward(): void {
     setStepIndex((index) => Math.min(index + 1, lastIndex));
-  }, [lastIndex]);
+  }
 
-  const stepBack = useCallback(() => {
+  function stepBack(): void {
     setStepIndex((index) => Math.max(index - 1, 0));
-  }, []);
+  }
 
   const depths = useMemo(() => depthsOf(snapshots), [snapshots]);
   const overTarget = stepOverTarget(depths, stepIndex);
   const outTarget = stepOutTarget(depths, stepIndex);
 
-  const stepOver = useCallback(() => {
+  function stepOver(): void {
     if (overTarget !== undefined) {
       setStepIndex(overTarget);
     }
-  }, [overTarget]);
+  }
 
-  const stepOut = useCallback(() => {
+  function stepOut(): void {
     if (outTarget !== undefined) {
       setStepIndex(outTarget);
     }
-  }, [outTarget]);
+  }
 
   const seekTo = useCallback(
     (index: number) => {
@@ -123,9 +122,9 @@ export function useExecutionPlayer(snapshots: readonly Snapshot[]): ExecutionPla
     [lastIndex],
   );
 
-  const setSpeed = useCallback((value: number) => {
+  function setSpeed(value: number): void {
     setSpeedState(nearestSpeed(value));
-  }, []);
+  }
 
   return {
     stepIndex,
@@ -133,8 +132,6 @@ export function useExecutionPlayer(snapshots: readonly Snapshot[]): ExecutionPla
     isPlaying,
     speed,
     depths,
-    play,
-    pause,
     togglePlay,
     stepForward,
     stepBack,

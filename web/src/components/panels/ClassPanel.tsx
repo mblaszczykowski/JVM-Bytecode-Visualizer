@@ -1,4 +1,4 @@
-import { useCallback, useMemo, type ReactNode } from 'react';
+import { useCallback, type ReactNode } from 'react';
 
 import type { ClassFile } from '../../core/classfile';
 import { useScrollFollow } from '../../hooks/useScrollFollow';
@@ -8,8 +8,9 @@ import type { MethodListing } from '../../services/loading/program';
 import { ConstantPoolList } from './ConstantPoolList';
 import { MethodPicker } from './MethodPicker';
 import { Panel } from './Panel';
+import { Hairline } from '../ui/Hairline';
 
-export interface ClassPanelProps {
+interface ClassPanelProps {
   readonly classFile: ClassFile;
   readonly methods: readonly MethodListing[];
   readonly selectedMethod: MethodListing | undefined;
@@ -20,10 +21,6 @@ export interface ClassPanelProps {
   readonly onSelectConstant?: ((index: number) => void) | undefined;
   readonly titleControl?: ReactNode;
   readonly className?: string;
-}
-
-function Hairline() {
-  return <div aria-hidden="true" className="mx-4 h-px shrink-0 bg-line" />;
 }
 
 function SectionHeading({ children }: { readonly children: ReactNode }) {
@@ -42,9 +39,9 @@ export function ClassPanel({
   titleControl,
   className = '',
 }: ClassPanelProps) {
-  const facts = useMemo(() => classFactsOf(classFile), [classFile]);
-  const fields = useMemo(() => fieldRowsOf(classFile), [classFile]);
-  const constants = useMemo(() => constantPoolRowsOf(classFile.constantPool), [classFile]);
+  const facts = classFactsOf(classFile);
+  const fields = fieldRowsOf(classFile);
+  const constants = constantPoolRowsOf(classFile.constantPool);
   const contentRef = useScrollFollow(
     useCallback(
       (container: HTMLElement) => selectedRowTop(container, selectedConstant),
@@ -55,6 +52,7 @@ export function ClassPanel({
   return (
     <Panel
       title="Class file"
+      term="constant-pool"
       titleControl={titleControl}
       meta={`${simpleNameOf(classFile.thisClassName)} · ${String(constants.length)} constants`}
       contentRef={contentRef}
@@ -82,7 +80,7 @@ export function ClassPanel({
 
         {fields.length === 0 ? null : (
           <>
-            <Hairline />
+            <Hairline className="mx-4" />
             <div>
               <SectionHeading>Fields</SectionHeading>
               <ul className="flex flex-col gap-1 px-2.5">
@@ -108,7 +106,7 @@ export function ClassPanel({
           </>
         )}
 
-        <Hairline />
+        <Hairline className="mx-4" />
         <div>
           <SectionHeading>Methods</SectionHeading>
           <MethodPicker
@@ -120,7 +118,7 @@ export function ClassPanel({
           />
         </div>
 
-        <Hairline />
+        <Hairline className="mx-4" />
         <div>
           <SectionHeading>Constant pool</SectionHeading>
           <ConstantPoolList

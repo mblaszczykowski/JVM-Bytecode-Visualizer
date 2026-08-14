@@ -10,6 +10,7 @@ import {
 } from '../services/__fixtures__/fake-fetch';
 import { exampleUrl } from '../services/loading/examples';
 import type { ExampleEntry } from '../services/loading/manifest';
+import { inlineRunner, type ProgramRunner } from '../services/loading/program-runner';
 
 import { useExamplePreviews } from './useExamplePreviews';
 
@@ -39,6 +40,32 @@ const GCD: ExampleEntry = {
 
 const NO_ENTRIES: readonly ExampleEntry[] = [];
 
+interface HeldRuns {
+  readonly runner: ProgramRunner;
+  readonly signals: readonly (AbortSignal | undefined)[];
+  readonly release: () => void;
+}
+
+function heldRuns(): HeldRuns {
+  const waiting: (() => void)[] = [];
+  const signals: (AbortSignal | undefined)[] = [];
+
+  return {
+    runner: {
+      cancellable: true,
+      async run(command, options) {
+        signals.push(options?.signal);
+        await new Promise<void>((resolve) => waiting.push(resolve));
+        return inlineRunner.run(command, options);
+      },
+    },
+    signals,
+    release: () => {
+      waiting.shift()?.();
+    },
+  };
+}
+
 afterEach(() => {
   vi.unstubAllGlobals();
 });
@@ -46,7 +73,7 @@ afterEach(() => {
 describe('useExamplePreviews', () => {
   it('has nothing to show before the manifest arrives', () => {
     stubFetch(exampleRoutes());
-    const { result } = renderHook(() => useExamplePreviews(NO_ENTRIES));
+    const { result } = renderHook(() => useExamplePreviews(NO_ENTRIES, inlineRunner));
 
     expect(result.current.size).toBe(0);
   });
@@ -54,7 +81,7 @@ describe('useExamplePreviews', () => {
   it('runs each example once and keeps its shape, keyed by id', async () => {
     stubFetch(exampleRoutes());
     const entries = [FACTORIAL];
-    const { result } = renderHook(() => useExamplePreviews(entries));
+    const { result } = renderHook(() => useExamplePreviews(entries, inlineRunner));
 
     await waitFor(() => {
       expect(result.current.size).toBe(1);
@@ -66,18 +93,62 @@ describe('useExamplePreviews', () => {
     expect(preview?.profile.length).toBeGreaterThan(0);
   });
 
-  it('leaves out an example whose class file cannot be downloaded', async () => {
-    const entries = [FACTORIAL];
+  it('carries on down the list when one example cannot be downloaded', async () => {
+    const entries = [FACTORIAL, GCD];
     stubFetch({
       ...exampleRoutes(),
       [exampleUrl('Factorial.class')]: () => statusResponse(404),
     });
 
-    const { result } = renderHook(() => useExamplePreviews(entries));
+    const { result } = renderHook(() => useExamplePreviews(entries, inlineRunner));
 
     await waitFor(() => {
-      expect(result.current.size).toBe(0);
+      expect([...result.current.keys()]).toEqual(['gcd']);
     });
+  });
+
+  it('measures one example at a time, showing each card as its run lands', async () => {
+    stubFetch(exampleRoutes());
+    const entries = [FACTORIAL, GCD];
+    const held = heldRuns();
+    const { result } = renderHook(() => useExamplePreviews(entries, held.runner));
+
+    await waitFor(() => {
+      expect(held.signals).toHaveLength(1);
+    });
+    expect(result.current.size).toBe(0);
+
+    held.release();
+    await waitFor(() => {
+      expect([...result.current.keys()]).toEqual(['factorial']);
+    });
+    expect(held.signals).toHaveLength(2);
+
+    held.release();
+    await waitFor(() => {
+      expect([...result.current.keys()]).toEqual(['factorial', 'gcd']);
+    });
+  });
+
+  it('stops the queue and the run in flight when the screen goes away', async () => {
+    stubFetch(exampleRoutes());
+    const entries = [FACTORIAL, GCD];
+    const held = heldRuns();
+    const { unmount } = renderHook(() => useExamplePreviews(entries, held.runner));
+
+    await waitFor(() => {
+      expect(held.signals).toHaveLength(1);
+    });
+
+    unmount();
+    expect(held.signals[0]?.aborted).toBe(true);
+
+    held.release();
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(held.signals).toHaveLength(1);
   });
 
   it('drops the answer to a superseded list when it lands late', async () => {
@@ -88,7 +159,8 @@ describe('useExamplePreviews', () => {
     stubFetch({ ...exampleRoutes(), [exampleUrl('Factorial.class')]: () => heldFactorial });
 
     const { result, rerender } = renderHook(
-      ({ entries }: { entries: readonly ExampleEntry[] }) => useExamplePreviews(entries),
+      ({ entries }: { entries: readonly ExampleEntry[] }) =>
+        useExamplePreviews(entries, inlineRunner),
       { initialProps: { entries: [FACTORIAL] } },
     );
 

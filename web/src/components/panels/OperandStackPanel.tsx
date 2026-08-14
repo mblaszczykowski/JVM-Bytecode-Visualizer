@@ -7,13 +7,14 @@ import {
   type HeapObject,
   type StackFrame,
 } from '../../core/interpreter';
-import { describeValue } from '../../services/views/derivations';
+import { describeValue } from '../../services/views/heap-view';
 
 import { useRowNavigation } from '../../hooks/useRowNavigation';
 
-import { OriginButton } from '../chrome/OriginButton';
+import { OriginButton } from '../ui/OriginButton';
 import { EmptyState, Panel } from './Panel';
 import { ReferenceChip } from '../ui/ReferenceChip';
+import { PANEL_INSET } from '../ui/rhythm';
 
 interface OperandStackPanelProps {
   readonly frame: StackFrame | undefined;
@@ -41,14 +42,14 @@ export function OperandStackPanel({
 
   const traceable = (frame?.operandStack ?? [])
     .map((_, index) => index)
-    .filter((index) => frame?.operandOrigins?.[index] !== undefined)
+    .filter((index) => frame?.operandOrigins[index] !== undefined)
     .reverse();
   const origins = useRowNavigation(traceable.length, 0, 'data-origin-row');
   const originRow = new Map(traceable.map((index, position) => [index, position]));
 
   if (frame === undefined) {
     return (
-      <Panel title="Operand stack" meta="–" variant="state" className="grow">
+      <Panel title="Operand stack" term="operand-stack" meta="–" variant="state" className="grow">
         <EmptyState
           status="no active frame"
           detail="An operand stack belongs to a frame, and the run has none left."
@@ -63,11 +64,12 @@ export function OperandStackPanel({
   return (
     <Panel
       title="Operand stack"
+      term="operand-stack"
       meta={`height ${String(operandStack.length)}`}
       variant="state"
       className="grow"
     >
-      <ol className="flex flex-col gap-0.5 px-2">
+      <ol className={`flex flex-col gap-0.5 ${PANEL_INSET}`}>
         <AnimatePresence initial={false} mode="popLayout">
           {operandStack
             .map((value, index) => ({ value, index }))
@@ -75,8 +77,12 @@ export function OperandStackPanel({
             .map(({ value, index }) => {
               const isTop = index === topIndex;
               const annotation = annotations?.[index];
-              const kind = frame.operandKinds?.[index];
-              const origin = frame.operandOrigins?.[index];
+              const kind = frame.operandKinds[index];
+              const isReference = kind === 'ref' || kind === 'external';
+              const label = isReference
+                ? describeValue(kind, value, heap, externals)
+                : String(value);
+              const origin = frame.operandOrigins[index];
               const originPosition = originRow.get(index);
 
               return (
@@ -97,13 +103,10 @@ export function OperandStackPanel({
                       isTop ? 'now-row text-accent-text' : 'bg-raised text-fg-2'
                     }`}
                   >
-                    {kind === 'int' || kind === undefined ? (
-                      <span className="font-mono text-body">{value}</span>
+                    {isReference ? (
+                      <ReferenceChip label={label} onAccent={isTop} />
                     ) : (
-                      <ReferenceChip
-                        label={describeValue(kind, value, heap, externals)}
-                        onAccent={isTop}
-                      />
+                      <span className="font-mono text-body">{value}</span>
                     )}
                     <span className="grow" />
                     {origin === undefined ||
@@ -111,7 +114,7 @@ export function OperandStackPanel({
                     onSeekToStep === undefined ? null : (
                       <OriginButton
                         step={origin}
-                        sentence={`${describeValue(kind, value, heap, externals)} was pushed`}
+                        sentence={`${label} was pushed`}
                         testId="operand-origin"
                         row={originPosition}
                         anchorRow={origins.anchorIndex}
@@ -141,7 +144,7 @@ export function OperandStackPanel({
         />
       ) : null}
 
-      <div className="flex items-center gap-2 px-2 pt-1.5">
+      <div className={`flex items-center gap-2 pt-1.5 ${PANEL_INSET}`}>
         <span className={`${LABEL_COLUMN} text-fg-3`}>BASE</span>
         <span className={BASE_LINE} />
       </div>

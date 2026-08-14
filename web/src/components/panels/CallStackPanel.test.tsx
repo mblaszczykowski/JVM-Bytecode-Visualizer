@@ -2,21 +2,24 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
 import type { StackFrame } from '../../core/interpreter';
+import { frameOf } from '../../core/interpreter/__fixtures__/snapshots';
 
 import { firstStepOf, snapshotAt } from '../__fixtures__/factorial-run';
 import { CallStackPanel } from './CallStackPanel';
 
-const deepestFrames = snapshotAt(firstStepOf('iload_0', 5)).callStack;
+const deepestFrames = snapshotAt(firstStepOf('iload_0', { depth: 5 })).callStack;
 
 function deepStack(depth: number): readonly StackFrame[] {
-  return Array.from({ length: depth }, (_, index) => ({
-    methodName: 'fib',
-    methodDescriptor: '(I)I',
-    pc: index,
-    operandStack: [],
-    locals: [depth - index],
-    localNames: ['n'],
-  }));
+  return Array.from({ length: depth }, (_, index) =>
+    frameOf({
+      methodName: 'fib',
+      methodDescriptor: '(I)I',
+      pc: index,
+      operandStack: [],
+      locals: [depth - index],
+      localNames: ['n'],
+    }),
+  );
 }
 
 function frameAt(position: number): HTMLElement {

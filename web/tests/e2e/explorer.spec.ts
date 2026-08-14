@@ -88,7 +88,7 @@ test('a class whose entry point is not called main runs from it anyway', async (
 
 test('an example keeps its source, with the class file one tab away', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('radio', { name: 'Factorial', exact: true }).click();
+  await page.getByRole('button', { name: 'Factorial', exact: true }).click();
   await expect(page.getByTestId('step-counter')).toHaveText('step 1 / 40');
 
   await expect(page.getByRole('region', { name: 'Source' })).toBeVisible();

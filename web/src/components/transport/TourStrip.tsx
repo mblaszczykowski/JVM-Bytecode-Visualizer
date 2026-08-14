@@ -2,6 +2,8 @@ import type { ResolvedStop, Tour } from '../../services/views/tours';
 
 import { Button } from '../ui/Button';
 
+const BOUNDARY = 'aria-disabled:cursor-default aria-disabled:text-fg-dim';
+
 interface TourStripProps {
   readonly available: readonly Tour[];
   readonly active?: { readonly tour: Tour; readonly stops: readonly ResolvedStop[] } | undefined;
@@ -73,22 +75,28 @@ export function TourStrip({
         <Button
           tone="nested"
           data-testid="tour-previous"
-          disabled={isFirst}
+          aria-disabled={isFirst || undefined}
           aria-label="Back to the previous stop"
           onClick={() => {
-            onGoToStop(stopIndex - 1);
+            if (!isFirst) {
+              onGoToStop(stopIndex - 1);
+            }
           }}
+          className={BOUNDARY}
         >
           Back
         </Button>
         <Button
           tone="nested"
           data-testid="tour-next"
-          disabled={isLast}
+          aria-disabled={isLast || undefined}
           aria-label="Next stop"
           onClick={() => {
-            onGoToStop(stopIndex + 1);
+            if (!isLast) {
+              onGoToStop(stopIndex + 1);
+            }
           }}
+          className={BOUNDARY}
         >
           Next
         </Button>

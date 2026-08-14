@@ -1,21 +1,44 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
-import { lineForOffset, type MethodListing } from '../../services/loading/program';
+import { parseClassFile } from '../../core/classfile';
+import { readExampleBytes } from '../../services/__fixtures__/example-files';
+import { buildProgram, type MethodListing } from '../../services/loading/program';
+import { findListing, firstStepByOffset, lineForOffset } from '../../services/views/program-view';
 
 import {
   commentsOf,
   constructorListing,
   factorialListing,
   factorialProgram,
+  firstStepOf,
+  snapshots,
 } from '../__fixtures__/factorial-run';
 import { BytecodePanel } from './BytecodePanel';
 import { GlossaryDialog } from '../dialogs/GlossaryDialog';
-import { NUMBER_COLUMN, ROW_HEIGHT } from '../rhythm';
+import { NUMBER_COLUMN, ROW_HEIGHT } from '../ui/rhythm';
 
 const factorial = factorialListing();
 const constructor = constructorListing();
 const pool = factorialProgram().classFile.constantPool;
+
+const daysInYear = buildProgram({
+  origin: { kind: 'upload', fileName: 'DaysInYear.class' },
+  classFile: parseClassFile(readExampleBytes('DaysInYear.class')),
+});
+
+function daysInMonthListing(): MethodListing {
+  const listing = findListing(daysInYear, 'daysInMonth', '(I)I');
+  if (listing === undefined) {
+    throw new Error('DaysInYear.class has no daysInMonth(I)I');
+  }
+  return listing;
+}
+
+const STEPS_BEFORE_THE_FIRST_RETURN = firstStepByOffset(
+  snapshots().slice(0, firstStepOf('ireturn')),
+  factorial,
+);
 
 const sourceLineForOffset = new Map(
   factorial.instructions.flatMap((instruction) => {
@@ -84,17 +107,35 @@ describe('BytecodePanel', () => {
     expect(screen.getAllByTestId('current-instruction')).toHaveLength(1);
   });
 
-  it('announces the current instruction for assistive technology', () => {
-    renderListing(factorial, 11);
+  it('leaves the running commentary to the State column, keeping one region per step', () => {
+    const { container } = renderListing(factorial, 11);
 
-    expect(screen.getByText('pc 11 · invokestatic #7')).toBeInTheDocument();
+    expect(container.querySelectorAll('[aria-live]')).toHaveLength(0);
+  });
+
+  it('points its glossary button at the opcode entry', () => {
+    renderListing(factorial, undefined);
+
+    expect(
+      screen.getAllByTestId('glossary-trigger').map((trigger) => trigger.dataset.term),
+    ).toContain('opcode');
   });
 
   it('highlights nothing when the call stack is empty', () => {
     renderListing(factorial, undefined);
 
     expect(screen.queryByTestId('current-instruction')).not.toBeInTheDocument();
-    expect(screen.getByText('No active instruction.')).toBeInTheDocument();
+  });
+
+  it('lists every arm of a tableswitch and its default, on one row', () => {
+    renderListing(daysInMonthListing(), undefined);
+
+    const row = rowOf('tableswitch');
+
+    expect(row).toHaveTextContent(
+      '2: 56, 3: 62, 4: 59, 5: 62, 6: 59, 7: 62, 8: 62, 9: 59, 10: 62, 11: 59, default: 62',
+    );
+    expect(row.className).toContain('whitespace-nowrap');
   });
 
   it('shows the absolute jump target instead of the raw delta', () => {
@@ -220,6 +261,73 @@ describe('BytecodePanel', () => {
     expect(onSeek).toHaveBeenLastCalledWith(12);
   });
 
+  describe('a run that stopped part-way through the listing', () => {
+    function renderHaltedRun() {
+      return renderListing(factorial, 5, {
+        stepForOffset: STEPS_BEFORE_THE_FIRST_RETURN,
+        onSeek: vi.fn(),
+      });
+    }
+
+    function tabStops(): readonly (string | null)[] {
+      return within(screen.getByRole('list'))
+        .getAllByRole('button')
+        .filter((target) => target.tabIndex === 0)
+        .map((target) => target.getAttribute('aria-label'));
+    }
+
+    it('offers a target only for the offsets the run reached', () => {
+      renderHaltedRun();
+
+      expect(
+        within(screen.getByRole('list'))
+          .getAllByRole('button')
+          .map((target) => target.getAttribute('aria-label')),
+      ).toEqual([
+        'Go to pc 0, iload_0',
+        'Go to pc 1, iconst_1',
+        'Go to pc 2, if_icmpgt',
+        'Go to pc 5, iconst_1',
+        'Go to pc 7, iload_0',
+        'Go to pc 8, iload_0',
+        'Go to pc 9, iconst_1',
+        'Go to pc 10, isub',
+        'Go to pc 11, invokestatic',
+      ]);
+    });
+
+    it('steps over an offset the run never reached', () => {
+      renderHaltedRun();
+
+      fireEvent.keyDown(screen.getByRole('button', { name: 'Go to pc 5, iconst_1' }), {
+        key: 'ArrowDown',
+      });
+
+      expect(screen.getByRole('button', { name: 'Go to pc 7, iload_0' })).toHaveFocus();
+      expect(tabStops()).toEqual(['Go to pc 7, iload_0']);
+    });
+
+    it('keeps the tab stop on the last row that has one', () => {
+      renderHaltedRun();
+
+      fireEvent.keyDown(screen.getByRole('button', { name: 'Go to pc 5, iconst_1' }), {
+        key: 'End',
+      });
+
+      expect(screen.getByRole('button', { name: 'Go to pc 11, invokestatic' })).toHaveFocus();
+      expect(tabStops()).toEqual(['Go to pc 11, invokestatic']);
+    });
+
+    it('offers no target at all in a method the run never entered', () => {
+      renderListing(constructor, undefined, {
+        stepForOffset: firstStepByOffset(snapshots(), constructor),
+        onSeek: vi.fn(),
+      });
+
+      expect(screen.queryAllByRole('button', { name: /^Go to pc/ })).toHaveLength(0);
+    });
+  });
+
   it('explains the method descriptor from the descriptor itself', () => {
     render(
       <>
@@ -297,12 +405,6 @@ describe('BytecodePanel', () => {
       renderListing(constructor, undefined, { constantPool: pool });
 
       expect(stackCellOf('invokespecial')).toBe('−1');
-    });
-
-    it('announces the stack effect of the current instruction', () => {
-      renderListing(factorial, 14, { constantPool: pool });
-
-      expect(screen.getByText('pc 14 · imul · stack: pops 2, pushes 1')).toBeInTheDocument();
     });
 
     it('is left off entirely without a constant pool to resolve descriptors against', () => {

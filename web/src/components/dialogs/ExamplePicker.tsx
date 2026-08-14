@@ -3,11 +3,11 @@ import { type KeyboardEvent, useCallback, useRef, useState } from 'react';
 import { useDialogFocus } from '../../hooks/useDialogFocus';
 
 import { Button } from '../ui/Button';
+import { SELECTED_SURFACE } from '../ui/button-surface';
 
 export interface ExampleOption {
   readonly id: string;
   readonly name: string;
-  readonly tagline: string;
   readonly description: string;
 }
 
@@ -33,7 +33,6 @@ function ChevronIcon() {
   );
 }
 
-const SELECTED = 'bg-raised-active text-fg';
 const RESTING = 'text-fg-2 hover:bg-raised hover:text-fg';
 
 const RAIL =
@@ -113,7 +112,7 @@ export function ExamplePicker({
       >
         <div
           ref={groupRef}
-          role="radiogroup"
+          role="group"
           aria-label="Example programs"
           className={
             collapsible
@@ -128,8 +127,8 @@ export function ExamplePicker({
               <button
                 key={example.id}
                 type="button"
-                role="radio"
-                aria-checked={isSelected}
+                data-testid="example-option"
+                aria-pressed={isSelected}
                 tabIndex={index === anchorIndex ? 0 : -1}
                 title={example.description}
                 onClick={() => {
@@ -140,7 +139,7 @@ export function ExamplePicker({
                   handleKeyDown(event, index);
                 }}
                 className={`focus-ring text-meta flex shrink-0 snap-start items-center justify-center rounded-control px-2.5 py-1.5 transition-colors duration-150 md:py-1 ${
-                  isSelected ? SELECTED : RESTING
+                  isSelected ? SELECTED_SURFACE : RESTING
                 }`}
               >
                 {example.name}

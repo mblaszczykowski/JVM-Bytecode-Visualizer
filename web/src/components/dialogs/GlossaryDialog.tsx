@@ -4,9 +4,10 @@ import { createPortal } from 'react-dom';
 import { useDialogFocus } from '../../hooks/useDialogFocus';
 import { useOpenGlossaryTerm } from '../../hooks/useOpenGlossaryTerm';
 import { GLOSSARY, glossaryEntry, type GlossaryTermId } from '../../services/views/glossary';
-import { closeGlossary } from '../../services/views/glossary-store';
+import { closeGlossary } from '../../services/session/glossary-store';
 
 import { Button } from '../ui/Button';
+import { SELECTED_SURFACE } from '../ui/button-surface';
 
 function Prose({ text }: { readonly text: string }) {
   return (
@@ -41,9 +42,7 @@ function TermButton({ term, selected, onSelect, className = '', children }: Term
         onSelect(term);
       }}
       className={`focus-ring shrink-0 rounded-control px-2.5 text-left text-label transition-colors duration-150 ${
-        selected
-          ? 'bg-raised-active text-fg shadow-control-raised'
-          : 'text-fg-3 hover:bg-raised hover:text-fg'
+        selected ? SELECTED_SURFACE : 'text-fg-3 hover:bg-raised hover:text-fg'
       } ${className}`}
     >
       {children}

@@ -1,16 +1,20 @@
 import { useRowNavigation } from '../../hooks/useRowNavigation';
 import type { ConstantPoolRow } from '../../services/views/class-view';
 
-import { CODE_ROW, NAME_COLUMN, POOL_INDEX_COLUMN } from '../rhythm';
+import { SELECTED_SURFACE } from '../ui/button-surface';
+import { CODE_ROW, NAME_COLUMN, POOL_INDEX_COLUMN } from '../ui/rhythm';
 
-export interface ConstantPoolListProps {
+interface ConstantPoolListProps {
   readonly rows: readonly ConstantPoolRow[];
   readonly selectedIndex?: number | undefined;
   readonly onSelectIndex?: ((index: number) => void) | undefined;
 }
 
 const REFERENCE =
-  'shrink-0 rounded-row bg-raised px-1.5 py-0.5 text-micro leading-none text-accent-soft';
+  'shrink-0 rounded-chip bg-raised px-1.5 py-0.5 text-micro leading-none text-accent-soft';
+
+const REFERENCE_TARGET =
+  'focus-ring group flex min-h-6 min-w-6 shrink-0 items-center justify-center rounded-chip';
 
 export function ConstantPoolList({ rows, selectedIndex, onSelectIndex }: ConstantPoolListProps) {
   const selectedRow = rows.findIndex((row) => row.index === selectedIndex);
@@ -38,9 +42,7 @@ export function ConstantPoolList({ rows, selectedIndex, onSelectIndex }: Constan
             data-testid="constant-row"
             data-index={row.index}
             aria-current={isSelected ? 'true' : undefined}
-            className={`${CODE_ROW} ${
-              isSelected ? 'bg-raised-active text-fg shadow-control-raised' : ''
-            }`}
+            className={`${CODE_ROW} ${isSelected ? SELECTED_SURFACE : ''}`}
           >
             {onSelectIndex === undefined ? (
               <span className="flex grow items-center gap-3">{cells}</span>
@@ -78,9 +80,14 @@ export function ConstantPoolList({ rows, selectedIndex, onSelectIndex }: Constan
                       onClick={() => {
                         onSelectIndex(reference);
                       }}
-                      className={`focus-ring ${REFERENCE} hover:bg-raised-active`}
+                      onKeyDown={(event) => {
+                        nav.onKeyDown(event, position);
+                      }}
+                      className={REFERENCE_TARGET}
                     >
-                      #{reference}
+                      <span className={`${REFERENCE} group-hover:bg-raised-active`}>
+                        #{reference}
+                      </span>
                     </button>
                   ),
                 )}

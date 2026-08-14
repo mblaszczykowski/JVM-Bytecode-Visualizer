@@ -1,45 +1,37 @@
-import { parseClassFile } from '../../core/classfile';
 import type { ExternalValue, Snapshot, StackFrame } from '../../core/interpreter';
-import { readExampleBytes, readExampleText } from '../../services/__fixtures__/example-files';
-import { buildProgram, type LoadedProgram } from '../../services/loading/program';
+import type { LoadedProgram } from '../../services/loading/program';
 
-const CLASS_FILE = 'Collatz.class';
-const SOURCE_FILE = 'Collatz.java';
+import { recordedRun, type FirstStepOptions } from './recorded-run';
 
-let cached: LoadedProgram | undefined;
+const run = recordedRun('Collatz.class', 'Collatz.java');
 
 export function collatzProgram(): LoadedProgram {
-  cached ??= buildProgram({
-    origin: { kind: 'upload', fileName: CLASS_FILE },
-    classFile: parseClassFile(readExampleBytes(CLASS_FILE)),
-    source: { fileName: SOURCE_FILE, text: readExampleText(SOURCE_FILE) },
-  });
-  return cached;
+  return run.program();
 }
 
 export function snapshots(): readonly Snapshot[] {
-  return collatzProgram().snapshots;
+  return run.snapshots();
 }
 
 export function snapshotAt(step: number): Snapshot {
-  const snapshot = snapshots()[step];
-  if (snapshot === undefined) {
-    throw new Error(`the Collatz run has no step ${String(step)}`);
-  }
-  return snapshot;
+  return run.snapshotAt(step);
 }
 
 export function frameAt(step: number): StackFrame | undefined {
-  return snapshotAt(step).callStack.at(-1);
+  return run.frameAt(step);
+}
+
+export function firstStepOf(mnemonic: string, options?: FirstStepOptions): number {
+  return run.firstStepOf(mnemonic, options);
 }
 
 export function externalsAt(step: number): readonly ExternalValue[] {
-  return snapshotAt(step).externals ?? [];
+  return snapshotAt(step).externals;
 }
 
 export function firstInternedStep(): number {
   const step = snapshots().findIndex((snapshot) =>
-    snapshot.callStack.at(-1)?.operandKinds?.includes('external'),
+    snapshot.callStack.at(-1)?.operandKinds.includes('external'),
   );
   if (step < 0) {
     throw new Error('the Collatz run never leaves an interned object on the operand stack');

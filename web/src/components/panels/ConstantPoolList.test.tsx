@@ -6,7 +6,7 @@ import { readExampleBytes } from '../../services/__fixtures__/example-files';
 import { constantPoolRowsOf, type ConstantPoolRow } from '../../services/views/class-view';
 
 import { ConstantPoolList } from './ConstantPoolList';
-import { POOL_INDEX_COLUMN } from '../rhythm';
+import { POOL_INDEX_COLUMN } from '../ui/rhythm';
 
 const rows = constantPoolRowsOf(parseClassFile(readExampleBytes('Factorial.class')).constantPool);
 
@@ -92,6 +92,16 @@ describe('ConstantPoolList', () => {
     render(<ConstantPoolList rows={rows} selectedIndex={7} onSelectIndex={vi.fn()} />);
 
     fireEvent.keyDown(screen.getByRole('button', { name: METHODREF }), { key: 'ArrowDown' });
+
+    expect(document.activeElement).toHaveAccessibleName('Constant pool entry #8, Class, Factorial');
+  });
+
+  it('moves the anchor from a reference chip too, not only from the row', () => {
+    render(<ConstantPoolList rows={rows} selectedIndex={7} onSelectIndex={vi.fn()} />);
+
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Follow constant pool entry #8' }), {
+      key: 'ArrowDown',
+    });
 
     expect(document.activeElement).toHaveAccessibleName('Constant pool entry #8, Class, Factorial');
   });

@@ -1,45 +1,30 @@
-import { parseClassFile } from '../../core/classfile';
 import type { ArrayObject, HeapObject, Snapshot, StackFrame } from '../../core/interpreter';
-import { readExampleBytes, readExampleText } from '../../services/__fixtures__/example-files';
-import { describeOperandRoles } from '../../services/views/derivations';
-import {
-  buildProgram,
-  listingFor,
-  runSummaryOf,
-  type LoadedProgram,
-} from '../../services/loading/program';
-import type { RunSummary } from '../../services/loading/program';
+import { describeOperandRoles } from '../../services/views/operand-roles';
+import type { LoadedProgram } from '../../services/loading/program';
+import { listingFor, runSummaryOf, type RunSummary } from '../../services/views/program-view';
 
-const CLASS_FILE = 'BubbleSort.class';
-const SOURCE_FILE = 'BubbleSort.java';
+import { recordedRun, type FirstStepOptions } from './recorded-run';
 
-let cached: LoadedProgram | undefined;
+const run = recordedRun('BubbleSort.class', 'BubbleSort.java');
 
 export function bubbleSortProgram(): LoadedProgram {
-  cached ??= buildProgram({
-    origin: { kind: 'upload', fileName: CLASS_FILE },
-    classFile: parseClassFile(readExampleBytes(CLASS_FILE)),
-    source: { fileName: SOURCE_FILE, text: readExampleText(SOURCE_FILE) },
-  });
-  return cached;
+  return run.program();
 }
 
 export function snapshots(): readonly Snapshot[] {
-  return bubbleSortProgram().snapshots;
+  return run.snapshots();
 }
 
 export function snapshotAt(step: number): Snapshot {
-  const history = snapshots();
-  const clamped = Math.min(Math.max(step, 0), history.length - 1);
-  const snapshot = history[clamped];
-  if (snapshot === undefined) {
-    throw new Error('the BubbleSort fixture produced no snapshots');
-  }
-  return snapshot;
+  return run.snapshotAt(step);
 }
 
 export function frameAt(step: number): StackFrame | undefined {
-  return snapshotAt(step).callStack.at(-1);
+  return run.frameAt(step);
+}
+
+export function firstStepOf(mnemonic: string, options?: FirstStepOptions): number {
+  return run.firstStepOf(mnemonic, options);
 }
 
 export function mnemonicAt(step: number): string | undefined {
@@ -47,7 +32,7 @@ export function mnemonicAt(step: number): string | undefined {
 }
 
 export function heapAt(step: number): readonly HeapObject[] {
-  return snapshotAt(step).heap ?? [];
+  return snapshotAt(step).heap;
 }
 
 export function arrayAt(step: number): ArrayObject {
@@ -56,16 +41,6 @@ export function arrayAt(step: number): ArrayObject {
     throw new Error(`the BubbleSort run has no array on the heap at step ${String(step)}`);
   }
   return object;
-}
-
-export function firstStepOf(mnemonic: string, after = 0): number {
-  const step = snapshots().findIndex(
-    (snapshot, index) => index >= after && snapshot.currentInstruction?.mnemonic === mnemonic,
-  );
-  if (step < 0) {
-    throw new Error(`the BubbleSort run never executes ${mnemonic} after step ${String(after)}`);
-  }
-  return step;
 }
 
 export function operandRolesAt(step: number): readonly (string | undefined)[] {

@@ -9,7 +9,7 @@ const SORTED = ['1', '2', '3', '4', '5'];
 
 async function openBubbleSort(page: Page): Promise<void> {
   await page.goto('/');
-  await page.getByRole('radio', { name: 'Bubble sort', exact: true }).click();
+  await page.getByRole('button', { name: 'Bubble sort', exact: true }).click();
   await expect(page.getByTestId('step-counter')).toHaveText(`step 1 / ${String(STEPS)}`);
 }
 
@@ -73,7 +73,7 @@ test('shows no heap for an int-only program', async ({ page }) => {
   await seekTo(page, FIRST_SWAP_STORE);
   await expect(page.getByTestId('heap-array')).toHaveCount(1);
 
-  await page.getByRole('radio', { name: 'Factorial', exact: true }).click();
+  await page.getByRole('button', { name: 'Factorial', exact: true }).click();
   await expect(page.getByTestId('step-counter')).toHaveText('step 1 / 40');
 
   await expect(page.getByRole('region', { name: 'Heap' })).toHaveCount(0);

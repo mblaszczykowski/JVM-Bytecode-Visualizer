@@ -68,7 +68,7 @@ export function CompileEditor({
         </h2>
         <div className="flex items-baseline gap-3">
           <span className="hidden font-mono text-meta text-fg-3 sm:inline">
-            javac on the server · executed in this tab
+            the server compiles with javac and nothing more; the class runs in this tab
           </span>
           <Button tone="raised" onClick={onClose} className="shrink-0">
             Close

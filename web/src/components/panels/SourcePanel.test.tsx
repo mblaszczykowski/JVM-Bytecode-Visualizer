@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
-import { lineMappingNote, offsetsForLine } from '../../services/loading/program';
+import { lineMappingNote, offsetsForLine } from '../../services/views/program-view';
 
 import {
   factorialListing,
@@ -40,6 +40,10 @@ describe('SourcePanel', () => {
     expect(screen.getAllByRole('listitem')).toHaveLength(lines.length);
     expect(screen.getByRole('region', { name: 'Source' })).toBeInTheDocument();
     expect(screen.getByText('Factorial.java')).toBeInTheDocument();
+    expect(screen.getByTestId('glossary-trigger')).toHaveAttribute(
+      'data-term',
+      'line-number-table',
+    );
   });
 
   it('highlights the line named by the current snapshot', () => {
@@ -167,6 +171,42 @@ describe('SourcePanel', () => {
 
     expect(lineRow(RECURSION_LINE)).toHaveAttribute('title', 'return n * factorial(n - 1);');
     expect(lineRow(22)).not.toHaveAttribute('title');
+  });
+
+  it('keeps a tab stop on the terminal snapshot, where no line is current', () => {
+    render(
+      <SourcePanel
+        fileName={fileName}
+        lines={lines}
+        currentLine={undefined}
+        stepForLine={stepForLine()}
+        onSeek={vi.fn()}
+      />,
+    );
+
+    const targets = within(screen.getByRole('list')).getAllByRole('button');
+
+    expect(
+      targets
+        .filter((target) => target.tabIndex === 0)
+        .map((target) => target.getAttribute('aria-label')),
+    ).toEqual(['Go to line 17']);
+  });
+
+  it('steps between the lines that map to bytecode, skipping the ones that do not', () => {
+    render(
+      <SourcePanel
+        fileName={fileName}
+        lines={lines}
+        currentLine={CONDITION_LINE}
+        stepForLine={stepForLine()}
+        onSeek={vi.fn()}
+      />,
+    );
+
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Go to line 18' }), { key: 'ArrowDown' });
+
+    expect(screen.getByRole('button', { name: 'Go to line 20' })).toHaveFocus();
   });
 
   it('moves the focus between rows with the arrow keys', () => {

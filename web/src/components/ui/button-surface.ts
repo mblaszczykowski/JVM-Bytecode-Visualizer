@@ -17,6 +17,8 @@ const SIZE: Record<ButtonSize, string> = {
 const BASE =
   'focus-ring inline-flex items-center justify-center gap-1 rounded-control transition-colors duration-150 disabled:pointer-events-none disabled:opacity-40';
 
+export const SELECTED_SURFACE = 'bg-raised-active text-fg shadow-control-raised';
+
 export function buttonSurface(
   tone: ButtonTone = 'quiet',
   size: ButtonSize = 'md',

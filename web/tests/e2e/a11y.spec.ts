@@ -1,5 +1,5 @@
 import AxeBuilder from '@axe-core/playwright';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 
 import { bundledExamples, fixturePath } from './fixtures';
 
@@ -15,7 +15,7 @@ const PALETTES = ['light', 'dark'] as const;
 
 async function seriousViolations(page: Page): Promise<Violation[]> {
   const results = await new AxeBuilder({ page })
-    .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'best-practice'])
+    .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa', 'best-practice'])
     .analyze();
 
   return results.violations
@@ -42,7 +42,7 @@ for (const palette of PALETTES) {
 
     test('the loaded program has no serious accessibility violations', async ({ page }) => {
       await page.goto('/');
-      await page.getByRole('radio', { name: 'Factorial', exact: true }).click();
+      await page.getByRole('button', { name: 'Factorial', exact: true }).click();
       await expect(page.getByTestId('step-counter')).toHaveText('step 1 / 40');
 
       expect(await seriousViolations(page)).toEqual([]);
@@ -58,7 +58,7 @@ for (const palette of PALETTES) {
 
     test('the glossary has no serious accessibility violations', async ({ page }) => {
       await page.goto('/');
-      await page.getByRole('radio', { name: 'Factorial', exact: true }).click();
+      await page.getByRole('button', { name: 'Factorial', exact: true }).click();
       await expect(page.getByTestId('step-counter')).toBeVisible();
 
       await page
@@ -74,7 +74,7 @@ for (const palette of PALETTES) {
 
 test('tabbing runs toolbar, then panels, then transport', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('radio', { name: 'Factorial', exact: true }).click();
+  await page.getByRole('button', { name: 'Factorial', exact: true }).click();
   await expect(page.getByTestId('step-counter')).toBeVisible();
 
   const stops: string[] = [];
@@ -108,7 +108,7 @@ test('tabbing runs toolbar, then panels, then transport', async ({ page }) => {
 
 test('the speed control announces the value it is set to', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('radio', { name: 'Factorial', exact: true }).click();
+  await page.getByRole('button', { name: 'Factorial', exact: true }).click();
 
   await expect(page.getByRole('button', { name: 'Playback speed 1×' })).toBeVisible();
   await page.getByRole('button', { name: 'Playback speed 1×' }).click();
@@ -117,7 +117,7 @@ test('the speed control announces the value it is set to', async ({ page }) => {
 
 test('the panel bodies can be reached and scrolled by keyboard', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('radio', { name: 'Fibonacci', exact: true }).click();
+  await page.getByRole('button', { name: 'Fibonacci', exact: true }).click();
   await expect(page.getByTestId('step-counter')).toBeVisible();
 
   for (const name of ['Call stack', 'Operand stack', 'Locals']) {
@@ -142,10 +142,50 @@ test('the panel bodies can be reached and scrolled by keyboard', async ({ page }
   await expect(page.getByTestId('step-counter')).toContainText('step 1 /');
 });
 
+async function hiddenAncestorOf(locator: Locator): Promise<string | null> {
+  return locator.evaluate((element) => {
+    for (let node: Element | null = element; node !== null; node = node.parentElement) {
+      const style = getComputedStyle(node);
+      if (style.display === 'none' || style.visibility === 'hidden') {
+        return `${node.tagName.toLowerCase()}.${node.className}`;
+      }
+    }
+    return null;
+  });
+}
+
+test.describe('on a phone, where one panel is on screen at a time', () => {
+  test.use({ viewport: { width: 390, height: 780 } });
+
+  test('the step announcement is in no hidden subtree, whichever panel is showing', async ({
+    page,
+  }) => {
+    await page.goto('/');
+    await page.getByRole('button', { name: 'Factorial', exact: true }).click();
+    await expect(page.getByTestId('step-counter')).toHaveText('step 1 / 40');
+
+    const announcement = page.getByTestId('app-status');
+    await expect(announcement).toContainText('pc 0, iconst_4, stack: pushes 1.');
+
+    for (const panel of ['Bytecode', 'Source', 'Class', 'State']) {
+      await page.getByRole('button', { name: panel, exact: true }).click();
+
+      expect(await hiddenAncestorOf(announcement), panel).toBeNull();
+    }
+
+    await page.getByRole('button', { name: 'Bytecode', exact: true }).click();
+    await page.keyboard.press('ArrowRight');
+
+    await expect(page.getByTestId('step-counter')).toHaveText('step 2 / 40');
+    await expect(announcement).toContainText('pc 1, invokestatic');
+    expect(await hiddenAncestorOf(announcement)).toBeNull();
+  });
+});
+
 test('every panel still follows the step with reduced motion', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/');
-  await page.getByRole('radio', { name: 'Factorial', exact: true }).click();
+  await page.getByRole('button', { name: 'Factorial', exact: true }).click();
   await expect(page.getByTestId('current-instruction')).toContainText('iconst_4');
 
   await page.getByRole('slider', { name: 'Execution history position' }).fill('26');

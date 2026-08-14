@@ -2,6 +2,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { StackFrame } from '../../core/interpreter';
+import { frameOf } from '../../core/interpreter/__fixtures__/snapshots';
 
 import {
   firstStepOf as bubbleSortStepOf,
@@ -22,7 +23,7 @@ const frameWithValues = frameAt(isubStep);
 
 const arrayReadStep = bubbleSortStepOf('iaload');
 
-const nullReferenceFrame: StackFrame = {
+const nullReferenceFrame: StackFrame = frameOf({
   methodName: 'sortedMinimum',
   methodDescriptor: '()I',
   pc: 0,
@@ -30,16 +31,16 @@ const nullReferenceFrame: StackFrame = {
   operandKinds: ['ref'],
   locals: [],
   localNames: [],
-};
+});
 
-const emptyStackFrame: StackFrame = {
+const emptyStackFrame: StackFrame = frameOf({
   methodName: 'factorial',
   methodDescriptor: '(I)I',
   pc: 0,
   operandStack: [],
   locals: [2],
   localNames: ['n'],
-};
+});
 
 function cellAt(position: number): HTMLElement {
   const cell = screen.getAllByTestId('operand-cell')[position];

@@ -1,4 +1,4 @@
-import { PLAYBACK_SPEEDS, type PlaybackSpeed } from '../../hooks/useExecutionPlayer';
+import { nextSpeed, PLAYBACK_SPEEDS, type PlaybackSpeed } from '../../hooks/useExecutionPlayer';
 import type { TimelineEvent } from '../../services/views/timeline';
 
 import { DepthTrack } from './DepthTrack';
@@ -20,13 +20,10 @@ interface TransportControlsProps {
   readonly onStepBack: () => void;
   readonly onStepOver: () => void;
   readonly onStepOut: () => void;
-  readonly onSpeedChange: (speed: number) => void;
+  readonly onSpeedChange: (speed: PlaybackSpeed) => void;
 }
 
-function nextSpeed(current: PlaybackSpeed): PlaybackSpeed {
-  const index = PLAYBACK_SPEEDS.indexOf(current);
-  return PLAYBACK_SPEEDS[index + 1] ?? PLAYBACK_SPEEDS[0];
-}
+const SPEED_RANGE = `${String(PLAYBACK_SPEEDS[0])}× to ${String(PLAYBACK_SPEEDS.at(-1))}×`;
 
 function StepBackIcon() {
   return (
@@ -161,7 +158,7 @@ export function TransportControls({
       <Button
         tone="prominent"
         aria-label={`Playback speed ${String(speed)}×`}
-        title="Playback speed: click to cycle 0.5× to 8×"
+        title={`Playback speed: cycles through ${SPEED_RANGE}`}
         onClick={() => {
           onSpeedChange(nextSpeed(speed));
         }}

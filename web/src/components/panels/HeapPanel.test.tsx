@@ -14,7 +14,7 @@ import {
 import { HeapPanel } from './HeapPanel';
 
 const loadStep = firstStepOf('iaload');
-const storeStep = firstStepOf('iastore', 40);
+const storeStep = firstStepOf('iastore', { after: 40 });
 
 function cellValues(): string[] {
   return screen.getAllByTestId('heap-cell').map((cell) => cell.textContent);
@@ -57,15 +57,40 @@ describe('HeapPanel', () => {
   });
 
   it('flashes the cell a store rewrote, once, on the step that changed it', () => {
-    const view = renderAt(storeStep);
+    const view = render(
+      <HeapPanel heap={heapAt(storeStep)} frame={frameAt(storeStep)} stepIndex={storeStep} />,
+    );
     expect(screen.queryAllByTestId('heap-pulse')).toHaveLength(0);
 
-    view.rerender(<HeapPanel heap={heapAt(storeStep + 1)} frame={frameAt(storeStep + 1)} />);
+    view.rerender(
+      <HeapPanel
+        heap={heapAt(storeStep + 1)}
+        frame={frameAt(storeStep + 1)}
+        stepIndex={storeStep + 1}
+      />,
+    );
 
     expect(cellValues()).toEqual(['3', '3', '4', '1', '2']);
     const pulses = screen.getAllByTestId('heap-pulse');
     expect(pulses).toHaveLength(1);
     expect(pulses[0]?.closest('[data-testid="heap-cell"]')?.getAttribute('data-index')).toBe('0');
+  });
+
+  it('stays still when the reader scrubs back over the store', () => {
+    const view = render(
+      <HeapPanel
+        heap={heapAt(storeStep + 1)}
+        frame={frameAt(storeStep + 1)}
+        stepIndex={storeStep + 1}
+      />,
+    );
+
+    view.rerender(
+      <HeapPanel heap={heapAt(storeStep)} frame={frameAt(storeStep)} stepIndex={storeStep} />,
+    );
+
+    expect(cellValues()).toEqual(['5', '3', '4', '1', '2']);
+    expect(screen.queryAllByTestId('heap-pulse')).toHaveLength(0);
   });
 
   it('leaves the freshly allocated array unflashed', () => {

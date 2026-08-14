@@ -15,7 +15,7 @@ test('a file that is not a class file is rejected, and the app stays usable', as
   await expect(banner).toHaveAttribute('data-severity', 'error');
   await expect(banner).toContainText('Not a .class file: expected the 0xcafebabe header');
 
-  await page.getByRole('radio', { name: 'Factorial', exact: true }).click();
+  await page.getByRole('button', { name: 'Factorial', exact: true }).click();
 
   await expect(page.getByTestId('step-counter')).toHaveText('step 1 / 40');
   await expect(page.getByTestId('error-banner')).toHaveCount(0);

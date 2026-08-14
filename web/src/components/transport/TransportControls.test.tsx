@@ -1,6 +1,8 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
+import { PLAYBACK_SPEEDS } from '../../hooks/useExecutionPlayer';
+
 import { depths } from '../__fixtures__/factorial-run';
 import { TransportControls } from './TransportControls';
 
@@ -244,6 +246,10 @@ describe('TransportControls', () => {
 
     const speedPill = screen.getByRole('button', { name: 'Playback speed 1×' });
     expect(speedPill).toHaveTextContent('1×');
+    expect(speedPill).toHaveAttribute(
+      'title',
+      `Playback speed: cycles through ${String(PLAYBACK_SPEEDS[0])}× to ${String(PLAYBACK_SPEEDS.at(-1))}×`,
+    );
 
     fireEvent.click(speedPill);
     expect(spies.onSpeedChange).toHaveBeenCalledWith(2);

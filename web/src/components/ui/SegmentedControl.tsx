@@ -1,5 +1,7 @@
 import type { ReactNode, RefObject } from 'react';
 
+import { SELECTED_SURFACE } from './button-surface';
+
 interface SegmentedControlProps {
   readonly label: string;
   readonly groupRef?: RefObject<HTMLDivElement> | undefined;
@@ -37,7 +39,6 @@ interface SegmentProps {
 }
 
 const PRIMARY = 'bg-fg text-app hover:bg-fg-2';
-const SELECTED = 'bg-raised-active text-fg shadow-control-raised';
 const RESTING = 'text-fg-2 hover:bg-raised hover:text-fg';
 
 export function Segment({
@@ -50,7 +51,7 @@ export function Segment({
   onClick,
   children,
 }: SegmentProps) {
-  const surface = primary ? PRIMARY : selected === true ? SELECTED : RESTING;
+  const surface = primary ? PRIMARY : selected === true ? SELECTED_SURFACE : RESTING;
 
   return (
     <button

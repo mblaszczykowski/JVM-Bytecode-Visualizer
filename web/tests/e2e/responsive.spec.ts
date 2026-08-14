@@ -6,7 +6,7 @@ const MIN_TAP_TARGET = 44;
 
 async function openFactorial(page: Page): Promise<void> {
   await page.goto('/');
-  await page.getByRole('radio', { name: 'Factorial', exact: true }).click();
+  await page.getByRole('button', { name: 'Factorial', exact: true }).click();
   await expect(page.getByTestId('step-counter')).toHaveText(`step 1 / ${String(FACTORIAL_STEPS)}`);
 }
 

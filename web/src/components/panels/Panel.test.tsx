@@ -1,6 +1,8 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
+import type { GlossaryTermId } from '../../services/views/glossary';
+
 import { GlossaryDialog } from '../dialogs/GlossaryDialog';
 import { Panel } from './Panel';
 
@@ -35,10 +37,10 @@ describe('Panel', () => {
     expect(screen.getByRole('region', { name: 'Locals' }).className).not.toContain('bg-ink');
   });
 
-  it('offers an explanation of the concept its header names', () => {
+  it('offers an explanation of the concept it was given', () => {
     render(
       <>
-        <Panel title="Operand stack">
+        <Panel title="Operand stack" term="operand-stack">
           <p>cells</p>
         </Panel>
         <GlossaryDialog />
@@ -50,15 +52,15 @@ describe('Panel', () => {
     expect(screen.getByTestId('glossary-entry')).toHaveAttribute('data-term', 'operand-stack');
   });
 
-  it.each([
-    ['Call stack', 'call-stack'],
-    ['Locals', 'local-variable-slot'],
-    ['Bytecode', 'opcode'],
-    ['Class file', 'constant-pool'],
-    ['Source', 'line-number-table'],
-  ])('points the %s panel at its own term', (title, term) => {
+  it.each<[GlossaryTermId]>([
+    ['call-stack'],
+    ['local-variable-slot'],
+    ['opcode'],
+    ['constant-pool'],
+    ['line-number-table'],
+  ])('points its glossary button at the %s term it was handed', (term) => {
     const { getByTestId } = render(
-      <Panel title={title}>
+      <Panel title="A panel" term={term}>
         <p>body</p>
       </Panel>,
     );
@@ -87,7 +89,7 @@ describe('Panel', () => {
     ).toBeNull();
   });
 
-  it('adds nothing to a panel that draws no concept of its own', () => {
+  it('adds nothing to a panel that names no term', () => {
     render(
       <Panel title="Console" meta="4 lines">
         <p>output</p>

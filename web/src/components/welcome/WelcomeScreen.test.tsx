@@ -55,6 +55,19 @@ describe('WelcomeScreen', () => {
     expect(within(gcd ?? document.body).queryAllByTestId('welcome-sparkline-bar')).toHaveLength(0);
   });
 
+  it('names the three stages as terms with their definitions', () => {
+    renderWelcome();
+
+    const pipeline = within(screen.getByTestId('pipeline'));
+
+    expect(pipeline.getAllByRole('term').map((term) => term.textContent)).toEqual([
+      'Parse',
+      'Disassemble',
+      'Execute',
+    ]);
+    expect(pipeline.getAllByRole('definition')).toHaveLength(3);
+  });
+
   it('hides the compile entry point until a service answers for it', () => {
     renderWelcome();
 

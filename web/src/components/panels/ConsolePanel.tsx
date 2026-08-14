@@ -1,8 +1,9 @@
 import { rowTopOf, useScrollFollow } from '../../hooks/useScrollFollow';
 
 import { EmptyState, Panel } from './Panel';
+import { PANEL_INSET } from '../ui/rhythm';
 
-export interface ConsolePanelProps {
+interface ConsolePanelProps {
   readonly lines: readonly string[];
 }
 
@@ -28,7 +29,7 @@ export function ConsolePanel({ lines }: ConsolePanelProps) {
             detail="The first System.out.println the run reaches writes a line here."
           />
         ) : (
-          <ol className="px-2.5 pb-0.5">
+          <ol className={`pb-0.5 ${PANEL_INSET}`}>
             {lines.map((line, index) => {
               const isNewest = index === newestIndex;
 

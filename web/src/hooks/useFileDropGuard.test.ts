@@ -93,6 +93,28 @@ describe('useFileDropGuard', () => {
     expect(result.current).toBe(false);
   });
 
+  it('stays a drop target when the page re-renders mid-drag, and reports to the newest callback', () => {
+    const first = vi.fn();
+    const second = vi.fn();
+    const file = classFile();
+    const { result, rerender } = renderHook(
+      ({ onDropped }: { onDropped: (dropped: File) => void }) => useFileDropGuard(onDropped),
+      { initialProps: { onDropped: first } },
+    );
+
+    dispatchDrag('dragenter');
+    rerender({ onDropped: second });
+    dispatchDrag('dragenter');
+    dispatchDrag('dragleave');
+
+    expect(result.current).toBe(true);
+
+    dispatchDrag('drop', { files: [file] });
+
+    expect(first).not.toHaveBeenCalled();
+    expect(second).toHaveBeenCalledExactlyOnceWith(file);
+  });
+
   it('lets go of the window when it unmounts', () => {
     const onDropped = vi.fn();
     const { unmount } = renderHook(() => useFileDropGuard(onDropped));

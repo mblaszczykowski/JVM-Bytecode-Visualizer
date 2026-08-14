@@ -1,7 +1,8 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
-import { consoleLinesOf } from '../../services/loading/program';
+import { snapshotOf } from '../../core/interpreter/__fixtures__/snapshots';
+import { consoleLinesOf } from '../../services/views/program-view';
 
 import { snapshotAt } from '../__fixtures__/factorial-run';
 import { ConsolePanel } from './ConsolePanel';
@@ -67,7 +68,9 @@ describe('ConsolePanel', () => {
   });
 
   it('renders nothing at all for a snapshot that recorded no output', () => {
-    const { unmount } = render(<ConsolePanel lines={consoleLinesOf({ step: 0, callStack: [] })} />);
+    const { unmount } = render(
+      <ConsolePanel lines={consoleLinesOf(snapshotOf({ step: 0, callStack: [] }))} />,
+    );
     expect(screen.queryByTestId('console-line')).not.toBeInTheDocument();
     unmount();
 

@@ -5,7 +5,7 @@ import {
   noGlossaryTerm,
   openGlossaryTerm,
   subscribeToGlossary,
-} from '../services/views/glossary-store';
+} from '../services/session/glossary-store';
 
 export function useOpenGlossaryTerm(): GlossaryTermId | undefined {
   return useSyncExternalStore(subscribeToGlossary, openGlossaryTerm, noGlossaryTerm);

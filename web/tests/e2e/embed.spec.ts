@@ -8,7 +8,7 @@ test('shows the embedded run without the chooser', async ({ page }) => {
   await expect(page.getByTestId('step-counter')).toHaveText('step 248 / 445');
   await expect(page.getByTestId('embed-bar')).toContainText('BubbleSort.java');
 
-  await expect(page.getByRole('radiogroup', { name: 'Example programs' })).toHaveCount(0);
+  await expect(page.getByRole('group', { name: 'Example programs' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Keyboard shortcuts' })).toHaveCount(0);
 
   await expect(page.getByRole('region', { name: 'Bytecode' })).toBeVisible();
@@ -60,7 +60,7 @@ test('keeps the full application untouched without the flag', async ({ page }) =
   await page.goto('/#/bubble-sort/248');
 
   await expect(page.getByTestId('embed-bar')).toHaveCount(0);
-  await expect(page.getByRole('radiogroup', { name: 'Example programs' })).toBeVisible();
+  await expect(page.getByRole('group', { name: 'Example programs' })).toBeVisible();
 });
 
 test('fits its frame without pushing the page sideways', async ({ page }) => {

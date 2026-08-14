@@ -82,7 +82,7 @@ describe('MethodPicker', () => {
     );
     expect(
       within(rowOf('twice(I)I')).getByText(
-        /its descriptor is outside the int-only subset this machine executes/,
+        /a run starts from main\(String\[\]\), or from a method taking nothing and returning void or int/,
       ),
     ).toBeInTheDocument();
   });

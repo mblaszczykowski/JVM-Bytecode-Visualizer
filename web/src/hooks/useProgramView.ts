@@ -15,11 +15,10 @@ export function useProgramView(
   listing: MethodListing | undefined,
 ): ProgramView {
   const history = useMemo(() => historyViewOf(program), [program]);
-  const forListing = useMemo(() => listingViewOf(program, listing), [program, listing]);
-  const step = useMemo(
-    () => stepViewOf(program, snapshot, listing, history.printed),
-    [program, snapshot, listing, history.printed],
-  );
 
-  return useMemo(() => ({ ...history, ...forListing, ...step }), [history, forListing, step]);
+  return {
+    ...history,
+    ...listingViewOf(program, listing),
+    ...stepViewOf(program, snapshot, listing, history.printed),
+  };
 }

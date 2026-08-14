@@ -34,6 +34,16 @@ function renderEditor({ diagnostics = [], isCompiling = false }: Options = {}) {
 }
 
 describe('CompileEditor', () => {
+  it('says which side compiles and which side runs, leaving no room to read it the other way', () => {
+    renderEditor();
+
+    expect(
+      screen.getByText(
+        'the server compiles with javac and nothing more; the class runs in this tab',
+      ),
+    ).toBeInTheDocument();
+  });
+
   it('starts from a program that compiles and runs as it stands', () => {
     const { textarea, onCompile } = renderEditor();
 

@@ -1,7 +1,7 @@
-import { openGlossary } from '../../services/views/glossary-store';
+import { openGlossary } from '../../services/session/glossary-store';
 
 import { type ExampleOption, ExamplePicker } from '../dialogs/ExamplePicker';
-import { FileUpload } from '../welcome/FileUpload';
+import { FileUpload } from '../ui/FileUpload';
 import { KeyboardHelp, type ShortcutGroup } from '../dialogs/KeyboardHelp';
 import { ThemeToggle } from './ThemeToggle';
 import { Button } from '../ui/Button';
@@ -42,13 +42,12 @@ function HealthBadge({ status }: { readonly status: Exclude<CompilerStatus, 'hid
     <div
       data-testid="compiler-health"
       data-status={status}
-      title={online ? 'Compile service reachable' : 'Compile service unreachable'}
       className="text-meta flex shrink-0 items-center gap-1.5 rounded-control px-2 py-1 text-fg-3"
     >
       <span
         aria-hidden="true"
         // eslint-disable-next-line no-restricted-syntax -- genuinely circular: a 6px status dot.
-        className={`h-1.5 w-1.5 rounded-full ${online ? 'bg-ok shadow-glow-ok' : 'bg-fg-dim'}`}
+        className={`h-1.5 w-1.5 rounded-full ${online ? 'bg-ok' : 'bg-fg-dim'}`}
       />
       Compiler{' '}
       <span className="sr-only">{online ? 'service reachable' : 'service unreachable'}</span>

@@ -2,6 +2,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { ExternalValue, HeapObject, StackFrame } from '../../core/interpreter';
+import { frameOf } from '../../core/interpreter/__fixtures__/snapshots';
 
 import {
   firstStepOf as bubbleSortStepOf,
@@ -17,20 +18,20 @@ const mainFrame = frameAt(0);
 
 const finishedMainFrame = frameAt(snapshots().length - 2);
 
-const frameWithoutNames: StackFrame = {
+const frameWithoutNames: StackFrame = frameOf({
   methodName: 'factorial',
   methodDescriptor: '(I)I',
   pc: 0,
   operandStack: [],
   locals: [7, undefined],
   localNames: [],
-};
+});
 
 const externals: readonly ExternalValue[] = [
   { className: 'java/io/PrintStream', label: 'System.out' },
 ];
 
-const internedFrame: StackFrame = {
+const internedFrame: StackFrame = frameOf({
   methodName: 'print',
   methodDescriptor: '()V',
   pc: 4,
@@ -39,7 +40,7 @@ const internedFrame: StackFrame = {
   localNames: ['n', 'out'],
   localKinds: ['int', 'external'],
   localOrigins: [1, 2],
-};
+});
 
 function slotAt(index: number): HTMLElement {
   const slot = screen.getAllByTestId('local-slot')[index];
@@ -91,7 +92,7 @@ describe('LocalsPanel', () => {
   });
 
   it('types a slot holding an instance by its class, not as an array', () => {
-    const frame: StackFrame = {
+    const frame: StackFrame = frameOf({
       methodName: 'main',
       methodDescriptor: '()V',
       pc: 0,
@@ -99,7 +100,7 @@ describe('LocalsPanel', () => {
       locals: [0],
       localNames: ['counter'],
       localKinds: ['ref'],
-    };
+    });
     const heap: readonly HeapObject[] = [
       {
         kind: 'instance',
@@ -144,12 +145,42 @@ describe('LocalsPanel', () => {
     expect(screen.getByText(/works entirely on the operand stack/)).toBeInTheDocument();
   });
 
+  describe('the flash on a slot that changed', () => {
+    const before: StackFrame = frameOf({
+      methodName: 'count',
+      methodDescriptor: '()V',
+      pc: 0,
+      operandStack: [],
+      locals: [1],
+      localNames: ['n'],
+    });
+    const after: StackFrame = { ...before, pc: 3, locals: [2] };
+
+    it('marks the slot the step just wrote', () => {
+      const view = render(<LocalsPanel frame={before} stepIndex={4} />);
+      expect(screen.queryAllByTestId('local-pulse')).toHaveLength(0);
+
+      view.rerender(<LocalsPanel frame={after} stepIndex={5} />);
+
+      expect(screen.getAllByTestId('local-pulse')).toHaveLength(1);
+    });
+
+    it('stays still when the reader scrubs back over the write', () => {
+      const view = render(<LocalsPanel frame={after} stepIndex={5} />);
+
+      view.rerender(<LocalsPanel frame={before} stepIndex={4} />);
+
+      expect(within(slotAt(0)).getByText('1')).toBeInTheDocument();
+      expect(screen.queryAllByTestId('local-pulse')).toHaveLength(0);
+    });
+  });
+
   describe('where a value came from', () => {
     it('seeks to the step that last wrote the slot', () => {
       const onSeekToStep = vi.fn();
       render(<LocalsPanel frame={finishedMainFrame} onSeekToStep={onSeekToStep} />);
 
-      expect(finishedMainFrame?.localOrigins?.[1]).toBe(37);
+      expect(finishedMainFrame?.localOrigins[1]).toBe(37);
       fireEvent.click(within(slotAt(1)).getByRole('button'));
 
       expect(onSeekToStep).toHaveBeenCalledWith(37);

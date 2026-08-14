@@ -188,9 +188,23 @@ describe('transport shortcuts', () => {
 
     fireEvent.keyDown(document.body, { key: 'ArrowRight', metaKey: true });
     fireEvent.keyDown(document.body, { key: ' ', ctrlKey: true });
+    fireEvent.keyDown(document.body, { key: 'End', altKey: true });
 
     expect(handlers.onStepForward).not.toHaveBeenCalled();
     expect(handlers.onTogglePlay).not.toHaveBeenCalled();
+    expect(handlers.onSeekToEnd).not.toHaveBeenCalled();
+  });
+
+  it('leaves Shift to the browser, which scrolls and extends a selection with it', () => {
+    const handlers = setup();
+
+    expect(fireEvent.keyDown(document.body, { key: ' ', shiftKey: true })).toBe(true);
+    expect(fireEvent.keyDown(document.body, { key: 'ArrowRight', shiftKey: true })).toBe(true);
+    expect(fireEvent.keyDown(document.body, { key: 'ArrowDown', shiftKey: true })).toBe(true);
+
+    expect(handlers.onTogglePlay).not.toHaveBeenCalled();
+    expect(handlers.onStepForward).not.toHaveBeenCalled();
+    expect(handlers.onStepOver).not.toHaveBeenCalled();
   });
 });
 

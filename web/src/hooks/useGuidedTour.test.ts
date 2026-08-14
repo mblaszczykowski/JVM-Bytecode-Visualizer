@@ -172,6 +172,23 @@ describe('useGuidedTour', () => {
     expect(landedOn()).toEqual(stopPosition(3));
   });
 
+  it('puts the transport back on the stop when the same program is run again', () => {
+    const { result, rerender, seekTo, landedOn } = renderTour(FACTORIAL);
+
+    act(() => {
+      result.current.start(TOUR_ID);
+    });
+    act(() => {
+      result.current.goToStop(3);
+    });
+    seekTo.mockClear();
+
+    rerender({ ...FACTORIAL, snapshots: [...factorialSnapshots()] });
+
+    expect(result.current.stopIndex).toBe(3);
+    expect(landedOn()).toEqual(stopPosition(3));
+  });
+
   it('leaves the link alone until the example it names is the one that loaded', () => {
     const openedAt: DeepLink = { exampleId: 'factorial', tour: { tourId: TOUR_ID, stopIndex: 1 } };
     const { result, rerender, seekTo, landedOn } = renderTour({

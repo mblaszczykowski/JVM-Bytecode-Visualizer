@@ -1,7 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 export function useFileDropGuard(onFileDropped: (file: File) => void): boolean {
   const [isDragging, setIsDragging] = useState(false);
+  const latest = useRef(onFileDropped);
+
+  useEffect(() => {
+    latest.current = onFileDropped;
+  });
 
   useEffect(() => {
     let depth = 0;
@@ -47,7 +52,7 @@ export function useFileDropGuard(onFileDropped: (file: File) => void): boolean {
       event.preventDefault();
       const file = event.dataTransfer?.files[0];
       if (file !== undefined) {
-        onFileDropped(file);
+        latest.current(file);
       }
     }
 
@@ -62,7 +67,7 @@ export function useFileDropGuard(onFileDropped: (file: File) => void): boolean {
       window.removeEventListener('dragleave', handleDragLeave);
       window.removeEventListener('drop', handleDrop);
     };
-  }, [onFileDropped]);
+  }, []);
 
   return isDragging;
 }

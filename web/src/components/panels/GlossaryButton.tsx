@@ -1,5 +1,5 @@
 import { glossaryEntry, type GlossaryTermId } from '../../services/views/glossary';
-import { openGlossary } from '../../services/views/glossary-store';
+import { openGlossary } from '../../services/session/glossary-store';
 
 export function GlossaryButton({ term }: { readonly term: GlossaryTermId }) {
   const { question } = glossaryEntry(term);
@@ -13,10 +13,15 @@ export function GlossaryButton({ term }: { readonly term: GlossaryTermId }) {
       onClick={() => {
         openGlossary(term);
       }}
-      // eslint-disable-next-line no-restricted-syntax -- genuinely circular
-      className="focus-ring flex h-4 w-4 shrink-0 items-center justify-center self-center rounded-full bg-raised text-micro leading-none text-fg-3 transition-colors duration-150 hover:bg-raised-active hover:text-fg"
+      className="focus-ring group -mx-1 flex h-6 w-6 shrink-0 items-center justify-center self-center rounded-control"
     >
-      <span aria-hidden="true">?</span>
+      <span
+        aria-hidden="true"
+        // eslint-disable-next-line no-restricted-syntax -- genuinely circular: the 16px badge
+        className="flex h-4 w-4 items-center justify-center rounded-full bg-raised text-micro leading-none text-fg-3 transition-colors duration-150 group-hover:bg-raised-active group-hover:text-fg"
+      >
+        ?
+      </span>
       <span className="sr-only">{question}</span>
     </button>
   );

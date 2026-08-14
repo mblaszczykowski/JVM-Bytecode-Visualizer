@@ -1,8 +1,8 @@
-import { Fragment, useMemo } from 'react';
+import { Fragment } from 'react';
 
 import type { Instruction } from '../../core/disassembler';
 
-import { ROW_HEIGHT } from '../rhythm';
+import { ROW_HEIGHT } from '../ui/rhythm';
 
 interface BranchGutterProps {
   readonly instructions: readonly Instruction[];
@@ -49,10 +49,8 @@ function maxOverlap(arcs: readonly Arc[], rowCount: number): number {
 }
 
 export function BranchGutter({ instructions, currentIndex, hoveredIndex }: BranchGutterProps) {
-  const gutter = useMemo(() => {
-    const arcs = buildArcs(instructions);
-    return { arcs, crowded: maxOverlap(arcs, instructions.length) > MAX_OVERLAP };
-  }, [instructions]);
+  const arcs = buildArcs(instructions);
+  const gutter = { arcs, crowded: maxOverlap(arcs, instructions.length) > MAX_OVERLAP };
 
   const visible = gutter.crowded
     ? gutter.arcs.filter(

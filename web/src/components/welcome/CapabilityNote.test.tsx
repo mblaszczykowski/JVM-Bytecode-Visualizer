@@ -89,12 +89,10 @@ describe('CapabilityNote', () => {
     );
   });
 
-  it('mentions the one limit no opcode expresses: calls never leave the uploaded class', () => {
+  it('mentions the one limit no opcode expresses: calls never leave the loaded class', () => {
     render(<CapabilityNote />);
 
-    expect(
-      screen.getByText(/Everything must resolve inside the uploaded class/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/Everything must resolve inside the loaded class/)).toBeInTheDocument();
   });
 
   it('keeps the open and closed affordances out of the accessible name', () => {

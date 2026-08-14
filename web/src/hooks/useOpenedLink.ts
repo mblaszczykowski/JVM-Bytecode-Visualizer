@@ -40,11 +40,11 @@ export function useOpenedLink({
 
   useEffect(() => {
     const step = pendingStep.current;
-    if (step === undefined || stepCount === 0) {
+    if (step === undefined || stepCount === 0 || loadedExampleId !== openedAt?.exampleId) {
       return;
     }
     pendingStep.current = undefined;
-    if (loadedExampleId === openedAt?.exampleId && step < stepCount) {
+    if (step < stepCount) {
       seekTo(step);
     }
   }, [loadedExampleId, openedAt, stepCount, seekTo]);

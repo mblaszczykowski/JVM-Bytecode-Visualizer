@@ -38,16 +38,16 @@ describe('Toolbar', () => {
     expect(
       screen.getByRole('heading', { level: 1, name: 'JVM Bytecode Visualizer' }),
     ).toBeVisible();
-    expect(screen.getByRole('radiogroup', { name: 'Example programs' })).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'Example programs' })).toBeInTheDocument();
     expect(screen.getByText('Open .class…')).toBeInTheDocument();
   });
 
   it('reports the selected example', () => {
     const { onExampleSelected } = renderToolbar();
 
-    expect(screen.getByRole('radio', { name: 'Factorial', checked: true })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Factorial', pressed: true })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('radio', { name: 'GCD' }));
+    fireEvent.click(screen.getByRole('button', { name: 'GCD' }));
 
     expect(onExampleSelected).toHaveBeenCalledWith('gcd');
   });
@@ -63,6 +63,7 @@ describe('Toolbar', () => {
 
     expect(screen.getByTestId('compiler-health')).toHaveAttribute('data-status', 'online');
     expect(screen.getByTestId('compiler-health')).toHaveTextContent('Compiler service reachable');
+    expect(screen.getByTestId('compiler-health')).not.toHaveAttribute('title');
   });
 
   it('reads the health out rather than leaving it to the colour of the dot', () => {
@@ -111,10 +112,10 @@ describe('Toolbar', () => {
     expect(onSelect).toHaveBeenCalledWith('state');
   });
 
-  it('keeps exactly one example radiogroup, folded or not', () => {
+  it('keeps exactly one example group, folded or not', () => {
     renderToolbar('hidden', undefined, { selected: 'bytecode', onSelect: vi.fn() });
 
-    expect(screen.getAllByRole('radiogroup', { name: 'Example programs' })).toHaveLength(1);
+    expect(screen.getAllByRole('group', { name: 'Example programs' })).toHaveLength(1);
   });
 
   it('leaves the panel switch out while one view owns the whole width', () => {

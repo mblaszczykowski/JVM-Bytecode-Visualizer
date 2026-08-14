@@ -11,7 +11,7 @@ interface OriginButtonProps {
 }
 
 const SURFACE =
-  'focus-ring shrink-0 rounded-chip px-1 text-micro text-fg-3 transition-colors duration-150 hover:bg-raised-active hover:text-fg';
+  'focus-ring -my-1 inline-flex min-h-6 min-w-6 shrink-0 items-center justify-center rounded-chip px-1 text-micro text-fg-3 transition-colors duration-150 hover:bg-raised-active hover:text-fg';
 
 export function OriginButton({
   step,

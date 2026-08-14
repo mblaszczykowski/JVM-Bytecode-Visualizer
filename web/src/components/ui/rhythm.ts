@@ -8,3 +8,5 @@ export const NUMBER_COLUMN = 'w-[38px] shrink-0 text-right select-none';
 export const POOL_INDEX_COLUMN = 'w-[46px] shrink-0 text-right select-none';
 
 export const NAME_COLUMN = 'w-[106px] shrink-0';
+
+export const PANEL_INSET = 'px-2.5';

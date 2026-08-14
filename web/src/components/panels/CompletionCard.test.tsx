@@ -1,7 +1,7 @@
 import { render, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
-import type { RunSummary } from '../../services/loading/program';
+import type { RunSummary } from '../../services/views/program-view';
 
 import { heapAt, runSummary, terminalStep } from '../__fixtures__/bubble-sort-run';
 import { CompletionCard } from './CompletionCard';
@@ -11,7 +11,7 @@ const SUMMARY: RunSummary = {
   resultValue: 24,
   totalSteps: 40,
   maxDepth: 5,
-  referenceValue: 24,
+  reference: { expected: 24, matches: true },
 };
 
 describe('CompletionCard', () => {
@@ -33,10 +33,22 @@ describe('CompletionCard', () => {
   });
 
   it('stays quiet about the reference when there is none to quote', () => {
-    render(<CompletionCard summary={{ ...SUMMARY, referenceValue: undefined }} />);
+    render(<CompletionCard summary={{ ...SUMMARY, reference: undefined }} />);
 
     expect(screen.queryByText(/Matches the value a real JVM/)).not.toBeInTheDocument();
+    expect(screen.queryByTestId('reference-mismatch')).not.toBeInTheDocument();
     expect(screen.getByText('24')).toBeInTheDocument();
+  });
+
+  it('says so when the run disagrees with the real JVM, and quotes the value it expected', () => {
+    render(
+      <CompletionCard summary={{ ...SUMMARY, reference: { expected: 25, matches: false } }} />,
+    );
+
+    expect(screen.getByTestId('reference-mismatch')).toHaveTextContent(
+      'A real JVM computed 25 for this example when the fixtures were built; this run did not.',
+    );
+    expect(screen.queryByText(/Matches the value a real JVM/)).not.toBeInTheDocument();
   });
 
   it('leaves nothing behind on the heap out of the payoff', () => {
@@ -63,9 +75,7 @@ describe('CompletionCard', () => {
 
   it('shows a dash rather than nothing for a program that leaves no result behind', () => {
     render(
-      <CompletionCard
-        summary={{ ...SUMMARY, resultValue: undefined, referenceValue: undefined }}
-      />,
+      <CompletionCard summary={{ ...SUMMARY, resultValue: undefined, reference: undefined }} />,
     );
 
     expect(screen.getByText('–')).toBeInTheDocument();

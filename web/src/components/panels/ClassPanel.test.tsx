@@ -50,6 +50,7 @@ describe('ClassPanel', () => {
     expect(screen.getByRole('region', { name: 'Class file' })).toBeInTheDocument();
     expect(screen.getByTestId('class-panel')).toBeInTheDocument();
     expect(screen.getByText('Library · 24 constants')).toBeInTheDocument();
+    expect(screen.getByTestId('glossary-trigger')).toHaveAttribute('data-term', 'constant-pool');
   });
 
   it('reads the class header, with the Java release the version stands for', () => {

@@ -99,15 +99,27 @@ describe('walking a tour', () => {
   it('cannot go back from the first stop', () => {
     renderStrip({ stopIndex: 0 });
 
-    expect(screen.getByTestId('tour-previous')).toBeDisabled();
-    expect(screen.getByTestId('tour-next')).toBeEnabled();
+    expect(screen.getByTestId('tour-previous')).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByTestId('tour-next')).not.toHaveAttribute('aria-disabled');
   });
 
   it('cannot go past the last stop, and offers to finish instead', () => {
     renderStrip({ stopIndex: 2 });
 
-    expect(screen.getByTestId('tour-next')).toBeDisabled();
+    expect(screen.getByTestId('tour-next')).toHaveAttribute('aria-disabled', 'true');
     expect(screen.getByTestId('tour-leave')).toHaveTextContent('Done');
+  });
+
+  it('reports a boundary without leaving the tab order', () => {
+    const props = renderStrip({ stopIndex: 0 });
+    const back = screen.getByTestId('tour-previous');
+
+    expect(back).not.toHaveAttribute('disabled');
+    back.focus();
+    expect(back).toHaveFocus();
+
+    fireEvent.click(back);
+    expect(props.onGoToStop).not.toHaveBeenCalled();
   });
 
   it('leaves the tour without moving the run', () => {

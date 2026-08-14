@@ -5,8 +5,6 @@ import type { Instruction } from '../../core/disassembler';
 import { useRowNavigation, type RowNavigation } from '../../hooks/useRowNavigation';
 import { rowTopOf, useScrollFollow } from '../../hooks/useScrollFollow';
 import {
-  describeStackEffect,
-  formatOperands,
   operandTokens,
   stackEffectOf,
   type OperandToken,
@@ -17,11 +15,14 @@ import type { StackDelta } from '../../services/views/opcode-notes';
 
 import { BranchGutter } from './BranchGutter';
 import { CurrentRowHighlight } from './CurrentRowHighlight';
-import { GlossaryLink } from '../chrome/GlossaryButton';
+import { GlossaryLink } from './GlossaryButton';
 import { NextInstructionCard, type NextInstructionCardProps } from './NextInstructionCard';
 import { Panel } from './Panel';
-import { CODE_ROW, NAME_COLUMN, NUMBER_COLUMN } from '../rhythm';
+import { SELECTED_SURFACE } from '../ui/button-surface';
+import { CODE_ROW, NAME_COLUMN, NUMBER_COLUMN } from '../ui/rhythm';
 import { Pill } from '../ui/Pill';
+
+const NO_ROWS: readonly number[] = [];
 
 interface BytecodePanelProps {
   readonly methodName: string;
@@ -45,7 +46,6 @@ interface BytecodePanelProps {
   readonly linkedLine?: number | undefined;
   readonly onLinkedLineChange?: ((line: number | undefined) => void) | undefined;
   readonly animateHighlight?: boolean;
-  readonly isPlaying?: boolean;
   readonly className?: string;
 }
 
@@ -69,7 +69,7 @@ function ConstantLink({
   onSelect,
 }: ConstantLinkProps) {
   const tone = isFollowed
-    ? 'bg-raised-active text-fg shadow-control-raised'
+    ? SELECTED_SURFACE
     : isCurrentRow
       ? 'hover:bg-raised-active'
       : 'text-accent-dim hover:bg-raised-active';
@@ -146,7 +146,6 @@ export function BytecodePanel({
   linkedLine,
   onLinkedLineChange,
   animateHighlight = false,
-  isPlaying = false,
   className = '',
 }: BytecodePanelProps) {
   const [activeIndex, setActiveIndex] = useState<number | undefined>(undefined);
@@ -163,8 +162,6 @@ export function BytecodePanel({
   const currentIndex = instructions.findIndex(
     (instruction) => instruction.offset === currentOffset,
   );
-  const current = currentIndex < 0 ? undefined : instructions[currentIndex];
-
   const constantRows = instructions
     .map((instruction, index) => ({ index, constant: constantPoolIndexOf(instruction) }))
     .filter((row): row is { index: number; constant: number } => row.constant !== undefined);
@@ -178,7 +175,13 @@ export function BytecodePanel({
   const followedIndex = constantRows[followedRow]?.index;
   const constantPositionOf = new Map(constantRows.map((row, position) => [row.index, position]));
   const contentRef = useScrollFollow(rowTopOf(currentIndex < 0 ? followedIndex : currentIndex));
-  const rows = useRowNavigation(instructions.length, currentIndex < 0 ? undefined : currentIndex);
+  const seekable =
+    onSeek === undefined || stepForOffset === undefined
+      ? NO_ROWS
+      : instructions.flatMap((instruction, index) =>
+          stepForOffset.has(instruction.offset) ? [index] : [],
+        );
+  const rows = useRowNavigation(seekable, currentIndex < 0 ? undefined : currentIndex);
 
   const meta = (
     <>
@@ -187,26 +190,15 @@ export function BytecodePanel({
       {` · max ${String(maxStack)}/${String(maxLocals)}`}
     </>
   );
-  const currentOperands = current === undefined ? '' : formatOperands(current);
-  const currentEffect =
-    current === undefined || constantPool === undefined
-      ? undefined
-      : describeStackEffect(stackEffectOf(current, constantPool));
-
   return (
     <Panel
       title="Bytecode"
+      term="opcode"
       meta={meta}
       contentRef={contentRef}
       className={className}
       footer={next === undefined ? undefined : <NextInstructionCard {...next} />}
     >
-      <p className="sr-only" aria-live={isPlaying ? 'off' : 'polite'}>
-        {current === undefined
-          ? 'No active instruction.'
-          : `pc ${String(current.offset)} · ${current.mnemonic}${currentOperands === '' ? '' : ` ${currentOperands}`}${currentEffect === undefined ? '' : ` · ${currentEffect}`}`}
-      </p>
-
       <div
         className="relative px-2.5"
         onMouseLeave={() => {
@@ -257,7 +249,7 @@ export function BytecodePanel({
                 <span className={`${NAME_COLUMN} ${isUnsupported ? 'text-error' : ''}`}>
                   {instruction.mnemonic}
                 </span>
-                {instruction.operands.length === 0 ? null : (
+                {operandTokens(instruction).length === 0 ? null : (
                   <span>
                     {operandTokens(instruction).map((token, position) => (
                       <Fragment key={`${String(position)}:${token.text}`}>

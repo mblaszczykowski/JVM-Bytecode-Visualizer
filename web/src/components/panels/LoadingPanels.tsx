@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 
-import { ROW_HEIGHT } from '../rhythm';
+import { usePublishedStatus } from '../ui/app-status';
+import { ROW_HEIGHT } from '../ui/rhythm';
 import { Button } from '../ui/Button';
 
 const FILL_ROWS = 44;
@@ -41,11 +42,13 @@ interface LoadingPanelsProps {
 }
 
 export function LoadingPanels({ label, steps, onCancel }: LoadingPanelsProps) {
+  usePublishedStatus(label);
+
   return (
     <>
       <SkeletonPanel seed={0}>
         <div className="flex shrink-0 items-baseline gap-3 pb-2">
-          <p role="status" className="grow truncate text-label font-medium text-fg-2">
+          <p data-testid="loading-label" className="grow truncate text-label font-medium text-fg-2">
             {label}
           </p>
           {steps === undefined ? null : (

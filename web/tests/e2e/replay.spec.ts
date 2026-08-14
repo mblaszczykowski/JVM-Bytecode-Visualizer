@@ -9,7 +9,7 @@ const BYTECODE_ROWS = '[data-testid$="instruction"]';
 
 async function openFactorial(page: Page): Promise<void> {
   await page.goto('/');
-  await page.getByRole('radio', { name: 'Factorial', exact: true }).click();
+  await page.getByRole('button', { name: 'Factorial', exact: true }).click();
   await expect(page.getByTestId('step-counter')).toHaveText(`step 1 / ${String(FACTORIAL_STEPS)}`);
 }
 
@@ -19,7 +19,7 @@ test('replays a recursive program from the welcome screen to its result', async 
   await expect(page.getByTestId('welcome-example')).toHaveCount(bundledExamples().length);
   await expect(page.getByTestId('step-counter')).toHaveCount(0);
 
-  await page.getByRole('radio', { name: 'Factorial', exact: true }).click();
+  await page.getByRole('button', { name: 'Factorial', exact: true }).click();
 
   await expect(page.getByTestId('step-counter')).toHaveText(`step 1 / ${String(FACTORIAL_STEPS)}`);
   await expect(page.getByTestId('current-instruction')).toContainText('iconst_4');
@@ -57,7 +57,7 @@ test('the interpreter runs in a worker', async ({ page }) => {
   await page.goto('/');
 
   const spawned = page.waitForEvent('worker');
-  await page.getByRole('radio', { name: 'Factorial', exact: true }).click();
+  await page.getByRole('button', { name: 'Factorial', exact: true }).click();
 
   expect((await spawned).url()).toContain('run-program.worker');
   await expect(page.getByTestId('step-counter')).toHaveText(`step 1 / ${String(FACTORIAL_STEPS)}`);
@@ -143,7 +143,7 @@ test('a full pass through the app writes nothing to the console', async ({ page 
   await expect(page.getByRole('button', { name: 'Play', exact: true })).toBeVisible({
     timeout: 20_000,
   });
-  await page.getByRole('radio', { name: 'GCD', exact: true }).click();
+  await page.getByRole('button', { name: 'GCD', exact: true }).click();
   await expect(page.getByTestId('step-counter')).toHaveText(/^step 1 \/ \d+$/);
 
   expect(complaints).toEqual([]);

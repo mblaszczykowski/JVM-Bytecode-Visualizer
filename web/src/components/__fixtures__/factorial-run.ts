@@ -1,71 +1,39 @@
-import { parseClassFile } from '../../core/classfile';
 import type { Snapshot, StackFrame } from '../../core/interpreter';
-import {
-  readExampleBytes,
-  readExampleManifest,
-  readExampleText,
-} from '../../services/__fixtures__/example-files';
+import { readExampleManifest } from '../../services/__fixtures__/example-files';
 import { constantPoolComments } from '../../services/views/constant-pool';
 import {
   describeNextInstruction,
-  describeOperandRoles,
   type NextInstructionSummary,
 } from '../../services/views/derivations';
+import { describeOperandRoles } from '../../services/views/operand-roles';
 import { shortTitleOf } from '../../services/loading/examples';
 import { parseExampleManifest } from '../../services/loading/manifest';
-import {
-  buildProgram,
-  depthsOf,
-  findListing,
-  firstStepByLine,
-  listingFor,
-  type LoadedProgram,
-  type MethodListing,
-} from '../../services/loading/program';
+import { depthsOf, type LoadedProgram, type MethodListing } from '../../services/loading/program';
+import { findListing, firstStepByLine, listingFor } from '../../services/views/program-view';
 import type { ExampleOption } from '../dialogs/ExamplePicker';
 
-const CLASS_FILE = 'Factorial.class';
-const SOURCE_FILE = 'Factorial.java';
+import { recordedRun, type FirstStepOptions } from './recorded-run';
 
-let cached: LoadedProgram | undefined;
+const run = recordedRun('Factorial.class', 'Factorial.java');
 
 export function factorialProgram(): LoadedProgram {
-  cached ??= buildProgram({
-    origin: { kind: 'upload', fileName: CLASS_FILE },
-    classFile: parseClassFile(readExampleBytes(CLASS_FILE)),
-    source: { fileName: SOURCE_FILE, text: readExampleText(SOURCE_FILE) },
-  });
-  return cached;
+  return run.program();
 }
 
 export function snapshots(): readonly Snapshot[] {
-  return factorialProgram().snapshots;
+  return run.snapshots();
 }
 
 export function snapshotAt(step: number): Snapshot {
-  const history = snapshots();
-  const clamped = Math.min(Math.max(step, 0), history.length - 1);
-  const snapshot = history[clamped];
-  if (snapshot === undefined) {
-    throw new Error('the Factorial fixture produced no snapshots');
-  }
-  return snapshot;
+  return run.snapshotAt(step);
 }
 
 export function frameAt(step: number): StackFrame | undefined {
-  return snapshotAt(step).callStack.at(-1);
+  return run.frameAt(step);
 }
 
-export function firstStepOf(mnemonic: string, depth?: number): number {
-  const step = snapshots().findIndex(
-    (snapshot) =>
-      snapshot.currentInstruction?.mnemonic === mnemonic &&
-      (depth === undefined || snapshot.callStack.length === depth),
-  );
-  if (step < 0) {
-    throw new Error(`the Factorial run never executes ${mnemonic}`);
-  }
-  return step;
+export function firstStepOf(mnemonic: string, options?: FirstStepOptions): number {
+  return run.firstStepOf(mnemonic, options);
 }
 
 export function listingOf(name: string, descriptor: string): MethodListing {
@@ -123,7 +91,6 @@ export function exampleOptions(): readonly ExampleOption[] {
   return parseExampleManifest(readExampleManifest()).examples.map((entry) => ({
     id: entry.id,
     name: shortTitleOf(entry),
-    tagline: entry.tagline,
     description: entry.description,
   }));
 }

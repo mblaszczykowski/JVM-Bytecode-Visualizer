@@ -1,9 +1,9 @@
-import { openGlossary } from '../../services/views/glossary-store';
+import { openGlossary } from '../../services/session/glossary-store';
 import type { RunPreview } from '../../services/loading/program';
 
 import { CapabilityNote } from './CapabilityNote';
-import { ErrorBanner, type BannerSeverity } from '../chrome/ErrorBanner';
-import { FileUpload } from './FileUpload';
+import { ErrorBanner, type BannerSeverity } from '../ui/ErrorBanner';
+import { FileUpload } from '../ui/FileUpload';
 import { Button } from '../ui/Button';
 import { buttonSurface } from '../ui/button-surface';
 
@@ -78,14 +78,17 @@ export function WelcomeScreen({
           </p>
         </div>
 
-        <ul className="grid divide-y divide-line border-y border-line sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+        <dl
+          data-testid="pipeline"
+          className="grid divide-y divide-line border-y border-line sm:grid-cols-3 sm:divide-x sm:divide-y-0"
+        >
           {STEPS.map((step) => (
-            <li key={step.head} className="py-3 sm:px-4 sm:first:pl-0 sm:last:pr-0">
-              <span className="block text-label font-medium text-fg">{step.head}</span>
-              <span className="mt-0.5 block text-meta text-fg-3">{step.body}</span>
-            </li>
+            <div key={step.head} className="py-3 sm:px-4 sm:first:pl-0 sm:last:pr-0">
+              <dt className="text-label font-medium text-fg">{step.head}</dt>
+              <dd className="mt-0.5 text-meta text-fg-3">{step.body}</dd>
+            </div>
           ))}
-        </ul>
+        </dl>
 
         <section aria-label="Example programs">
           <div className="flex items-baseline justify-between gap-3">

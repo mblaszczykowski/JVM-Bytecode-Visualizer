@@ -31,6 +31,7 @@ export function EmbedBar({ appName, programName, fullUrl }: EmbedBarProps) {
         className="shrink-0"
       >
         Open in full
+        <span className="sr-only">(leaves this embedded view)</span>
         <span aria-hidden="true">↗</span>
       </ButtonLink>
     </header>

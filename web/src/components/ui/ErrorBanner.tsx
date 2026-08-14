@@ -1,4 +1,4 @@
-import { Button } from '../ui/Button';
+import { Button } from './Button';
 
 export type BannerSeverity = 'error' | 'warning' | 'info';
 
@@ -48,7 +48,7 @@ export function ErrorBanner({ message, severity, action, onDismiss }: ErrorBanne
           size="sm"
           aria-label="Dismiss this message"
           onClick={onDismiss}
-          className="-my-1 shrink-0 self-center text-body leading-none text-fg-3"
+          className="-my-1 min-h-6 min-w-6 shrink-0 self-center text-body leading-none text-fg-3"
         >
           <span aria-hidden="true">×</span>
         </Button>

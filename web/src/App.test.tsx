@@ -1,7 +1,10 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { StrictMode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { App } from './App';
+import { BASE_STEP_INTERVAL_MS } from './hooks/useExecutionPlayer';
+import { flushDeepLink } from './services/session/deep-link';
 import {
   readExampleBytes,
   readExampleManifest,
@@ -16,6 +19,7 @@ import {
 } from './services/__fixtures__/fake-fetch';
 import { uploadFile } from './services/__fixtures__/upload-file';
 import { exampleUrl, MANIFEST_FILE } from './services/loading/examples';
+import { PREVIEW_MAX_STEPS } from './services/loading/program';
 import { inlineRunner, RunCancelled, type ProgramRunner } from './services/loading/program-runner';
 
 const FACTORIAL_STEPS = 40;
@@ -29,14 +33,45 @@ const COMPILE_API = 'http://compile.test';
 const HEALTH_URL = `${COMPILE_API}/actuator/health`;
 const COMPILE_URL = `${COMPILE_API}/api/compile`;
 
+interface AppProps {
+  readonly compileApiUrl?: string | undefined;
+  readonly programRunner?: ProgramRunner | undefined;
+}
+
+function renderApp(props: AppProps = {}): void {
+  render(
+    <StrictMode>
+      <App {...props} />
+    </StrictMode>,
+  );
+}
+
+function examplePicker(): HTMLElement {
+  return screen.getByRole('group', { name: 'Example programs' });
+}
+
+function exampleOption(name: string): HTMLElement {
+  return within(examplePicker()).getByRole('button', { name });
+}
+
+function findExampleOption(name: string): Promise<HTMLElement> {
+  return waitFor(() => exampleOption(name));
+}
+
 async function openApp(compileApiUrl?: string) {
-  render(<App compileApiUrl={compileApiUrl} />);
-  await screen.findByRole('radio', { name: 'Factorial' });
+  renderApp({ compileApiUrl });
+  await findExampleOption('Factorial');
+}
+
+async function hashSettlesOn(hash: string): Promise<void> {
+  await waitFor(() => {
+    expect(window.location.hash).toBe(hash);
+  });
 }
 
 async function openFactorial() {
   await openApp();
-  fireEvent.click(screen.getByRole('radio', { name: 'Factorial' }));
+  fireEvent.click(exampleOption('Factorial'));
   await screen.findByTestId('step-counter');
 }
 
@@ -82,6 +117,7 @@ function heldAnswer(): HeldAnswer {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  flushDeepLink();
   window.history.replaceState(null, '', '/');
 });
 
@@ -113,7 +149,7 @@ describe('welcome screen', () => {
 
     expect(factorial).toHaveTextContent('Five frames deep and back: 4! = 24.');
     expect(factorial).not.toHaveTextContent('resumes a method exactly where it left off');
-    expect(screen.getByRole('radio', { name: 'Factorial' })).toHaveAttribute(
+    expect(exampleOption('Factorial')).toHaveAttribute(
       'title',
       expect.stringContaining('resumes a method exactly where it left off'),
     );
@@ -127,14 +163,13 @@ describe('welcome screen', () => {
     await waitFor(() => {
       expect(factorial).toHaveTextContent('40 steps · depth 5');
     });
-    expect(within(factorial).getAllByTestId('welcome-sparkline-bar')).toHaveLength(32);
   });
 
   it('reports a manifest the schema rejects and still renders', async () => {
     stubFetch({
       [exampleUrl(MANIFEST_FILE)]: () => okResponse({ json: { version: 1, examples: [] } }),
     });
-    render(<App />);
+    renderApp();
 
     const banner = await screen.findByTestId('error-banner');
 
@@ -145,7 +180,7 @@ describe('welcome screen', () => {
   it('never takes a program loaded meanwhile down with the manifest', async () => {
     const manifest = heldAnswer();
     stubFetch({ ...exampleRoutes(), [exampleUrl(MANIFEST_FILE)]: manifest.route });
-    render(<App />);
+    renderApp();
 
     chooseFile(uploadFile('Gcd.class', new Uint8Array(readExampleBytes('Gcd.class'))));
     await screen.findByTestId('step-counter');
@@ -155,7 +190,7 @@ describe('welcome screen', () => {
     expect(screen.getByTestId('step-counter')).toHaveTextContent(`step 1 / ${String(GCD_STEPS)}`);
     expect(screen.getByTestId('current-instruction')).toBeInTheDocument();
     expect(screen.getByTestId('error-banner')).toHaveTextContent('Could not download');
-    expect(screen.queryByRole('radio', { name: 'Factorial' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Factorial' })).not.toBeInTheDocument();
   });
 });
 
@@ -269,7 +304,7 @@ describe('running an example', () => {
     await openFactorial();
     seekTo(20);
 
-    fireEvent.click(screen.getByRole('radio', { name: 'GCD' }));
+    fireEvent.click(exampleOption('GCD'));
 
     await waitFor(() => {
       expect(screen.getByTestId('step-counter')).toHaveTextContent('step 1 / 43');
@@ -282,7 +317,7 @@ describe('running an example', () => {
     stubFetch({ ...routes, [exampleUrl('Factorial.class')]: () => statusResponse(503) });
     await openApp();
 
-    fireEvent.click(screen.getByRole('radio', { name: 'Factorial' }));
+    fireEvent.click(exampleOption('Factorial'));
 
     expect(await screen.findByTestId('error-banner')).toHaveTextContent('the server answered 503');
     expect(screen.getAllByTestId('welcome-example').length).toBe(exampleCount());
@@ -328,11 +363,57 @@ describe('switching the left panel between the source and the class file', () =>
   });
 });
 
+describe('what a reader who cannot see the panels hears', () => {
+  const PANELS = ['Bytecode', 'Source', 'Class', 'State'];
+
+  function announcement(): HTMLElement {
+    return screen.getByTestId('app-status');
+  }
+
+  function showPanel(name: string): void {
+    fireEvent.click(within(screen.getByTestId('panel-switch')).getByRole('button', { name }));
+  }
+
+  async function announcementSettles(pattern: RegExp): Promise<void> {
+    await waitFor(() => {
+      expect(announcement().textContent).toMatch(pattern);
+    });
+  }
+
+  it('reads the step out of the shell, so no hidden panel takes the announcement with it', async () => {
+    stubFetch(exampleRoutes());
+    await openFactorial();
+
+    await announcementSettles(/^pc 0, iconst_4, stack: pushes 1\. In main;/);
+
+    for (const panel of PANELS) {
+      showPanel(panel);
+
+      expect(announcement().closest('.hidden'), `${panel} hides the announcement`).toBeNull();
+      expect(screen.getByTestId('state-column')).not.toContainElement(announcement());
+    }
+  });
+
+  it('follows the run rather than repeating the step it opened on', async () => {
+    stubFetch(exampleRoutes());
+    await openFactorial();
+    await announcementSettles(/^pc 0, iconst_4/);
+    showPanel('Bytecode');
+
+    fireEvent.keyDown(document.body, { key: 'ArrowRight' });
+
+    await announcementSettles(/^pc 1, invokestatic, stack: pops 1, pushes 1\. /);
+  });
+});
+
 function stallingRunner(settled: number, cancellable = true): ProgramRunner {
   let runs = 0;
   return {
     cancellable,
     run(command, options) {
+      if (command.maxSteps === PREVIEW_MAX_STEPS) {
+        return inlineRunner.run(command, options);
+      }
       runs += 1;
       if (runs <= settled) {
         return inlineRunner.run(command, options);
@@ -354,8 +435,8 @@ function stallingRunner(settled: number, cancellable = true): ProgramRunner {
 describe('giving up on a run', () => {
   it('says how far a long run has got, and offers to end it', async () => {
     stubFetch(exampleRoutes());
-    render(<App programRunner={stallingRunner(0)} />);
-    fireEvent.click(await screen.findByRole('radio', { name: 'Factorial' }));
+    renderApp({ programRunner: stallingRunner(0) });
+    fireEvent.click(await findExampleOption('Factorial'));
 
     expect(await screen.findByRole('button', { name: 'Cancel' })).toBeVisible();
     expect(screen.getByRole('status')).toHaveTextContent('Loading Factorial');
@@ -366,11 +447,11 @@ describe('giving up on a run', () => {
 
   it('puts the run the reader was reading back, rather than an empty screen', async () => {
     stubFetch(exampleRoutes());
-    render(<App programRunner={stallingRunner(1)} />);
-    fireEvent.click(await screen.findByRole('radio', { name: 'Factorial' }));
+    renderApp({ programRunner: stallingRunner(1) });
+    fireEvent.click(await findExampleOption('Factorial'));
     await screen.findByTestId('step-counter');
 
-    fireEvent.click(screen.getByRole('radio', { name: 'GCD' }));
+    fireEvent.click(exampleOption('GCD'));
     fireEvent.click(await screen.findByRole('button', { name: 'Cancel' }));
 
     expect(screen.getByTestId('step-counter')).toHaveTextContent(
@@ -383,8 +464,8 @@ describe('giving up on a run', () => {
 
   it('goes back to the welcome screen when there was nothing to go back to', async () => {
     stubFetch(exampleRoutes());
-    render(<App programRunner={stallingRunner(0)} />);
-    fireEvent.click(await screen.findByRole('radio', { name: 'Factorial' }));
+    renderApp({ programRunner: stallingRunner(0) });
+    fireEvent.click(await findExampleOption('Factorial'));
 
     fireEvent.click(await screen.findByRole('button', { name: 'Cancel' }));
 
@@ -393,8 +474,8 @@ describe('giving up on a run', () => {
 
   it('does not offer to cancel a run this thread could not stop', async () => {
     stubFetch(exampleRoutes());
-    render(<App programRunner={stallingRunner(0, false)} />);
-    fireEvent.click(await screen.findByRole('radio', { name: 'Factorial' }));
+    renderApp({ programRunner: stallingRunner(0, false) });
+    fireEvent.click(await findExampleOption('Factorial'));
 
     expect(await screen.findByRole('status')).toHaveTextContent('Loading Factorial');
     expect(screen.queryByRole('button', { name: 'Cancel' })).not.toBeInTheDocument();
@@ -440,7 +521,7 @@ describe('a link into a run', () => {
     window.history.replaceState(null, '', '#/factorial');
     stubFetch(exampleRoutes());
 
-    render(<App />);
+    renderApp();
 
     await waitFor(() =>
       expect(screen.getByTestId('step-counter')).toHaveTextContent(
@@ -453,7 +534,7 @@ describe('a link into a run', () => {
     window.history.replaceState(null, '', '#/factorial/13');
     stubFetch(exampleRoutes());
 
-    render(<App />);
+    renderApp();
 
     await waitFor(() =>
       expect(screen.getByTestId('step-counter')).toHaveTextContent(
@@ -466,7 +547,7 @@ describe('a link into a run', () => {
     window.history.replaceState(null, '', '#/factorial/tour/recursion/3');
     stubFetch(exampleRoutes());
 
-    render(<App />);
+    renderApp();
 
     await waitFor(() =>
       expect(screen.getByTestId('step-counter')).toHaveTextContent(
@@ -480,7 +561,7 @@ describe('a link into a run', () => {
     window.history.replaceState(null, '', `#/factorial/${String(FACTORIAL_STEPS + 1)}`);
     stubFetch(exampleRoutes());
 
-    render(<App />);
+    renderApp();
 
     await waitFor(() =>
       expect(screen.getByTestId('step-counter')).toHaveTextContent(
@@ -493,7 +574,7 @@ describe('a link into a run', () => {
     window.history.replaceState(null, '', '#/no-such-example');
     stubFetch(exampleRoutes());
 
-    render(<App />);
+    renderApp();
 
     expect(await screen.findByTestId('welcome-screen')).toBeInTheDocument();
     expect(screen.queryByTestId('step-counter')).not.toBeInTheDocument();
@@ -503,11 +584,11 @@ describe('a link into a run', () => {
     stubFetch(exampleRoutes());
     await openFactorial();
 
-    expect(window.location.hash).toBe('#/factorial/1');
+    await hashSettlesOn('#/factorial/1');
 
     seekTo(12);
 
-    expect(window.location.hash).toBe('#/factorial/13');
+    await hashSettlesOn('#/factorial/13');
   });
 
   it('writes the tour stop back, and the step again once the tour is left', async () => {
@@ -516,16 +597,16 @@ describe('a link into a run', () => {
 
     fireEvent.click(screen.getByTestId('tour-start'));
 
-    expect(window.location.hash).toBe('#/factorial/tour/recursion/1');
+    await hashSettlesOn('#/factorial/tour/recursion/1');
 
     fireEvent.click(screen.getByTestId('tour-next'));
 
-    expect(window.location.hash).toBe('#/factorial/tour/recursion/2');
+    await hashSettlesOn('#/factorial/tour/recursion/2');
 
     fireEvent.click(screen.getByTestId('tour-leave'));
 
     expect(screen.queryByTestId('tour-strip')).not.toBeInTheDocument();
-    expect(window.location.hash).toBe('#/factorial/5');
+    await hashSettlesOn('#/factorial/5');
   });
 
   it('says nothing about an upload, which the link could not reach', async () => {
@@ -536,6 +617,73 @@ describe('a link into a run', () => {
     await screen.findByTestId('step-counter');
 
     expect(window.location.hash).toBe('');
+  });
+});
+
+describe('playing the run back', () => {
+  const PAST_ANY_URL_THROTTLE = 500;
+
+  async function settleUnderFakeTimers(): Promise<void> {
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(PAST_ANY_URL_THROTTLE);
+    });
+  }
+
+  it('runs from the space bar, holds the address bar still and hands it back on pause', async () => {
+    stubFetch(exampleRoutes());
+    await openFactorial();
+    await hashSettlesOn('#/factorial/1');
+
+    vi.useFakeTimers();
+    try {
+      fireEvent.keyDown(document.body, { key: ' ' });
+      act(() => {
+        vi.advanceTimersByTime(BASE_STEP_INTERVAL_MS * 3);
+      });
+      await settleUnderFakeTimers();
+
+      expect(screen.getByTestId('step-counter')).toHaveTextContent(
+        `step 4 / ${String(FACTORIAL_STEPS)}`,
+      );
+      expect(window.location.hash).toBe('#/factorial/1');
+
+      fireEvent.keyDown(document.body, { key: ' ' });
+      await settleUnderFakeTimers();
+
+      expect(window.location.hash).toBe('#/factorial/4');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('stops the clock when another program is loaded mid-playback', async () => {
+    stubFetch(exampleRoutes());
+    await openFactorial();
+
+    vi.useFakeTimers();
+    try {
+      fireEvent.keyDown(document.body, { key: ' ' });
+      act(() => {
+        vi.advanceTimersByTime(BASE_STEP_INTERVAL_MS * 2);
+      });
+      expect(screen.getByTestId('step-counter')).toHaveTextContent(
+        `step 3 / ${String(FACTORIAL_STEPS)}`,
+      );
+
+      fireEvent.click(exampleOption('GCD'));
+      await settleUnderFakeTimers();
+
+      expect(screen.getByTestId('step-counter')).toHaveTextContent(`step 1 / ${String(GCD_STEPS)}`);
+
+      act(() => {
+        vi.advanceTimersByTime(BASE_STEP_INTERVAL_MS * 5);
+      });
+
+      expect(screen.getByTestId('step-counter')).toHaveTextContent(`step 1 / ${String(GCD_STEPS)}`);
+      expect(screen.getByRole('button', { name: 'Play' })).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
@@ -550,7 +698,7 @@ describe('uploads', () => {
       'Not a .class file: expected the 0xcafebabe header',
     );
 
-    fireEvent.click(screen.getByRole('radio', { name: 'Factorial' }));
+    fireEvent.click(exampleOption('Factorial'));
     await screen.findByTestId('step-counter');
     expect(screen.queryByTestId('error-banner')).not.toBeInTheDocument();
   });
@@ -648,6 +796,16 @@ describe('exploring a class file with nothing to run', () => {
     expect(screen.queryByTestId('step-counter')).not.toBeInTheDocument();
   });
 
+  it('says that nothing ran in the live region as well as in the notice', async () => {
+    await openLibrary();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('app-status')).toHaveTextContent(
+        'Nothing was executed, so there is no active instruction.',
+      );
+    });
+  });
+
   it('says why nothing ran, as a notice rather than as a failure', async () => {
     await openLibrary();
 
@@ -655,19 +813,6 @@ describe('exploring a class file with nothing to run', () => {
     expect(banner).toHaveAttribute('data-severity', 'info');
     expect(banner).toHaveTextContent('Library has no method this machine can start from');
     expect(banner).toHaveTextContent('every method listing are on screen to read');
-  });
-
-  it('lists every method, each marked as listing only, and offers to run none', async () => {
-    await openLibrary();
-
-    const rows = screen.getAllByTestId('method-row');
-    expect(rows.map((row) => row.getAttribute('data-method'))).toEqual([
-      '<init>()V',
-      'twice(I)I',
-      'clamp(III)I',
-    ]);
-    expect(screen.getAllByText('listing only')).toHaveLength(3);
-    expect(screen.queryByRole('button', { name: /^Run / })).not.toBeInTheDocument();
   });
 
   it('opens the listing of any method the reader picks', async () => {
@@ -681,14 +826,6 @@ describe('exploring a class file with nothing to run', () => {
     expect(within(bytecode).getByText('if_icmpge')).toBeInTheDocument();
   });
 
-  it('shows the constant pool resolved down to the strings behind each entry', async () => {
-    await openLibrary();
-
-    const pool = screen.getAllByTestId('constant-row');
-    expect(pool.length).toBeGreaterThan(10);
-    expect(screen.getByText('java/lang/Object.<init>:()V')).toBeInTheDocument();
-  });
-
   it('follows a #n in the listing to the entry it names', async () => {
     await openLibrary();
 
@@ -698,17 +835,6 @@ describe('exploring a class file with nothing to run', () => {
       .getAllByTestId('constant-row')
       .find((row) => row.getAttribute('data-index') === '1');
     expect(followed).toHaveAttribute('aria-current', 'true');
-  });
-
-  it('carries the class metadata a javap dump opens with', async () => {
-    await openLibrary();
-
-    const facts = screen.getAllByTestId('class-fact');
-    const text = facts.map((fact) => fact.textContent).join(' | ');
-    expect(text).toContain('Library');
-    expect(text).toContain('java/lang/Object');
-    expect(text).toContain('class file format of Java 21');
-    expect(text).toContain('public final super');
   });
 });
 
@@ -895,7 +1021,7 @@ describe('the compile editor', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Dismiss this message' }));
     expect(screen.queryByTestId('error-banner')).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('radio', { name: 'Factorial' }));
+    fireEvent.click(exampleOption('Factorial'));
 
     await waitFor(() => {
       expect(screen.getByTestId('step-counter')).toHaveTextContent(
@@ -1037,7 +1163,7 @@ describe('the compile editor', () => {
   it('returns to what was on screen before when Escape closes it', async () => {
     stubFetch(compileRoutes(compiledGcd));
     await openApp(COMPILE_API);
-    fireEvent.click(screen.getByRole('radio', { name: 'Factorial' }));
+    fireEvent.click(exampleOption('Factorial'));
     await screen.findByTestId('step-counter');
 
     await openEditor();
@@ -1057,7 +1183,7 @@ describe('the compile editor', () => {
     await openApp(COMPILE_API);
     await openEditor();
 
-    fireEvent.click(screen.getByRole('radio', { name: 'Factorial' }));
+    fireEvent.click(exampleOption('Factorial'));
 
     expect(await screen.findByTestId('step-counter')).toBeInTheDocument();
     expect(screen.queryByTestId('compile-editor')).not.toBeInTheDocument();
@@ -1066,7 +1192,7 @@ describe('the compile editor', () => {
   it('holds the transport while the editor is open, and hands it back on close', async () => {
     stubFetch(compileRoutes(compiledGcd));
     await openApp(COMPILE_API);
-    fireEvent.click(screen.getByRole('radio', { name: 'Factorial' }));
+    fireEvent.click(exampleOption('Factorial'));
     await screen.findByTestId('step-counter');
     const textarea = await openEditor();
 

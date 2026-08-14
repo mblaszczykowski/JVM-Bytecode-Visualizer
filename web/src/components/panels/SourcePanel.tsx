@@ -6,8 +6,10 @@ import { tokenizeJavaLines, type TokenKind } from '../../services/views/syntax';
 
 import { CurrentRowHighlight } from './CurrentRowHighlight';
 import { Panel } from './Panel';
-import { CODE_ROW, NUMBER_COLUMN } from '../rhythm';
+import { CODE_ROW, NUMBER_COLUMN } from '../ui/rhythm';
 import { Pill } from '../ui/Pill';
+
+const NO_ROWS: readonly number[] = [];
 
 const TOKEN_CLASS: Record<TokenKind, string> = {
   keyword: 'text-syntax-keyword',
@@ -50,7 +52,11 @@ export function SourcePanel({
   const currentIndex = currentLine === undefined ? undefined : currentLine - 1;
   const isMapped = currentIndex !== undefined && currentIndex >= 0 && currentIndex < lines.length;
   const contentRef = useScrollFollow(rowTopOf(isMapped ? currentIndex : undefined));
-  const rows = useRowNavigation(lines.length, isMapped ? currentIndex : undefined);
+  const seekable =
+    onSeek === undefined || stepForLine === undefined
+      ? NO_ROWS
+      : lines.map((_, index) => index).filter((index) => stepForLine.has(index + 1));
+  const rows = useRowNavigation(seekable, isMapped ? currentIndex : undefined);
   const highlighted = tokenizeJavaLines(lines);
 
   const footer = !isMapped ? undefined : (
@@ -69,6 +75,7 @@ export function SourcePanel({
   return (
     <Panel
       title="Source"
+      term="line-number-table"
       meta={fileName}
       titleControl={titleControl}
       contentRef={contentRef}
