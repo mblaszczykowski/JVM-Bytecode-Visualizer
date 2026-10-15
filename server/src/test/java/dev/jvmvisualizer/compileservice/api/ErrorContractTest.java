@@ -9,8 +9,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.jvmvisualizer.compileservice.compiler.CompilerBusyException;
 import dev.jvmvisualizer.compileservice.compiler.CompilerUnavailableException;
 import dev.jvmvisualizer.compileservice.compiler.ForkedCompiler;
@@ -20,14 +18,16 @@ import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -134,7 +134,7 @@ class ErrorContractTest {
     private void assertErrorShape(MvcResult result) throws Exception {
         JsonNode body = objectMapper.readTree(result.getResponse().getContentAsString());
         List<String> fields = new ArrayList<>();
-        body.fieldNames().forEachRemaining(fields::add);
+        body.propertyNames().iterator().forEachRemaining(fields::add);
 
         assertThat(fields).containsExactlyInAnyOrder("error", "message");
         assertThat(body.get("error").asText()).isNotBlank();

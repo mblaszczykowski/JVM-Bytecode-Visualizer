@@ -72,7 +72,7 @@ export function describeFault(detail: VmFaultDetail): string {
     case 'out-of-memory':
       return (
         `OutOfMemoryError: the ${detail.resource} would hold ${String(detail.requested)} ` +
-        `array elements, and the limit is ${String(detail.limit)}`
+        `elements, and the limit is ${String(detail.limit)}`
       );
     case 'unsupported-field':
       return `Unsupported field: ${detail.target}`;

@@ -41,8 +41,15 @@ export function useGuidedTour({
 }: GuidedTourInput): GuidedTour {
   const [tourId, setTourId] = useState<string | undefined>(undefined);
   const [stopIndex, setStopIndex] = useState(0);
+  const [trackedExample, setTrackedExample] = useState(exampleId);
   const pendingTour = useRef(openedAt?.tour);
   const stepCount = snapshots.length;
+
+  if (exampleId !== undefined && exampleId !== trackedExample) {
+    setTrackedExample(exampleId);
+    setTourId(undefined);
+    setStopIndex(0);
+  }
 
   const available = exampleId === undefined ? NO_TOURS : toursFor(exampleId);
 
@@ -60,13 +67,22 @@ export function useGuidedTour({
 
   useEffect(() => {
     const link = pendingTour.current;
-    if (link === undefined || stepCount === 0 || exampleId !== openedAt?.exampleId) {
+    if (
+      link === undefined ||
+      stepCount === 0 ||
+      exampleId === undefined ||
+      exampleId !== openedAt?.exampleId
+    ) {
       return;
     }
     pendingTour.current = undefined;
+    const tour = tourFor(exampleId, link.tourId);
+    if (tour === undefined || resolveTour(tour, snapshots)[link.stopIndex] === undefined) {
+      return;
+    }
     setTourId(link.tourId);
     setStopIndex(link.stopIndex);
-  }, [exampleId, openedAt, stepCount]);
+  }, [exampleId, openedAt, stepCount, snapshots]);
 
   useEffect(() => {
     const stop = active?.stops[stopIndex];

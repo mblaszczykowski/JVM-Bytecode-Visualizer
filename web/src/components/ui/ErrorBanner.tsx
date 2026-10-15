@@ -37,7 +37,7 @@ export function ErrorBanner({ message, severity, action, onDismiss }: ErrorBanne
       className={`${FRAME} ${SEVERITY_STYLE[severity]}`}
     >
       <span className="shrink-0 text-label font-medium">{SEVERITY_LABEL[severity]}</span>
-      <span className="grow">{message}</span>
+      <span className="min-w-0 flex-1 break-words">{message}</span>
       {action === undefined ? null : (
         <Button tone="nested" onClick={action.onAction} className="shrink-0">
           {action.label}

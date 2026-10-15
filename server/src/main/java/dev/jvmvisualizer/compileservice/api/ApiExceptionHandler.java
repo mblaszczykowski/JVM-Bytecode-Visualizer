@@ -1,6 +1,5 @@
 package dev.jvmvisualizer.compileservice.api;
 
-import com.fasterxml.jackson.core.exc.StreamConstraintsException;
 import dev.jvmvisualizer.compileservice.api.dto.ErrorResponse;
 import dev.jvmvisualizer.compileservice.compiler.CompilerBusyException;
 import dev.jvmvisualizer.compileservice.compiler.CompilerUnavailableException;
@@ -23,6 +22,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
+import tools.jackson.core.exc.StreamConstraintsException;
 
 @RestControllerAdvice
 class ApiExceptionHandler extends ResponseEntityExceptionHandler {

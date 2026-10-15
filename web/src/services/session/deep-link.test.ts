@@ -54,6 +54,11 @@ describe('parseDeepLink', () => {
   it('rejects a third segment instead of ignoring it', () => {
     expect(parseDeepLink('#/factorial/2/extra')).toBeUndefined();
   });
+
+  it.each(['9007199254740992', '9'.repeat(400)])('rejects an unsafe position %s', (position) => {
+    expect(parseDeepLink(`#/factorial/${position}`)).toBeUndefined();
+    expect(parseDeepLink(`#/factorial/tour/recursion/${position}`)).toBeUndefined();
+  });
 });
 
 describe('formatDeepLink', () => {

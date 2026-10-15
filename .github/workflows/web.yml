@@ -7,6 +7,8 @@ on:
       - 'web/**'
       - 'package.json'
       - 'package-lock.json'
+      - '.nvmrc'
+      - 'vitest.config.ts'
       # The deployment config builds and serves web/, so a change to it belongs to this gate.
       - 'vercel.json'
       - '.github/workflows/web.yml'
@@ -15,6 +17,8 @@ on:
       - 'web/**'
       - 'package.json'
       - 'package-lock.json'
+      - '.nvmrc'
+      - 'vitest.config.ts'
       - 'vercel.json'
       - '.github/workflows/web.yml'
 
@@ -37,11 +41,14 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Audit dependencies
+        run: npm audit --audit-level=low
 
       - name: Lint
         run: npm run lint
@@ -79,7 +86,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
 
       - name: Restore the corpus
@@ -112,7 +119,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
 
       # 25, not the 21 the class files target: javap changed its disassembly layout in 25 and

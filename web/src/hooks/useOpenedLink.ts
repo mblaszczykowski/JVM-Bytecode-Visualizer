@@ -23,6 +23,7 @@ export function useOpenedLink({
   const [openedAt] = useState(() => parseDeepLink(window.location.hash));
   const pendingExample = useRef(openedAt?.exampleId);
   const pendingStep = useRef(openedAt?.stepIndex);
+  const selected = useRef(false);
 
   const latestSelectExample = useRef(selectExample);
   useEffect(() => {
@@ -30,11 +31,15 @@ export function useOpenedLink({
   });
 
   useEffect(() => {
+    if (selected.current) {
+      return;
+    }
     const id = pendingExample.current ?? (embedded ? examples[0]?.id : undefined);
     if (id === undefined || examples.length === 0) {
       return;
     }
     pendingExample.current = undefined;
+    selected.current = true;
     latestSelectExample.current(id);
   }, [examples, embedded]);
 

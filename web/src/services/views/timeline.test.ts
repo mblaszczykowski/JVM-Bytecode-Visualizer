@@ -150,6 +150,13 @@ describe('timelineEventsOf', () => {
     );
   });
 
+  it('keeps the same events when worker messages clone the heap separately', () => {
+    const snapshots = runOf('BubbleSort');
+    const transferred = snapshots.map((snapshot) => structuredClone(snapshot));
+
+    expect(timelineEventsOf(transferred)).toEqual(timelineEventsOf(snapshots));
+  });
+
   it('marks a branch only where control really left for the target', () => {
     const snapshots = runOf('SumOfProducts');
     const taken = stepsOf(timelineEventsOf(snapshots), 'branch');

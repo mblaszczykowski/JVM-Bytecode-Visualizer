@@ -1,3 +1,5 @@
+import { useState } from 'react';
+
 import {
   NO_EXTERNALS,
   NO_HEAP,
@@ -10,18 +12,36 @@ import { describeValue, objectLabel, type HeapFocus } from '../../services/views
 
 import { Pill } from '../ui/Pill';
 import { PulseOverlay } from '../ui/PulseOverlay';
+import { Button } from '../ui/Button';
 
 const CELL =
   'relative isolate flex h-[26px] items-center justify-center rounded-code font-mono text-code';
+
+export const HEAP_ELEMENTS_PER_PAGE = 128;
 
 interface HeapArrayRowProps {
   readonly array: ArrayObject;
   readonly handle: number;
   readonly focus?: HeapFocus | undefined;
-  readonly pulses?: readonly number[] | undefined;
+  readonly pulses?: ReadonlyMap<number, number> | undefined;
 }
 
 export function HeapArrayRow({ array, handle, focus, pulses }: HeapArrayRowProps) {
+  const [tracked, setTracked] = useState({
+    page: Math.floor((focus?.index ?? 0) / HEAP_ELEMENTS_PER_PAGE),
+    focusIndex: focus?.index,
+  });
+  if (tracked.focusIndex !== focus?.index) {
+    setTracked({
+      page: focus === undefined ? tracked.page : Math.floor(focus.index / HEAP_ELEMENTS_PER_PAGE),
+      focusIndex: focus?.index,
+    });
+  }
+  const lastPage = Math.max(0, Math.ceil(array.length / HEAP_ELEMENTS_PER_PAGE) - 1);
+  const page = Math.min(tracked.page, lastPage);
+  const from = page * HEAP_ELEMENTS_PER_PAGE;
+  const shown = array.elements.slice(from, from + HEAP_ELEMENTS_PER_PAGE);
+
   return (
     <li data-testid="heap-array" data-handle={handle} className="px-0.5">
       <div className="flex items-baseline gap-2 pb-1.5">
@@ -37,9 +57,10 @@ export function HeapArrayRow({ array, handle, focus, pulses }: HeapArrayRowProps
       </div>
 
       <ol className="scroll-slim flex gap-1 overflow-x-auto pb-0.5">
-        {array.elements.map((value, index) => {
+        {shown.map((value, position) => {
+          const index = from + position;
           const isFocused = focus?.index === index;
-          const pulse = pulses?.[index] ?? 0;
+          const pulse = pulses?.get(index) ?? 0;
 
           return (
             <li key={index} className="flex min-w-[34px] flex-1 flex-col">
@@ -66,6 +87,34 @@ export function HeapArrayRow({ array, handle, focus, pulses }: HeapArrayRowProps
           );
         })}
       </ol>
+      {lastPage === 0 ? null : (
+        <div className="mt-1.5 flex flex-wrap items-center gap-2 text-meta text-fg-3">
+          <span>
+            indices {from}–{from + shown.length - 1} of {array.length}
+          </span>
+          <span className="grow" />
+          <Button
+            size="sm"
+            disabled={page === 0}
+            aria-label={`Previous elements of array @${String(handle)}`}
+            onClick={() => {
+              setTracked({ ...tracked, page: page - 1 });
+            }}
+          >
+            Previous
+          </Button>
+          <Button
+            size="sm"
+            disabled={page === lastPage}
+            aria-label={`Next elements of array @${String(handle)}`}
+            onClick={() => {
+              setTracked({ ...tracked, page: page + 1 });
+            }}
+          >
+            Next
+          </Button>
+        </div>
+      )}
     </li>
   );
 }
@@ -75,7 +124,7 @@ interface HeapInstanceRowProps {
   readonly handle: number;
   readonly heap?: readonly HeapObject[] | undefined;
   readonly externals?: readonly ExternalValue[] | undefined;
-  readonly pulses?: readonly number[] | undefined;
+  readonly pulses?: ReadonlyMap<number, number> | undefined;
 }
 
 export function HeapInstanceRow({
@@ -97,11 +146,11 @@ export function HeapInstanceRow({
 
       <ol className="flex flex-col gap-0.5">
         {instance.fields.map((field, index) => {
-          const pulse = pulses?.[index] ?? 0;
+          const pulse = pulses?.get(index) ?? 0;
 
           return (
             <li
-              key={field.name}
+              key={`${field.name}:${field.descriptor}`}
               data-testid="heap-field"
               data-field={field.name}
               className={`${CELL} justify-between gap-3 bg-raised px-2 text-fg-2`}

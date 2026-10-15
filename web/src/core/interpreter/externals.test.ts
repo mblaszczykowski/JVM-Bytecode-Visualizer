@@ -268,7 +268,7 @@ describe('execute: unrecognised members', () => {
 
     expect(error).toMatchObject({
       kind: 'invalid-state',
-      message: 'expected a standard library object on the operand stack, found an int',
+      message: 'expected a reference on the operand stack, found an int',
     });
   });
 
@@ -369,5 +369,34 @@ describe('execute: external object references in local slots', () => {
       kind: 'invalid-state',
       message: 'expected a reference on the operand stack, found an int',
     });
+  });
+});
+
+describe('execute: null external receivers', () => {
+  it('raises a catchable NullPointerException for PrintStream.println on null', () => {
+    const pool = new ConstantPoolBuilder();
+    const println = pool.methodref(PRINT_STREAM, 'println', '()V');
+    const result = execute(
+      syntheticClass({
+        pool,
+        methods: [
+          {
+            name: 'main',
+            descriptor: '()I',
+            code: [0x01, 0xb6, ...u2(println), 0x03, 0xac, 0x57, 0x04, 0xac],
+            exceptionTable: [
+              {
+                startPc: 0,
+                endPc: 4,
+                handlerPc: 6,
+                catchType: 'java/lang/NullPointerException',
+              },
+            ],
+          },
+        ],
+      }),
+    );
+
+    expect(expectCompleted(result).returnValue).toBe(1);
   });
 });

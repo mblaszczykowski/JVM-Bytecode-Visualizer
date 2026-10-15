@@ -37,17 +37,21 @@ export function parseDeepLink(hash: string): DeepLink | undefined {
     if (stop === undefined) {
       return { exampleId, tour: { tourId, stopIndex: 0 } };
     }
-    if (!POSITIVE.test(stop)) {
+    if (!validPosition(stop)) {
       return undefined;
     }
     return { exampleId, tour: { tourId, stopIndex: Number(stop) - 1 } };
   }
 
   const [step] = tail;
-  if (tail.length > 1 || step === undefined || !POSITIVE.test(step)) {
+  if (tail.length > 1 || step === undefined || !validPosition(step)) {
     return undefined;
   }
   return { exampleId, stepIndex: Number(step) - 1 };
+}
+
+function validPosition(value: string): boolean {
+  return POSITIVE.test(value) && Number.isSafeInteger(Number(value));
 }
 
 export function formatDeepLink(exampleId: string, stepIndex?: number): string {

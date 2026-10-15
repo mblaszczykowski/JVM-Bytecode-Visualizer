@@ -1,6 +1,6 @@
 # Deployment
 
-Two deployables that do not depend on each other. The editor tab appears only when a compile service
+Two deployables that do not depend on each other. The Write Java control appears only when a compile service
 is configured and answers a health check, and nothing else in the application needs it. Neither
 deploy is wired into CI.
 
@@ -17,12 +17,15 @@ deploy is wired into CI.
    `script-src` holds a sha256 of the inline theme script in `web/index.html`, so editing that
    script means recomputing the hash. `npm run csp -w web` compares the two and prints both values
    when they disagree; CI runs it in the `web` workflow.
-3. Node version: 20 or 22. The root `package.json` requires `node >= 20.18.1`.
+3. Use Node 22 or 24 LTS. The root `package.json` requires `node >= 22.12.0`, and CI uses 22.
 4. No environment variable is required. To light up the Java editor, add `VITE_COMPILE_API_URL` with
    the base URL of the compile service (`https://<your-fly-app>.fly.dev`), scheme and host only, no
    trailing slash and no path. Vite inlines it at build time, so a change only takes effect on the
    next deploy.
-5. Deploy, then load the site: the bundled examples should replay, and dragging a `.class` file onto
+5. Social previews use the Vercel production domain automatically. On another host, set
+   `VITE_PUBLIC_SITE_URL=https://your-domain` at build time. It must be an HTTP(S) origin with no
+   path, credentials, query or fragment.
+6. Deploy, then load the site: the bundled examples should replay, and dragging a `.class` file onto
    the window should load it.
 
 ## Backend on Fly.io
@@ -65,7 +68,7 @@ on its own. Three need a decision:
 
 | Variable                                      | Default                 | What it does                                                                                                                                                                                                                         |
 | --------------------------------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `COMPILE_SERVICE_ALLOWED_ORIGIN`              | `http://localhost:5173` | The one origin CORS allows, for `POST` and `OPTIONS` only. `*` is refused at start-up.                                                                                                                                               |
+| `COMPILE_SERVICE_ALLOWED_ORIGIN`              | `http://localhost:5173` | The one origin CORS allows, for `POST` and `OPTIONS` only. Only a valid HTTP(S) origin is accepted at start-up; wildcards, paths and credentials are refused.                                                                        |
 | `COMPILE_SERVICE_TRUST_FORWARDED_FOR`         | `false`                 | Whether `X-Forwarded-For` identifies the client for rate limiting. On behind Fly's proxy, off anywhere a client can forge it. `COMPILE_SERVICE_TRUSTED_PROXY_HOPS` (`1`) is how many entries from the right the client address sits. |
 | `COMPILE_SERVICE_MAX_CONCURRENT_COMPILATIONS` | `2`                     | Compile slots, one child JVM each. Once they are all taken the service answers `503` with `Retry-After` instead of queueing.                                                                                                         |
 
@@ -80,7 +83,9 @@ from the environment through relaxed binding (`COMPILE_TIMEOUT`, `COMPILE_RATELI
   to 256 + 2 x 270 = 796 MB. The bounds behind those figures are commented in
   `ForkedCompiler.CHILD_VM_OPTIONS` and `server/fly.toml`. If the fit stops working, set
   `COMPILE_SERVICE_MAX_CONCURRENT_COMPILATIONS = "1"` before taking a larger machine, which raises
-  the parent's share too, because it is a percentage.
+  the parent's share too, because it is a percentage. This is a configuration budget, not a measured RSS ceiling; thread
+  stacks and native allocations add overhead, and the Spring Boot 4 deployment should be load-tested
+  on the target machine before reducing memory.
 - The image must be a JDK, since a JRE has no `jdk.compiler`, and the application must run exploded
   rather than as `java -jar app.jar`: a compilation is a child JVM launched with the parent's
   `java.class.path`, and inside a repackaged jar the application classes sit under `BOOT-INF`, where
@@ -110,7 +115,7 @@ These are the values a deploy has to supply. Everything else in this document wo
 | ----------------------------- | ----------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `README.md`                   | _no demo link_                                                    | A `> Live demo: <url>` line under the first screenshot.                                                                                                                                                        |
 | `README.md`                   | _no CI badges_                                                    | Workflow badges, once the repository has a GitHub owner and name: `[![web](https://github.com/<owner>/<repo>/actions/workflows/web.yml/badge.svg)](…)`, and the same for `server`, `e2e`, `docs` and `codeql`. |
-| `web/index.html`              | `<meta property="og:image" content="/og-image.jpg" />`            | An absolute `https://<domain>/og-image.jpg`. Link previews do not resolve a root-relative path.                                                                                                                |
+| Build environment             | `VITE_PUBLIC_SITE_URL` (non-Vercel hosts)                         | The public HTTP(S) origin. Vercel supplies its production domain automatically.                                                                                                                                |
 | `server/fly.toml`             | `app = "CHANGE-ME-compile-service"`                               | The name reserved with `fly apps create`.                                                                                                                                                                      |
 | `server/fly.toml`             | `primary_region = "fra"`                                          | The region nearest your users.                                                                                                                                                                                 |
 | `server/fly.toml`             | `COMPILE_SERVICE_ALLOWED_ORIGIN = "https://CHANGE-ME.vercel.app"` | The exact frontend origin, no trailing slash.                                                                                                                                                                  |

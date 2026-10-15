@@ -1,4 +1,4 @@
-import { type KeyboardEvent, useCallback, useRef, useState } from 'react';
+import { type KeyboardEvent, useCallback, useEffect, useRef, useState } from 'react';
 
 import { useDialogFocus } from '../../hooks/useDialogFocus';
 
@@ -52,7 +52,11 @@ export function ExamplePicker({
   const [isOpen, setIsOpen] = useState(false);
   const [focusedIndex, setFocusedIndex] = useState<number | undefined>(undefined);
   const selectedIndex = examples.findIndex((example) => example.id === selectedId);
-  const anchorIndex = focusedIndex ?? (selectedIndex < 0 ? 0 : selectedIndex);
+  const preferredIndex = focusedIndex ?? selectedIndex;
+  const anchorIndex =
+    preferredIndex >= 0 && preferredIndex < examples.length
+      ? preferredIndex
+      : Math.max(selectedIndex, 0);
   const isSheet = collapsible && isOpen;
 
   const close = useCallback(() => {
@@ -60,6 +64,22 @@ export function ExamplePicker({
   }, []);
 
   useDialogFocus(sheetRef, close, { active: isSheet });
+
+  useEffect(() => {
+    if (!collapsible || typeof window.matchMedia !== 'function') {
+      return;
+    }
+    const desktop = window.matchMedia('(min-width: 768px)');
+    const changed = (): void => {
+      if (desktop.matches) {
+        close();
+      }
+    };
+    desktop.addEventListener('change', changed);
+    return () => {
+      desktop.removeEventListener('change', changed);
+    };
+  }, [collapsible, close]);
 
   function handleKeyDown(event: KeyboardEvent<HTMLButtonElement>, index: number): void {
     const step = MOVES[event.key];

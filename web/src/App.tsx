@@ -1,4 +1,4 @@
-import { useReducer, useRef, useState } from 'react';
+import { useEffect, useReducer, useRef, useState } from 'react';
 
 import { AppShell } from './components/chrome/AppShell';
 import { BytecodePanel } from './components/panels/BytecodePanel';
@@ -133,6 +133,16 @@ export function App({
   useCompilerHealth(compileApiUrl, dispatch);
 
   const running = useRef<AbortController | undefined>(undefined);
+  const compiling = useRef<AbortController | undefined>(undefined);
+
+  useEffect(() => {
+    return () => {
+      tokenRef.current += 1;
+      running.current?.abort();
+      compiling.current?.abort();
+    };
+  }, []);
+
   const startLoad = async (
     label: string,
     load: (context: LoadContext) => Promise<AppState | undefined>,
@@ -140,6 +150,7 @@ export function App({
   ): Promise<void> => {
     const token = issueToken();
     running.current?.abort();
+    compiling.current?.abort();
     const controller = new AbortController();
     running.current = controller;
 
@@ -192,6 +203,7 @@ export function App({
   };
 
   const closeEditor = () => {
+    compiling.current?.abort();
     dispatch({ kind: 'editor-closed', token: issueToken() });
   };
 
@@ -200,10 +212,13 @@ export function App({
       return;
     }
     const token = issueToken();
+    compiling.current?.abort();
+    const controller = new AbortController();
+    compiling.current = controller;
     selection.dismiss(undefined);
     dispatch({ kind: 'compile-started', token });
 
-    const result = await compile(compileApiUrl, draft);
+    const result = await compile(compileApiUrl, draft, controller.signal);
     if (tokenRef.current !== token) {
       return;
     }

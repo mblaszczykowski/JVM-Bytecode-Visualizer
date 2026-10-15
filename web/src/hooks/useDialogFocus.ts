@@ -26,6 +26,25 @@ export interface DialogFocusOptions {
 
 const openDialogs: RefObject<HTMLElement | null>[] = [];
 
+function isTabbable(element: HTMLElement): boolean {
+  if (element.tabIndex < 0 || element.closest('[hidden], [inert]') !== null) {
+    return false;
+  }
+  if (getComputedStyle(element).visibility === 'hidden') {
+    return false;
+  }
+  for (
+    let ancestor: HTMLElement | null = element;
+    ancestor !== null;
+    ancestor = ancestor.parentElement
+  ) {
+    if (getComputedStyle(ancestor).display === 'none') {
+      return false;
+    }
+  }
+  return true;
+}
+
 export function useDialogFocus(
   ref: RefObject<HTMLElement | null>,
   onClose: () => void,
@@ -66,31 +85,31 @@ export function useDialogFocus(
 
     function handleKeyDown(event: KeyboardEvent): void {
       const dialog = ref.current;
-      if (dialog === null) {
+      if (dialog === null || openDialogs.at(-1) !== ref || event.defaultPrevented) {
         return;
       }
 
       if (event.key === 'Escape') {
-        if (openDialogs.at(-1) !== ref) {
-          return;
-        }
         event.stopPropagation();
         onClose();
         return;
       }
 
       if (event.key === 'Tab') {
-        const focusable = [...dialog.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
-          (element) => element.tabIndex >= 0,
-        );
+        const focusable = [...dialog.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(isTabbable);
         const first = focusable[0];
         const last = focusable.at(-1);
         if (first === undefined || last === undefined) {
+          event.preventDefault();
+          dialog.focus();
           return;
         }
-        const leaving = event.shiftKey
-          ? document.activeElement === first || document.activeElement === dialog
-          : document.activeElement === last;
+        const outside = !dialog.contains(document.activeElement);
+        const leaving =
+          outside ||
+          (event.shiftKey
+            ? document.activeElement === first || document.activeElement === dialog
+            : document.activeElement === last || document.activeElement === dialog);
         if (leaving) {
           event.preventDefault();
           (event.shiftKey ? last : first).focus();

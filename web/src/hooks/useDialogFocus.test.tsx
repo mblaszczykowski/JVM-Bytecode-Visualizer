@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react';
-import { useRef } from 'react';
+import { useRef, type ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { useDialogFocus } from './useDialogFocus';
@@ -36,7 +36,68 @@ function Stack({ innerOpen, onCloseOuter, onCloseInner }: StackProps) {
   );
 }
 
+function FocusDialog({ children }: { readonly children?: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useDialogFocus(ref, () => undefined);
+  return (
+    <div ref={ref} role="dialog" tabIndex={-1}>
+      {children}
+    </div>
+  );
+}
+
 describe('useDialogFocus', () => {
+  it('keeps Tab inside a dialog with no tabbable controls', () => {
+    render(<FocusDialog />);
+    const dialog = screen.getByRole('dialog');
+
+    expect(fireEvent.keyDown(dialog, { key: 'Tab' })).toBe(false);
+    expect(dialog).toHaveFocus();
+    expect(fireEvent.keyDown(dialog, { key: 'Tab', shiftKey: true })).toBe(false);
+    expect(dialog).toHaveFocus();
+  });
+
+  it('skips hidden and inert controls when wrapping focus', () => {
+    render(
+      <FocusDialog>
+        <button type="button" hidden>
+          Hidden
+        </button>
+        <div style={{ display: 'none' }}>
+          <button type="button">Collapsed</button>
+        </div>
+        <button type="button" style={{ visibility: 'hidden' }}>
+          Invisible
+        </button>
+        <button type="button">Visible</button>
+      </FocusDialog>,
+    );
+    const visible = screen.getByRole('button', { name: 'Visible' });
+    visible.focus();
+
+    fireEvent.keyDown(visible, { key: 'Tab' });
+    expect(visible).toHaveFocus();
+    fireEvent.keyDown(visible, { key: 'Tab', shiftKey: true });
+    expect(visible).toHaveFocus();
+  });
+
+  it('returns focus from outside the dialog to its first control', () => {
+    render(
+      <>
+        <button type="button">Outside</button>
+        <FocusDialog>
+          <button type="button">Inside</button>
+        </FocusDialog>
+      </>,
+    );
+    const outside = screen.getByRole('button', { name: 'Outside' });
+    outside.focus();
+
+    fireEvent.keyDown(outside, { key: 'Tab' });
+
+    expect(screen.getByRole('button', { name: 'Inside' })).toHaveFocus();
+  });
+
   it('closes the dialog on top and leaves the one behind it open', () => {
     const onCloseOuter = vi.fn();
     const onCloseInner = vi.fn();

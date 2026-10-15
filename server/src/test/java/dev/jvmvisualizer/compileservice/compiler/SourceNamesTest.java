@@ -3,6 +3,7 @@ package dev.jvmvisualizer.compileservice.compiler;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.Duration;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -148,6 +149,15 @@ class SourceNamesTest {
         "public @Deprecated record Annotated(int a) { }",
         "public abstract class Shape { }",
         "public enum Suit { HEARTS }",
+        "// comment\rpublic class CarriageReturn { }",
+        "public @SuppressWarnings(/* ( */ \"all\") class CommentedAnnotation { }",
+        "public @java /* trivia */ . lang.Deprecated class CommentedQualified { }",
+        "public @ /* trivia */ interface CommentedMarker { }",
+        "public class \ud801\udc00 { }",
+        "public class Name\ud801\udc00 { }",
+        "p\\u0075blic cl\\uuuu0061ss Escaped { }",
+        "public class Escaped\\u004eame { }",
+        "// comment\\u000dpublic class EscapedNewline { }",
     })
     void agreesWithJavacOnWhichTypeAFileDeclares(String source) {
         String name = SourceNames.publicTypeName(source).orElseThrow();
@@ -166,5 +176,32 @@ class SourceNamesTest {
                 .contains("Nested");
         assertThat(SourceNames.publicTypeName("public @A(\"(\") class Parenthesis { }"))
                 .contains("Parenthesis");
+    }
+
+    @Test
+    void ignoresDelimitersInsideCommentsInAnnotationArguments() {
+        assertThat(SourceNames.publicTypeName("public @A(/* ) */ \"x\") class BlockComment { }"))
+                .contains("BlockComment");
+        assertThat(SourceNames.publicTypeName("public @A(// )\r\"x\") class LineComment { }"))
+                .contains("LineComment");
+    }
+
+    @Test
+    void ignoresAnEscapedTextBlockDelimiterBeforeThePublicClass() {
+        String source = "class Hidden { String text = \"\"\"\n\\\"\"\" } public class Fake {}\n\"\"\"; }"
+                + " public class Real { }";
+
+        assertThat(SourceNames.publicTypeName(source)).contains("Real");
+    }
+
+    @Test
+    void unicodeEscapeEligibilityAgreesWithJavac() {
+        List<String> escapedLiterals = List.of("\\\\u0022", "\\u005c\\u005c", "\\\\\\u005a");
+        for (String literal : escapedLiterals) {
+            String source = "@SuppressWarnings(\"" + literal + "\") public class Actual { }";
+            assertThat(SourceNames.publicTypeName(source)).contains("Actual");
+            assertThat(new InMemoryCompiler().compile(new SourceUnit("Actual", source)))
+                    .isInstanceOf(CompilationResult.Success.class);
+        }
     }
 }

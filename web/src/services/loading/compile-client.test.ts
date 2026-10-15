@@ -48,6 +48,74 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+describe('request cancellation', () => {
+  it('does not send a compilation or health request that was already cancelled', async () => {
+    const fetch = vi.fn();
+    vi.stubGlobal('fetch', fetch);
+    const signal = AbortSignal.abort();
+
+    expect(await compile(BASE, SOURCE, signal)).toEqual({
+      kind: 'unavailable',
+      reason: { kind: 'network', reason: 'The request was cancelled.' },
+    });
+    expect(await checkHealth(BASE, signal)).toBe(false);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('aborts a compilation in flight and clears its deadline', async () => {
+    vi.useFakeTimers();
+    const fetch = stubHangingFetch();
+    const controller = new AbortController();
+
+    const pending = compile(BASE, SOURCE, controller.signal);
+    controller.abort();
+
+    expect(await pending).toEqual({
+      kind: 'unavailable',
+      reason: { kind: 'network', reason: 'The request was cancelled.' },
+    });
+    expect(fetch.mock.calls[0]?.[1]?.signal?.aborted).toBe(true);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('also cancels while the response body has stalled', async () => {
+    let started: () => void = () => undefined;
+    const reading = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    vi.stubGlobal('fetch', () =>
+      Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => {
+          started();
+          return new Promise<unknown>(() => undefined);
+        },
+      } as unknown as Response),
+    );
+    const controller = new AbortController();
+    const pending = compile(BASE, SOURCE, controller.signal);
+    await reading;
+
+    controller.abort();
+
+    expect(await pending).toEqual({
+      kind: 'unavailable',
+      reason: { kind: 'network', reason: 'The request was cancelled.' },
+    });
+  });
+
+  it('ends a cancelled health check even if the fetch implementation ignores its signal', async () => {
+    vi.stubGlobal('fetch', () => new Promise<Response>(() => undefined));
+    const controller = new AbortController();
+    const pending = checkHealth(BASE, controller.signal);
+
+    controller.abort();
+
+    expect(await pending).toBe(false);
+  });
+});
+
 describe('configuration', () => {
   async function reload(value?: string) {
     if (value !== undefined) {

@@ -15,6 +15,9 @@ export class ConsoleOutput {
   }
 
   write(text: string): void {
+    if (text !== '') {
+      this.budget.charge((this.open?.length ?? 0) + text.length);
+    }
     const parts = text.split('\n');
     const last = parts.length - 1;
     for (const [index, part] of parts.entries()) {

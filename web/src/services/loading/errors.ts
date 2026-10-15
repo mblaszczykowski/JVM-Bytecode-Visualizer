@@ -242,12 +242,12 @@ function describeVmError(error: VmError): string {
       return (
         `OutOfMemoryError ${at}. ` +
         (error.resource === 'heap'
-          ? `The program asked for ${error.requested.toLocaleString('en-US')} array elements at once, and this machine holds at most ${error.limit.toLocaleString('en-US')}.`
-          : `Recording this run would have cost ${error.requested.toLocaleString('en-US')} copied values, and the budget is ${error.limit.toLocaleString('en-US')}. Every step copies the frames it changed, three values per local slot and per operand, alongside the heap, the console lines and the standard-library objects the run has interned. A deep call stack or a method with many local slots costs the most.`) +
+          ? `The program asked for ${error.requested.toLocaleString('en-US')} heap elements at once, and this machine holds at most ${error.limit.toLocaleString('en-US')}.`
+          : `Recording this run would have cost ${error.requested.toLocaleString('en-US')} copied values, and the budget is ${error.limit.toLocaleString('en-US')}. Every step copies the frames it changed, three values per local slot and per operand, alongside the heap, console text and line references, and the standard-library objects the run has interned. Deep calls, large arrays and repeated printing can exhaust this budget.`) +
         ` ${historyStands}`
       );
     case 'unsupported-field':
-      return `Unsupported field: ${error.target} ${at}. The fields this machine holds are the ones the loaded class declares, plus a short list of standard-library statics (System.out among them). There is no second class file to give any other field a shape. ${historyStands}`;
+      return `Unsupported field: ${error.target} ${at}. The loaded class can hold int, byte, char, short, boolean and reference fields. Long, float and double fields are outside this model, as are fields from another class except recognized statics such as System.out. ${historyStands}`;
     case 'unsupported-constant':
       return `Unsupported constant: ${error.target} ${at}. ldc pushes the int and String entries of the constant pool here; the other constant kinds have no value this machine can hold. ${historyStands}`;
     case 'uncaught-exception':

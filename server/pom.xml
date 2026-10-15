@@ -7,7 +7,7 @@
   <parent>
     <groupId>org.springframework.boot</groupId>
     <artifactId>spring-boot-starter-parent</artifactId>
-    <version>3.5.16</version>
+    <version>4.1.1</version>
     <relativePath/>
   </parent>
 
@@ -22,6 +22,9 @@
     <!-- Built and tested on newer JDKs as well; the produced bytecode stays on the Java 21 LTS baseline. -->
     <maven.compiler.release>21</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <!-- Security fixes newer than the Spring Boot BOM. -->
+    <jackson-bom.version>3.1.7</jackson-bom.version>
+    <tomcat.version>11.0.25</tomcat.version>
     <!-- Surefire appends to this; declaring it empty keeps @{argLine} resolvable without JaCoCo. -->
     <argLine/>
   </properties>
@@ -29,7 +32,7 @@
   <dependencies>
     <dependency>
       <groupId>org.springframework.boot</groupId>
-      <artifactId>spring-boot-starter-web</artifactId>
+      <artifactId>spring-boot-starter-webmvc</artifactId>
     </dependency>
     <dependency>
       <groupId>org.springframework.boot</groupId>
@@ -54,7 +57,7 @@
 
     <dependency>
       <groupId>org.springframework.boot</groupId>
-      <artifactId>spring-boot-starter-test</artifactId>
+      <artifactId>spring-boot-starter-webmvc-test</artifactId>
       <scope>test</scope>
     </dependency>
   </dependencies>
@@ -103,16 +106,8 @@
             </goals>
             <configuration>
               <rules>
-                <!-- Each package is measured on its own. The minima sit under what the suite
-                     reaches today (api 95.7% lines / 81.8% branches, compiler 89.2% / 79.9%,
-                     config 95.3% / 89.1%, service 100% / 93.8%), so the gate catches
-                     regressions. CompilerProcessMain runs in the forked JVM, which the agent
-                     never sees; that alone accounts for 15 uncovered lines in the compiler
-                     package. Two branches in ForkedCompiler are only reached when close() lands
-                     inside a narrow window of the shutdown test, so the compiler figure moves by
-                     a few tenths between builds. What is left uncovered in api is the
-                     ResponseEntityExceptionHandler arms for statuses this service cannot
-                     produce. -->
+                <!-- Check each security-facing package independently. The forked child JVM is
+                     not instrumented by the coverage agent. -->
                 <rule>
                   <element>PACKAGE</element>
                   <includes>

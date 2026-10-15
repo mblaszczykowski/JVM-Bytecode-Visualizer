@@ -63,8 +63,8 @@ describe('CompileEditor', () => {
   it('states the boundary next to the button that submits the source', () => {
     renderEditor();
 
-    expect(screen.getByText(/Static methods/)).toHaveTextContent(
-      'Static methods called from main: ints, int arrays, Math and System.out, nothing else.',
+    expect(screen.getByText(/One loaded class/)).toHaveTextContent(
+      'One loaded class: integer values, int arrays and its own objects. Selected Math and System.out calls also run.',
     );
   });
 

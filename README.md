@@ -8,7 +8,7 @@ machine execute it one instruction at a time.
 ## What it does
 
 - Pick a bundled example, upload a `.class` file, or write Java in the browser (the last needs the
-  optional compile service). Any valid class file opens. Whether it also replays depends on the
+  optional compile service). Valid class files up to 512 KiB open. Whether they also replay depends on the
   instructions it uses, see [Scope and limitations](#scope-and-limitations).
 - Explore the file: the constant pool cross-linked with the listing, so clicking `#7` in a comment
   lands on the entry it names; every declared method, including the ones no run enters; the class
@@ -64,11 +64,10 @@ The interpreter is the part that has to be right, so it is pinned from four dire
 tests whose expected stdout was captured from a real `java` at fixture build time, property-based
 tests comparing 32-bit arithmetic against a `BigInt` reference and throwing random and truncated
 buffers at the parser, parser and disassembler assertions transcribed from `javap -v -p` and
-`javap -c`, and a corpus of 8,053 third-party class files parsed on every CI run. None of the
-expected values was written by hand.
+`javap -c`, and a corpus of 8,053 third-party class files parsed on every CI run.
 
-Under that: 1,607 unit and component tests across 89 files, a Playwright suite over the production
-bundle, and coverage thresholds CI enforces per file. [`docs/architecture.md`](docs/architecture.md)
+Under that: 1,694 unit, component and build-script tests across 92 files, a Playwright suite over
+the production bundle, and coverage thresholds CI enforces per file. [`docs/architecture.md`](docs/architecture.md)
 describes each layer.
 
 ## Scope and limitations
@@ -110,7 +109,7 @@ A file that does not replay still opens, and a run that stops midway keeps what 
 | ------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | A type other than the one loaded: `new ArrayList<>()`, `throw new IllegalStateException(...)`, a second class of your own | `new`, `invokespecial`, `getfield` naming another class | Stops at the instruction that names it. Objects of the _loaded_ class work; there is no second class file to load.                                                                                                    |
 | Static fields                                                                                                             | `putstatic`, `getstatic` outside the externals table    | Stops at the write. There is no class initialization and no static state.                                                                                                                                             |
-| `long`, `float`, `double`                                                                                                 | `ladd`, `fmul`, `dload`, two-slot locals                | Stops at the first such instruction; a method taking one cannot be called.                                                                                                                                            |
+| `long`, `float`, `double` values or instance fields                                                                       | `ladd`, `fmul`, `dload`, two-slot locals                | Stops at the first such instruction or allocation of an object with such a field; a method taking one cannot be called.                                                                                               |
 | Lambdas, method references, `"a" + b`                                                                                     | `invokedynamic`                                         | Stops at the call site, which still reads like javap (`#0:makeConcatWithConstants:(...)`) and is labelled with the Java construct it came from. String concatenation compiles to `invokedynamic` on Java 9 and later. |
 | Arrays of anything but `int`                                                                                              | `anewarray`, `multianewarray`, `baload`, …              | Stops at the allocation. The heap holds `int` arrays only.                                                                                                                                                            |
 | Standard library calls beyond `Math` and `System.out`                                                                     | `invokestatic`/`invokevirtual` on another type          | Stops with `unsupported-call`. The recognized members are a table in `web/src/core/interpreter/externals.ts`; adding one is a row.                                                                                    |
@@ -122,7 +121,8 @@ Regardless of the file:
   branches and both switches, `new`, `newarray` and the field instructions, and the three `invoke`s
   that resolve inside the loaded class. `EXECUTABLE_OPCODES` in
   `web/src/core/interpreter/interpreter.ts` is the definitive list, and the welcome screen states it
-  at runtime so it cannot drift.
+  at runtime so it cannot drift. `byte`, `char`, `short` and `boolean` parameters, fields and return
+  values use the JVM integer representation, with narrowing at field stores and returns.
 - Decoding is wider than execution, and parsing is wider still. `getfield #3` reads as
   `getfield #3 // Field Counter.value:I` in a class that never runs, and the pool panel cross-links
   every tag JVMS §4.4 defines.
@@ -134,6 +134,13 @@ Regardless of the file:
   [`docs/architecture.md`](docs/architecture.md#what-a-long-run-costs)). Long listings are not
   windowed: every row of the Bytecode, constant pool and Source panels is in the DOM. The bundled
   examples are far too small for that to show, but a 512 KiB upload can carry a 65,534-entry pool.
+  The heap shows 32 objects per page and 128 elements per array page, following the current
+  read or write automatically, including in the completion view.
+- `main(String[] args)` is recognized as an entry point, but its argument slot remains
+  uninitialized: command-line arguments and reference arrays are outside the model. Reading
+  `args`, including `args.length`, stops the run.
+- Recording has a separate memory budget for changed frames, heap snapshots, console text and
+  references. Repeated printing and large writes can reach it before the instruction limit.
 
 [`docs/jvm-primer.md`](docs/jvm-primer.md) explains the machine the bundled examples run on.
 
@@ -146,18 +153,18 @@ Regardless of the file:
 | Styling            | Tailwind CSS v4 (`@theme` tokens in `index.css`), framer-motion for the four animated surfaces                                 |
 | Domain             | Plain TypeScript: parser, disassembler, interpreter, zero framework dependencies                                               |
 | Application layer  | zod, which parses every compile-service response before it becomes a domain value                                              |
-| Backend (optional) | Java 21, Spring Boot 3, Maven                                                                                                  |
+| Backend (optional) | Java 21, Spring Boot 4, Jackson 3, Maven                                                                                       |
 | Tests              | Vitest, Testing Library, fast-check, Playwright, JUnit 5, MockMvc                                                              |
 | Tooling            | ESLint (typescript-eslint strict-type-checked), Prettier, GitHub Actions                                                       |
 
 ## Getting started
 
-Node ≥ 20.18.1 and npm ≥ 10. The example `.class` files are committed, so the frontend needs no Java
+Node ≥ 22.12.0 and npm ≥ 10. Node 22 is used in CI and `.nvmrc`. The example `.class` files are committed, so the frontend needs no Java
 at all. Java is needed for two separate things, and they want different JDKs: the compile service
-builds and runs on JDK 21, and rebuilding the fixtures requires JDK 25 exactly.
+builds and runs on JDK 21, and rebuilding the fixtures requires JDK 25.0.4 exactly.
 
 ```bash
-npm install
+npm ci
 npm run dev          # http://localhost:5173
 ```
 
@@ -172,20 +179,25 @@ check. Run the server in one terminal, point the frontend at it in another, and 
 server:
 
 ```bash
-cd server && ./mvnw spring-boot:run       # http://localhost:8080
+cd server
+./mvnw spring-boot:run                    # http://localhost:8080
+```
 
+In another terminal at the repository root:
+
+```bash
 cp web/.env.example web/.env              # sets VITE_COMPILE_API_URL=http://localhost:8080
 npm run dev
 ```
 
-The variable is read at build time. Leave it unset and the editor tab does not exist.
+The variable is read at build time. Leave it unset and the Write Java control does not appear.
 
 ### Checks
 
 ```bash
 npm run lint                 # ESLint, strict-type-checked
 npm run typecheck            # tsc -b
-npm test                     # Vitest: core + UI projects
+npm test                     # Vitest: core, UI and build-script projects
 npm run build                # production bundle
 npm run test:coverage -w web # coverage, with the core thresholds enforced
 npm run e2e -w web           # Playwright; builds and serves dist/ itself
@@ -199,7 +211,7 @@ The first Playwright run needs a browser: `npx playwright install chromium`.
 
 ```bash
 npm run fixtures -w web       # needs JDK 25.0.4 exactly, since CI byte-diffs the javap dumps
-npm run screenshots -w web
+npm run screenshots -w web    # refreshes docs images and the social preview
 ```
 
 ## Deployment

@@ -23,6 +23,7 @@ test('has a compile service to point at, so a green job cannot mean a skipped fi
 });
 
 test.describe('against a compile service', () => {
+  test.describe.configure({ mode: 'default' });
   test.skip(
     compileApiUrl === '',
     'needs a compile service: set PLAYWRIGHT_COMPILE_API_URL and VITE_COMPILE_API_URL',
@@ -68,5 +69,41 @@ test.describe('against a compile service', () => {
 
     await expect(page.getByTestId('error-banner')).toHaveCount(0);
     await expect(page.getByLabel('Java source')).toHaveValue(BROKEN_SOURCE);
+  });
+
+  test('keeps a large heap array bounded and follows the element being written', async ({
+    page,
+  }) => {
+    await page.goto('/');
+    await page.getByRole('button', { name: 'Write Java…', exact: true }).click();
+    await page.getByLabel('Java source').fill(`public class LargeArray {
+    public static void main(String[] args) {
+        int[] values = new int[1000];
+        values[999] = 7;
+        System.out.println(values[999]);
+    }
+}`);
+    await page.getByRole('button', { name: 'Compile', exact: true }).click();
+    await expect(page.getByTestId('step-counter')).toBeVisible();
+
+    await page.getByRole('button', { name: /^Go to pc \d+, iastore$/ }).click();
+
+    await expect(page.getByTestId('heap-cell').last()).toHaveAttribute('data-index', '999');
+    expect(await page.getByTestId('heap-cell').count()).toBeLessThanOrEqual(128);
+    await page.getByRole('button', { name: 'Previous elements of array @0' }).click();
+    await expect(page.getByTestId('heap-cell')).toHaveCount(128);
+  });
+
+  test('keeps compiler controls within a narrow phone viewport', async ({ page }) => {
+    await page.setViewportSize({ width: 320, height: 720 });
+    await page.goto('/');
+    const write = page.getByRole('button', { name: 'Write Java…', exact: true });
+    await expect(write).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(320);
+    await expect(write).toBeInViewport();
+    await write.click();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(320);
+    await expect(page.getByLabel('Java source')).toBeInViewport();
+    await expect(page.getByRole('button', { name: 'Compile', exact: true })).toBeInViewport();
   });
 });

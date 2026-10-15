@@ -12,7 +12,7 @@ import { ConsoleOutput } from './console';
 import { isVmFault, type VmFault } from './errors';
 import { ExternalPool, stringConstant } from './externals';
 import { createFrame, prepareMethod, push, type Frame } from './frame';
-import { Heap } from './heap';
+import { Heap, MAX_HEAP_ELEMENTS } from './heap';
 import { execute } from './interpreter';
 import { SnapshotWriter, type MachineState } from './snapshot';
 import type { VmFaultDetail } from './types';
@@ -98,6 +98,17 @@ describe('RecordingBudget', () => {
 });
 
 describe('the heap charging to the budget', () => {
+  it('counts an empty array as a heap allocation', () => {
+    const heap = new Heap(new RecordingBudget());
+    heap.allocateIntArray(0);
+
+    expect(faultFrom(() => heap.allocateIntArray(MAX_HEAP_ELEMENTS))).toMatchObject({
+      kind: 'out-of-memory',
+      resource: 'heap',
+      requested: MAX_HEAP_ELEMENTS + 1,
+    });
+  });
+
   it('charges the handles the frozen heap retains, not only the cells that changed', () => {
     const budget = new RecordingBudget(22);
     const heap = new Heap(budget);
@@ -132,8 +143,27 @@ describe('the heap charging to the budget', () => {
 });
 
 describe('the console charging to the budget', () => {
+  it('charges retained prefixes of a growing line before allocating more text', () => {
+    const output = new ConsoleOutput(new RecordingBudget(10));
+    output.write('abc');
+    output.freeze();
+    output.write('de');
+    expect(output.freeze()).toEqual(['abcde']);
+
+    expect(
+      faultFrom(() => {
+        output.write('f');
+      }),
+    ).toMatchObject({
+      kind: 'out-of-memory',
+      resource: 'history',
+      requested: 16,
+    });
+    expect(output.freeze()).toEqual(['abcde']);
+  });
+
   it('charges every line the snapshot retains', () => {
-    const output = new ConsoleOutput(new RecordingBudget(6));
+    const output = new ConsoleOutput(new RecordingBudget(22));
 
     output.writeLine('one');
     output.freeze();
@@ -146,12 +176,12 @@ describe('the console charging to the budget', () => {
     expect(chargesUntilItStops(() => output.freeze()).detail).toMatchObject({
       kind: 'out-of-memory',
       resource: 'history',
-      requested: 10,
+      requested: 25,
     });
   });
 
   it('hands back the same lines, uncharged, while nothing is printed', () => {
-    const output = new ConsoleOutput(new RecordingBudget(3));
+    const output = new ConsoleOutput(new RecordingBudget(4));
     output.writeLine('one');
 
     const frozen = output.freeze();
@@ -162,7 +192,7 @@ describe('the console charging to the budget', () => {
   });
 
   it('charges nothing for a write that appends no text', () => {
-    const output = new ConsoleOutput(new RecordingBudget(1));
+    const output = new ConsoleOutput(new RecordingBudget(4));
     output.writeLine('one');
     const frozen = output.freeze();
 

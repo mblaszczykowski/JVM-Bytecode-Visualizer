@@ -1,10 +1,11 @@
 package dev.jvmvisualizer.compileservice.compiler;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.FileDescriptor;
 import java.io.FileOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 
 public final class CompilerProcessMain {
 
@@ -17,7 +18,7 @@ public final class CompilerProcessMain {
 
         int status = 0;
         try {
-            ObjectMapper objectMapper = new ObjectMapper();
+            ObjectMapper objectMapper = JsonMapper.builder().build();
             CompilerProcessProtocol.Request request =
                     objectMapper.readValue(System.in.readAllBytes(), CompilerProcessProtocol.Request.class);
             CompilationResult result = new InMemoryCompiler().compile(request.toUnit());

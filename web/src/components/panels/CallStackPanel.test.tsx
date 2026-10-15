@@ -31,6 +31,30 @@ function frameAt(position: number): HTMLElement {
 }
 
 describe('CallStackPanel', () => {
+  it('describes reference arguments as objects or null instead of raw numeric handles', () => {
+    const reference = (value: number) =>
+      frameOf({
+        methodName: 'consume',
+        methodDescriptor: '([I)V',
+        pc: 0,
+        operandStack: [],
+        locals: [value],
+        localNames: ['array'],
+        localKinds: ['ref'],
+      });
+    const { rerender } = render(
+      <CallStackPanel
+        frames={[reference(0)]}
+        heap={[{ kind: 'int-array', length: 2, elements: [1, 2] }]}
+      />,
+    );
+
+    expect(screen.getByText('array=int[2]@0')).toBeInTheDocument();
+
+    rerender(<CallStackPanel frames={[reference(-1)]} />);
+    expect(screen.getByText('array=null')).toBeInTheDocument();
+  });
+
   it('puts the top frame at the bottom, next to the locals that describe it', () => {
     render(<CallStackPanel frames={deepestFrames} />);
 

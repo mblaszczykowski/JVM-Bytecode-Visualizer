@@ -838,3 +838,89 @@ describe('execute: shifts, bitwise logic and narrowing conversions', () => {
     expect(evaluate(code)).toBe(answer);
   });
 });
+
+describe('execute: frame shape constraints', () => {
+  it('locates an overflowing returned value at the caller invocation', () => {
+    const pool = new ConstantPoolBuilder();
+    const value = pool.methodref(SYNTHETIC_CLASS_NAME, 'value', '()I');
+    const result = execute(
+      syntheticClass({
+        pool,
+        methods: [
+          {
+            name: 'main',
+            descriptor: '()V',
+            maxStack: 0,
+            code: [0xb8, (value >> 8) & 0xff, value & 0xff, 0x57, 0xb1],
+          },
+          { name: 'value', descriptor: '()I', code: [0x04, 0xac] },
+        ],
+      }),
+    );
+
+    expect(expectVmError(result)).toMatchObject({
+      kind: 'invalid-state',
+      methodName: 'main',
+      offset: 0,
+      message: 'operand stack exceeds max_stack = 0',
+    });
+    expect(result.snapshots.at(-1)?.currentInstruction?.mnemonic).toBe('ireturn');
+  });
+
+  it('refuses to push beyond max_stack', () => {
+    const result = execute(
+      syntheticClass({
+        methods: [{ name: 'main', descriptor: '()V', maxStack: 0, code: [0x03, 0x57, 0xb1] }],
+      }),
+    );
+
+    expect(expectVmError(result)).toMatchObject({
+      kind: 'invalid-state',
+      offset: 0,
+      message: 'operand stack exceeds max_stack = 0',
+    });
+  });
+
+  it.each([
+    { descriptor: '()V', code: [0x03, 0xac] },
+    { descriptor: '()I', code: [0xb1] },
+    { descriptor: '()I', code: [0x01, 0xb0] },
+  ])('refuses a mismatched return in $descriptor', ({ descriptor, code }) => {
+    const result = execute(syntheticClass({ methods: [{ name: 'main', descriptor, code }] }));
+
+    expect(expectVmError(result)).toMatchObject({
+      kind: 'invalid-state',
+      message: `return instruction does not match method descriptor ${descriptor}`,
+    });
+  });
+});
+
+describe('execute: exception dispatch shape constraints', () => {
+  it('returns a typed failure when the caller cannot hold the exception reference', () => {
+    const pool = new ConstantPoolBuilder();
+    const boom = pool.methodref(SYNTHETIC_CLASS_NAME, 'boom', '()V');
+    const result = execute(
+      syntheticClass({
+        pool,
+        methods: [
+          {
+            name: 'main',
+            descriptor: '()V',
+            maxStack: 0,
+            code: [0xb8, (boom >> 8) & 0xff, boom & 0xff, 0xb1, 0x57, 0xb1],
+            exceptionTable: [{ startPc: 0, endPc: 3, handlerPc: 4 }],
+          },
+          { name: 'boom', descriptor: '()V', code: [0x04, 0x03, 0x6c, 0x57, 0xb1] },
+        ],
+      }),
+    );
+
+    expect(expectVmError(result)).toMatchObject({
+      kind: 'invalid-state',
+      methodName: 'main',
+      offset: 0,
+      message: 'operand stack exceeds max_stack = 0',
+    });
+    expect(result.snapshots.length).toBeGreaterThan(0);
+  });
+});

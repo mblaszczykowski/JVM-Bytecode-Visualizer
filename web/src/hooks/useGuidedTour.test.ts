@@ -189,6 +189,48 @@ describe('useGuidedTour', () => {
     expect(landedOn()).toEqual(stopPosition(3));
   });
 
+  it('does not restore a tour stop outside the recorded run', () => {
+    const openedAt: DeepLink = { exampleId: 'factorial', tour: { tourId: TOUR_ID, stopIndex: 99 } };
+    const { result, seekTo } = renderTour({ ...FACTORIAL, openedAt });
+
+    expect(result.current.active).toBeUndefined();
+    expect(result.current.stopIndex).toBe(0);
+    expect(seekTo).not.toHaveBeenCalled();
+  });
+
+  it('leaves the tour when a different example replaces the program', () => {
+    const { result, rerender, seekTo } = renderTour(FACTORIAL);
+    act(() => {
+      result.current.start(TOUR_ID);
+      result.current.goToStop(2);
+    });
+
+    rerender({ ...FACTORIAL, exampleId: 'gcd' });
+    seekTo.mockClear();
+    rerender(FACTORIAL);
+
+    expect(result.current.active).toBeUndefined();
+    expect(seekTo).not.toHaveBeenCalled();
+  });
+
+  it('keeps the tour through a loading state when the same example is rerun', () => {
+    const { result, rerender, seekTo } = renderTour(FACTORIAL);
+    act(() => {
+      result.current.start(TOUR_ID);
+    });
+    act(() => {
+      result.current.goToStop(2);
+    });
+
+    rerender(NOTHING_LOADED);
+    seekTo.mockClear();
+    rerender(FACTORIAL);
+
+    expect(result.current.active?.tour.id).toBe(TOUR_ID);
+    expect(result.current.stopIndex).toBe(2);
+    expect(seekTo).toHaveBeenCalled();
+  });
+
   it('leaves the link alone until the example it names is the one that loaded', () => {
     const openedAt: DeepLink = { exampleId: 'factorial', tour: { tourId: TOUR_ID, stopIndex: 1 } };
     const { result, rerender, seekTo, landedOn } = renderTour({

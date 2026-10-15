@@ -1,7 +1,14 @@
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { useState } from 'react';
 
-import type { StackFrame } from '../../core/interpreter';
+import {
+  NO_EXTERNALS,
+  NO_HEAP,
+  type ExternalValue,
+  type HeapObject,
+  type StackFrame,
+} from '../../core/interpreter';
+import { describeValue } from '../../services/views/heap-view';
 
 import { EmptyState, Panel } from './Panel';
 import { Pill } from '../ui/Pill';
@@ -9,6 +16,8 @@ import { PANEL_INSET } from '../ui/rhythm';
 
 interface CallStackPanelProps {
   readonly frames: readonly StackFrame[];
+  readonly heap?: readonly HeapObject[] | undefined;
+  readonly externals?: readonly ExternalValue[] | undefined;
 }
 
 const COLLAPSE_ABOVE = 8;
@@ -30,13 +39,18 @@ function frameSurface(distanceFromTop: number): string {
     : 'row-unreached bg-raised text-fg-3';
 }
 
-function firstArgument(frame: StackFrame): string | undefined {
+function firstArgument(
+  frame: StackFrame,
+  heap: readonly HeapObject[],
+  externals: readonly ExternalValue[],
+): string | undefined {
   const value = frame.locals[0];
   if (value === undefined) {
     return undefined;
   }
   const name = frame.localNames[0] ?? 'slot 0';
-  return `${name}=${String(value)}`;
+  const kind = frame.localKinds[0];
+  return `${name}=${kind === undefined ? String(value) : describeValue(kind, value, heap, externals)}`;
 }
 
 function buildRows(frames: readonly StackFrame[], expanded: boolean): readonly Row[] {
@@ -51,7 +65,11 @@ function buildRows(frames: readonly StackFrame[], expanded: boolean): readonly R
   ];
 }
 
-export function CallStackPanel({ frames }: CallStackPanelProps) {
+export function CallStackPanel({
+  frames,
+  heap = NO_HEAP,
+  externals = NO_EXTERNALS,
+}: CallStackPanelProps) {
   const [expanded, setExpanded] = useState(false);
   const reduced = useReducedMotion() ?? false;
   const duration = reduced ? 0 : 0.18;
@@ -97,7 +115,7 @@ export function CallStackPanel({ frames }: CallStackPanelProps) {
 
               const { frame, index } = row;
               const isTop = index === topIndex;
-              const argument = firstArgument(frame);
+              const argument = firstArgument(frame, heap, externals);
 
               return (
                 <motion.li

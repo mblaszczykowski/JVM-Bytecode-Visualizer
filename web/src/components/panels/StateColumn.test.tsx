@@ -2,6 +2,8 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 
+import { frameOf } from '../../core/interpreter/__fixtures__/snapshots';
+
 import { stackEffectOf } from '../../services/views/bytecode-format';
 import { consoleLinesOf } from '../../services/views/program-view';
 
@@ -57,6 +59,28 @@ function factorialStackEffect(step: number) {
 }
 
 describe('StateColumn', () => {
+  it('announces a slot reused for a reference even when its numeric value stays the same', () => {
+    const before = frameOf({
+      methodName: 'main',
+      methodDescriptor: '()V',
+      pc: 0,
+      operandStack: [],
+      locals: [0],
+      localNames: ['value'],
+      localKinds: ['int'],
+    });
+    const { rerender } = render(inShell(<StateColumn frames={[before]} />));
+    const after = { ...before, pc: 1, localKinds: ['ref' as const] };
+
+    rerender(
+      inShell(
+        <StateColumn frames={[after]} heap={[{ kind: 'int-array', length: 1, elements: [2] }]} />,
+      ),
+    );
+
+    expect(announcement()).toHaveTextContent('value is now int[1]@0');
+  });
+
   it('adds the heap under the locals for a program that allocates', () => {
     render(
       <StateColumn

@@ -1,6 +1,5 @@
 package dev.jvmvisualizer.compileservice.config;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.jvmvisualizer.compileservice.api.dto.ErrorResponse;
 import dev.jvmvisualizer.compileservice.error.ErrorCode;
 import dev.jvmvisualizer.compileservice.error.RequestTooLargeException;
@@ -18,6 +17,7 @@ import java.nio.charset.StandardCharsets;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.web.filter.OncePerRequestFilter;
+import tools.jackson.databind.ObjectMapper;
 
 public class RequestSizeLimitFilter extends OncePerRequestFilter {
 

@@ -2,13 +2,6 @@ package dev.jvmvisualizer.compileservice.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.fasterxml.jackson.core.util.DefaultIndenter;
-import com.fasterxml.jackson.core.util.DefaultPrettyPrinter;
-import com.fasterxml.jackson.core.util.Separators;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.ObjectWriter;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -19,6 +12,14 @@ import java.util.stream.Stream;
 import org.springframework.http.HttpHeaders;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.test.web.servlet.MvcResult;
+import tools.jackson.core.util.DefaultIndenter;
+import tools.jackson.core.util.DefaultPrettyPrinter;
+import tools.jackson.core.util.Separators;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectWriter;
+import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 final class ContractFixtures {
 
@@ -54,8 +55,8 @@ final class ContractFixtures {
     private static final List<String> RECORDED_HEADERS =
             List.of(HttpHeaders.CONTENT_TYPE, HttpHeaders.RETRY_AFTER);
 
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-    private static final ObjectWriter WRITER = OBJECT_MAPPER.writer(prettyPrinter());
+    private static final ObjectMapper OBJECT_MAPPER = JsonMapper.builder().build();
+    private static final ObjectWriter WRITER = OBJECT_MAPPER.writer().with(prettyPrinter());
 
     private ContractFixtures() {
     }
@@ -117,7 +118,7 @@ final class ContractFixtures {
     private static DefaultPrettyPrinter prettyPrinter() {
         DefaultIndenter indenter = new DefaultIndenter("  ", "\n");
         DefaultPrettyPrinter printer = new DefaultPrettyPrinter()
-                .withSeparators(Separators.createDefaultInstance().withObjectFieldValueSpacing(Separators.Spacing.AFTER));
+                .withSeparators(Separators.createDefaultInstance().withObjectNameValueSpacing(Separators.Spacing.AFTER));
         printer.indentObjectsWith(indenter);
         printer.indentArraysWith(indenter);
         return printer;

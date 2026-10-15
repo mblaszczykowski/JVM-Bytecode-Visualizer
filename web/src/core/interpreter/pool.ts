@@ -2,6 +2,7 @@ import {
   constantTagName,
   ConstantTag,
   isClassFileError,
+  parseFieldDescriptor,
   parseMethodDescriptor,
   poolEntry,
   utf8At,
@@ -35,6 +36,18 @@ export function parameterKinds(descriptor: string): readonly ValueKind[] | undef
   return parsed.params.map((type) => (isIntType(type) ? 'int' : 'ref'));
 }
 
+export function fieldKind(descriptor: string): ValueKind | undefined {
+  try {
+    const type = parseFieldDescriptor(descriptor);
+    return isIntType(type) ? 'int' : isReferenceType(type) ? 'ref' : undefined;
+  } catch (error) {
+    if (!isClassFileError(error)) {
+      throw error;
+    }
+    return undefined;
+  }
+}
+
 function isReferenceType(type: JvmReturnType): boolean {
   return type.kind === 'class' || type.kind === 'array';
 }
@@ -59,7 +72,14 @@ function parseDescriptor(descriptor: string): MethodDescriptor | undefined {
 }
 
 function isIntType(type: JvmReturnType): boolean {
-  return type.kind === 'primitive' && type.name === 'int';
+  return (
+    type.kind === 'primitive' &&
+    (type.name === 'int' ||
+      type.name === 'boolean' ||
+      type.name === 'byte' ||
+      type.name === 'char' ||
+      type.name === 'short')
+  );
 }
 
 export interface MethodReference {

@@ -1,6 +1,5 @@
 package dev.jvmvisualizer.compileservice.config;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.Ticker;
@@ -11,6 +10,8 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -22,6 +23,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.web.cors.CorsUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
+import tools.jackson.databind.ObjectMapper;
 
 public class RateLimitFilter extends OncePerRequestFilter {
 
@@ -95,13 +97,20 @@ public class RateLimitFilter extends OncePerRequestFilter {
         if (forwarded.isBlank()) {
             return remoteAddress;
         }
-        List<String> entries = List.of(forwarded.split(","));
+        List<String> entries = List.of(forwarded.split(",", -1));
         int index = entries.size() - trustedProxyHops;
         if (index < 0) {
             return remoteAddress;
         }
         String candidate = normalize(entries.get(index).trim());
-        return isIpLiteral(candidate) ? candidate : remoteAddress;
+        if (!isIpLiteral(candidate)) {
+            return remoteAddress;
+        }
+        try {
+            return InetAddress.getByName(candidate).getHostAddress();
+        } catch (UnknownHostException e) {
+            return remoteAddress;
+        }
     }
 
     private static String normalize(String entry) {
@@ -194,7 +203,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
         }
 
         Window next() {
-            return new Window(start, count + 1);
+            return new Window(start, count == Integer.MAX_VALUE ? count : count + 1);
         }
     }
 }

@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Duration;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.util.unit.DataSize;
 
 class CompilePropertiesTest {
@@ -19,6 +21,29 @@ class CompilePropertiesTest {
         assertThatThrownBy(() -> properties("*", SOURCE_LIMIT, REQUEST_LIMIT, TIMEOUT))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("compile.allowed-origin");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"null", "file:///tmp/editor", "https://example.com/editor", "https://example.com?x=1",
+            "https://example.com#editor", "https://user:secret@example.com", "https://example.com:65536",
+            "https://*.example.com", " https://example.com", "https://example.com,https://other.example"})
+    void refusesValuesThatBrowsersCannotSendAsAnOrigin(String origin) {
+        assertThatThrownBy(() -> properties(origin, SOURCE_LIMIT, REQUEST_LIMIT, TIMEOUT))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("compile.allowed-origin");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"http://localhost:5173", "https://example.com", "https://example.com/", "http://[::1]:8080"})
+    void acceptsHttpOriginsIncludingLoopbackAndATrailingSlash(String origin) {
+        assertThatCode(() -> properties(origin, SOURCE_LIMIT, REQUEST_LIMIT, TIMEOUT)).doesNotThrowAnyException();
+    }
+
+    @Test
+    void refusesATimeoutBelowTheWatchdogClockResolution() {
+        assertThatThrownBy(() -> properties(ORIGIN, SOURCE_LIMIT, REQUEST_LIMIT, Duration.ofNanos(1)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("compile.timeout");
     }
 
     @Test

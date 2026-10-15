@@ -1,5 +1,5 @@
-import { createEvent, fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { act, createEvent, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { exampleOptions } from '../__fixtures__/factorial-run';
 import { ExamplePicker } from './ExamplePicker';
@@ -7,6 +7,10 @@ import { ExamplePicker } from './ExamplePicker';
 const examples = exampleOptions();
 
 const last = examples[examples.length - 1] ?? { id: '', name: '' };
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 function options(): HTMLElement[] {
   return screen.getAllByTestId('example-option');
@@ -73,9 +77,52 @@ describe('ExamplePicker', () => {
 
     expect(onExampleSelected).toHaveBeenCalledWith('sum-of-products');
   });
+
+  it('keeps an option tabbable when the focused position disappears from the catalogue', () => {
+    const { rerender } = render(
+      <ExamplePicker examples={examples} selectedId={undefined} onExampleSelected={vi.fn()} />,
+    );
+    const first = options()[0];
+    if (first === undefined) {
+      throw new Error('the first example is missing');
+    }
+    fireEvent.keyDown(first, { key: 'ArrowLeft' });
+
+    rerender(
+      <ExamplePicker
+        examples={examples.slice(0, 2)}
+        selectedId={undefined}
+        onExampleSelected={vi.fn()}
+      />,
+    );
+
+    expect(options().filter((option) => option.tabIndex === 0)).toHaveLength(1);
+  });
 });
 
 describe('the folded picker', () => {
+  it('releases the mobile modal when the viewport switches to the desktop rail', () => {
+    const mediaEvents = new EventTarget();
+    const media = {
+      matches: false,
+      addEventListener: mediaEvents.addEventListener.bind(mediaEvents),
+      removeEventListener: mediaEvents.removeEventListener.bind(mediaEvents),
+    };
+    vi.stubGlobal('matchMedia', () => media);
+    const { trigger } = renderCollapsed();
+    fireEvent.click(trigger);
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+    act(() => {
+      media.matches = true;
+      mediaEvents.dispatchEvent(new Event('change'));
+    });
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('example-picker-scrim')).not.toBeInTheDocument();
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+  });
+
   function renderCollapsed(onExampleSelected = vi.fn()) {
     render(
       <ExamplePicker

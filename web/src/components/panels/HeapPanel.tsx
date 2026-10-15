@@ -6,9 +6,9 @@ import {
   type HeapObject,
   type StackFrame,
 } from '../../core/interpreter';
-import { cellValuesOf, heapFocusOf, type HeapFocus } from '../../services/views/heap-view';
+import { cellValuesOf, heapFocusOf } from '../../services/views/heap-view';
 
-import { HeapArrayRow, HeapInstanceRow } from './HeapRows';
+import { HeapObjectList, type HeapPulses } from './HeapObjectList';
 import { Panel } from './Panel';
 import { PANEL_INSET } from '../ui/rhythm';
 
@@ -20,46 +20,52 @@ interface HeapPanelProps {
   readonly mnemonic?: string | undefined;
 }
 
-type Pulses = readonly (readonly number[])[];
-
 interface Tracked {
   readonly stepIndex: number | undefined;
   readonly heap: readonly HeapObject[];
-  readonly pulses: Pulses;
+  readonly pulses: HeapPulses;
 }
 
-function restingPulses(heap: readonly HeapObject[]): Pulses {
-  return heap.map((object) => cellValuesOf(object).map(() => 0));
-}
-
-function nextPulses(previous: Tracked, heap: readonly HeapObject[]): Pulses {
-  return heap.map((object, handle) => {
+function nextPulses(previous: Tracked, heap: readonly HeapObject[]): HeapPulses {
+  const next = new Map(previous.pulses);
+  for (let handle = 0; handle < heap.length; handle++) {
+    const object = heap[handle];
+    if (object === undefined) {
+      continue;
+    }
     const before = previous.heap[handle];
-    const counters = previous.pulses[handle];
-    const cells = cellValuesOf(object);
-    if (
-      before === undefined ||
-      counters === undefined ||
-      cellValuesOf(before).length !== cells.length
-    ) {
-      return cells.map(() => 0);
-    }
+    const counters = previous.pulses.get(handle);
     if (before === object) {
-      return counters;
+      continue;
     }
+    if (before === undefined) {
+      next.delete(handle);
+      continue;
+    }
+    const cells = cellValuesOf(object);
     const past = cellValuesOf(before);
-    return cells.map((value, index) => {
-      const counter = counters[index] ?? 0;
-      return value === past[index] ? counter : counter + 1;
-    });
-  });
+    if (past.length !== cells.length) {
+      next.delete(handle);
+      continue;
+    }
+    const updated = new Map(counters);
+    for (let index = 0; index < cells.length; index++) {
+      if (cells[index] !== past[index]) {
+        updated.set(index, (counters?.get(index) ?? 0) + 1);
+      }
+    }
+    if (updated.size > 0) {
+      next.set(handle, updated);
+    }
+  }
+  return next;
 }
 
-function usePulses(stepIndex: number | undefined, heap: readonly HeapObject[]): Pulses {
+function usePulses(stepIndex: number | undefined, heap: readonly HeapObject[]): HeapPulses {
   const [tracked, setTracked] = useState<Tracked>(() => ({
     stepIndex,
     heap,
-    pulses: restingPulses(heap),
+    pulses: new Map(),
   }));
 
   if (tracked.heap !== heap) {
@@ -68,34 +74,11 @@ function usePulses(stepIndex: number | undefined, heap: readonly HeapObject[]): 
     setTracked({
       stepIndex,
       heap,
-      pulses: advanced ? nextPulses(tracked, heap) : restingPulses(heap),
+      pulses: advanced ? nextPulses(tracked, heap) : new Map(),
     });
   }
 
   return tracked.pulses;
-}
-
-interface HeapObjectRowProps {
-  readonly object: HeapObject;
-  readonly handle: number;
-  readonly heap: readonly HeapObject[];
-  readonly externals: readonly ExternalValue[];
-  readonly focus?: HeapFocus | undefined;
-  readonly pulses?: readonly number[] | undefined;
-}
-
-function HeapObjectRow({ object, handle, heap, externals, focus, pulses }: HeapObjectRowProps) {
-  return object.kind === 'int-array' ? (
-    <HeapArrayRow array={object} handle={handle} focus={focus} pulses={pulses} />
-  ) : (
-    <HeapInstanceRow
-      instance={object}
-      handle={handle}
-      heap={heap}
-      externals={externals}
-      pulses={pulses}
-    />
-  );
 }
 
 export function HeapPanel({
@@ -120,19 +103,13 @@ export function HeapPanel({
       variant="state"
       className="grow"
     >
-      <ol className={`flex flex-col gap-3 pb-0.5 ${PANEL_INSET}`}>
-        {heap.map((object, handle) => (
-          <HeapObjectRow
-            key={handle}
-            object={object}
-            handle={handle}
-            heap={heap}
-            externals={externals}
-            focus={focus?.handle === handle ? focus : undefined}
-            pulses={pulses[handle]}
-          />
-        ))}
-      </ol>
+      <HeapObjectList
+        heap={heap}
+        externals={externals}
+        focus={focus}
+        pulses={pulses}
+        className={`flex flex-col gap-3 pb-0.5 ${PANEL_INSET}`}
+      />
     </Panel>
   );
 }

@@ -356,6 +356,7 @@ function readMethods(reader: ByteReader, pool: ConstantPool): readonly MethodInf
         });
       }
       code = readCodeAttribute(body, pool);
+      requireConsumed(body, name);
     });
 
     methods.push(code === undefined ? header : { ...header, code });
@@ -405,8 +406,10 @@ function readCodeAttribute(body: ByteReader, pool: ConstantPool): CodeAttribute 
   readAttributes(body, pool, 'Code', (name, nested) => {
     if (name === 'LineNumberTable') {
       lineNumberTable.push(...readLineNumberTable(nested));
+      requireConsumed(nested, name);
     } else if (name === 'LocalVariableTable') {
       localVariableTable.push(...readLocalVariableTable(nested, pool));
+      requireConsumed(nested, name);
     }
   });
 
@@ -418,6 +421,16 @@ function readCodeAttribute(body: ByteReader, pool: ConstantPool): CodeAttribute 
     ...(localVariableTable.length > 0 ? { localVariableTable } : {}),
     ...(exceptionTable.length > 0 ? { exceptionTable } : {}),
   };
+}
+
+function requireConsumed(body: ByteReader, name: string): void {
+  if (body.remaining > 0) {
+    throw new ClassFileError({
+      kind: 'malformed-structure',
+      offset: body.offset,
+      reason: `${String(body.remaining)} byte(s) after the end of the ${name} attribute`,
+    });
+  }
 }
 
 function readExceptionTable(body: ByteReader, pool: ConstantPool): readonly ExceptionTableEntry[] {

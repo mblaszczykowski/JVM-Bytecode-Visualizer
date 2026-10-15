@@ -49,6 +49,8 @@ const MARK_ORDER: readonly TimelineEventKind[] = [
   'branch',
 ];
 
+const HEAP_WRITES: ReadonlySet<string> = new Set(['new', 'newarray', 'iastore', 'putfield']);
+
 export function timelineEventsOf(snapshots: readonly Snapshot[]): readonly TimelineEvent[] {
   const events: TimelineEvent[] = [];
 
@@ -79,7 +81,10 @@ function eventBetween(before: Snapshot, after: Snapshot): TimelineEventKind | un
   if (consoleGrew(before.consoleOutput, after.consoleOutput)) {
     return 'print';
   }
-  if (heapChanged(before.heap, after.heap)) {
+  if (
+    HEAP_WRITES.has(before.currentInstruction?.mnemonic ?? '') &&
+    heapChanged(before.heap, after.heap)
+  ) {
     return 'heap-write';
   }
   return branchWasTaken(before, after) ? 'branch' : undefined;

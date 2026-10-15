@@ -193,7 +193,7 @@ const CASES: readonly {
     },
     severity: 'error',
     message:
-      'OutOfMemoryError (pc 2, method main). The program asked for 2,147,483,647 array ' +
+      'OutOfMemoryError (pc 2, method main). The program asked for 2,147,483,647 heap ' +
       'elements at once, and this machine holds at most 8,000,000. ' +
       'The history up to this point is still playable.',
   },
@@ -214,9 +214,9 @@ const CASES: readonly {
     message:
       'OutOfMemoryError (pc 31, method sort). Recording this run would have cost 24,010,000 ' +
       'copied values, and the budget is 24,000,000. Every step copies the frames it changed, ' +
-      'three values per local slot and per operand, alongside the heap, the console lines and ' +
-      'the standard-library objects the run has interned. A deep call stack or a method with ' +
-      'many local slots costs the most. The history up to this point is still playable.',
+      'three values per local slot and per operand, alongside the heap, console text and line ' +
+      'references, and the standard-library objects the run has interned. Deep calls, large ' +
+      'arrays and repeated printing can exhaust this budget. The history up to this point is still playable.',
   },
   {
     name: 'an exception nothing on the call stack caught',
@@ -584,7 +584,7 @@ describe('the banner for a field this machine cannot reach', () => {
     );
 
     expect(expectCompleted(result).returnValue).toBe(4);
-    expect(bannerFor(fieldOfAnotherClass())).toContain('the loaded class declares');
+    expect(bannerFor(fieldOfAnotherClass())).toContain('The loaded class can hold');
   });
 
   it('is not raised for System.out, the standard-library static it names', () => {

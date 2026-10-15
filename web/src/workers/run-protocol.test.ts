@@ -2,13 +2,18 @@ import { describe, expect, it } from 'vitest';
 
 import { parseClassFile, type ClassFile, type MethodInfo } from '../core/classfile';
 import { execute, NO_SNAPSHOTS, type Snapshot } from '../core/interpreter';
-import { snapshotOf } from '../core/interpreter/__fixtures__/snapshots';
-import { syntheticClass } from '../core/interpreter/__fixtures__/synthetic-class';
+import { frameOf, snapshotOf } from '../core/interpreter/__fixtures__/snapshots';
+import {
+  ConstantPoolBuilder,
+  syntheticClass,
+} from '../core/interpreter/__fixtures__/synthetic-class';
 import { readExampleBytes } from '../services/__fixtures__/example-files';
 
 import {
   runAndStream,
   runOptionsOf,
+  SnapshotDecoder,
+  SnapshotEncoder,
   SNAPSHOTS_PER_MESSAGE,
   withHistory,
   withoutHistory,
@@ -33,7 +38,10 @@ function collect(command: RunCommand): readonly RunEvent[] {
 }
 
 function streamed(events: readonly RunEvent[]): readonly Snapshot[] {
-  return events.flatMap((event) => (event.kind === 'snapshots' ? [...event.snapshots] : []));
+  const decoder = new SnapshotDecoder();
+  return events.flatMap((event) =>
+    event.kind === 'snapshots' ? decoder.decode(structuredClone(event)) : [],
+  );
 }
 
 function fallApart(reason: string): never {
@@ -50,6 +58,92 @@ function classFileThatThrows(reason: string): ClassFile {
 }
 
 describe('runAndStream', () => {
+  it('sends a large unchanged heap array once across multiple worker messages', () => {
+    const pool = new ConstantPoolBuilder();
+    const length = 200_000;
+    const size = pool.integer(length);
+    const events = collect(
+      commandFor(
+        syntheticClass({
+          pool,
+          methods: [
+            {
+              name: 'main',
+              descriptor: '([Ljava/lang/String;)V',
+              maxLocals: 1,
+              maxStack: 1,
+              code: [0x12, size, 0xbc, 0x0a, 0x4b, 0xa7, 0x00, 0x00],
+            },
+          ],
+        }),
+        SNAPSHOTS_PER_MESSAGE * 3,
+      ),
+    );
+    const batches = events.filter((event) => event.kind === 'snapshots');
+
+    expect(batches).toHaveLength(3);
+    expect(batches.map((batch) => batch.objects.length)).toEqual([1, 0, 0]);
+    expect(
+      batches
+        .flatMap((batch) => batch.objects)
+        .reduce(
+          (total, object) =>
+            total + (object.kind === 'int-array' ? object.elements.length : object.fields.length),
+          0,
+        ),
+    ).toBe(length);
+    const history = streamed(events);
+    const before = history[SNAPSHOTS_PER_MESSAGE - 1];
+    const after = history[SNAPSHOTS_PER_MESSAGE];
+    expect(after?.heap).toBe(before?.heap);
+    expect(after?.heap[0]).toBe(before?.heap[0]);
+  });
+
+  it.each(['BubbleSort', 'Collatz'])(
+    'preserves every state of %s across individually cloned batches',
+    (name) => {
+      const original = execute(parseClassFile(readExampleBytes(`${name}.class`))).snapshots;
+      const encoder = new SnapshotEncoder();
+      const decoder = new SnapshotDecoder();
+      const decoded = original.flatMap((snapshot) =>
+        decoder.decode(structuredClone(encoder.encode([snapshot]))),
+      );
+
+      expect(decoded).toEqual(original);
+    },
+  );
+
+  it('does not repeat large frames, console output or external pools in later messages', () => {
+    const frame = frameOf({
+      methodName: 'main',
+      methodDescriptor: '()V',
+      pc: 0,
+      locals: new Array<number>(10_000).fill(0),
+      localNames: [],
+      operandStack: [],
+    });
+    const consoleOutput = ['large-console-output'.repeat(10_000)];
+    const externals = [{ className: 'java/lang/String', label: 'large-string'.repeat(10_000) }];
+    const history = Array.from({ length: SNAPSHOTS_PER_MESSAGE * 2 }, (_, step) =>
+      snapshotOf({ step, callStack: [frame], consoleOutput, externals }),
+    );
+    const encoder = new SnapshotEncoder();
+    const first = encoder.encode(history.slice(0, SNAPSHOTS_PER_MESSAGE));
+    const second = encoder.encode(history.slice(SNAPSHOTS_PER_MESSAGE));
+
+    expect(first.frames).toHaveLength(1);
+    expect(second.frames).toHaveLength(0);
+    expect(second.consoleOutputs).toHaveLength(0);
+    expect(second.externalPools).toHaveLength(0);
+    expect(JSON.stringify(second).length).toBeLessThan(SNAPSHOTS_PER_MESSAGE * 120);
+    const decoder = new SnapshotDecoder();
+    const before = decoder.decode(structuredClone(first)).at(-1);
+    const after = decoder.decode(structuredClone(second))[0];
+    expect(after?.callStack[0]).toBe(before?.callStack[0]);
+    expect(after?.consoleOutput).toBe(before?.consoleOutput);
+    expect(after?.externals).toBe(before?.externals);
+  });
+
   it('hands back exactly the history the interpreter recorded', () => {
     const classFile = gcd();
     const events = collect(commandFor(classFile));

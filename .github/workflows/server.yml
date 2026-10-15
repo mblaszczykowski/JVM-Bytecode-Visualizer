@@ -39,3 +39,57 @@ jobs:
 
       - name: Verify
         run: ./mvnw -B -ntp verify
+
+      - name: Audit runtime dependencies
+        run: |
+          python3 -m unittest discover -s scripts
+          ./mvnw -B -ntp dependency:list -DincludeScope=runtime -DoutputFile=target/runtime-dependencies.txt
+          python3 scripts/audit-dependencies.py target/runtime-dependencies.txt
+
+      - name: Build runtime image
+        run: docker build --tag compile-service:ci .
+
+      - name: Verify packaged compiler
+        run: |
+          docker run --detach --name compile-service-smoke --publish 127.0.0.1:18080:8080 compile-service:ci
+          python3 - <<'PY'
+          import base64
+          import json
+          import time
+          import urllib.error
+          import urllib.request
+
+          base = 'http://127.0.0.1:18080'
+          for attempt in range(60):
+              try:
+                  with urllib.request.urlopen(base + '/actuator/health', timeout=2) as response:
+                      if json.load(response)['status'] == 'UP':
+                          break
+              except (OSError, ValueError, KeyError):
+                  pass
+              time.sleep(1)
+          else:
+              raise SystemExit('runtime image did not become healthy')
+
+          request = urllib.request.Request(
+              base + '/api/compile',
+              data=json.dumps({'source': 'public class Smoke { public static void main(String[] args) {} }'}).encode(),
+              headers={'Content-Type': 'application/json', 'Origin': 'http://localhost:5173'},
+          )
+          with urllib.request.urlopen(request, timeout=20) as response:
+              assert response.headers['Access-Control-Allow-Origin'] == 'http://localhost:5173'
+              result = json.load(response)
+          assert result['success'] is True, result
+          assert result['className'] == 'Smoke', result
+          bytecode = base64.b64decode(result['classFileBase64'], validate=True)
+          assert bytecode[:4] == bytes.fromhex('cafebabe')
+          assert int.from_bytes(bytecode[6:8], 'big') == 65
+          PY
+
+      - name: Runtime logs
+        if: failure()
+        run: docker logs compile-service-smoke || true
+
+      - name: Stop runtime image
+        if: always()
+        run: docker rm --force compile-service-smoke || true

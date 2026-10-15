@@ -16,6 +16,26 @@ public class Instances {
 
     int value;
     Instances next;
+    byte narrowByte;
+    char narrowChar;
+    short narrowShort;
+    boolean narrowBoolean;
+
+    static byte byteIdentity(byte value) {
+        return value;
+    }
+
+    static char charIdentity(char value) {
+        return value;
+    }
+
+    static short shortIdentity(short value) {
+        return value;
+    }
+
+    static boolean booleanIdentity(boolean value) {
+        return value;
+    }
 
     Instances(int value) {
         this.value = value;
@@ -94,5 +114,22 @@ public class Instances {
 
         // The chain is unchanged by having been walked twice.
         System.out.println(a.sum());
+
+        fresh.narrowByte = byteIdentity((byte) 255);
+        fresh.narrowChar = charIdentity((char) -1);
+        fresh.narrowShort = shortIdentity((short) 65535);
+        fresh.narrowBoolean = booleanIdentity(true);
+        System.out.println(fresh.narrowByte);
+        System.out.println((int) fresh.narrowChar);
+        System.out.println(fresh.narrowShort);
+        System.out.println(fresh.narrowBoolean);
+        System.out.println(booleanIdentity(false));
+
+        java.io.PrintStream missing = null;
+        try {
+            missing.println();
+        } catch (NullPointerException error) {
+            System.out.println(1);
+        }
     }
 }

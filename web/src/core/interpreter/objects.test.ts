@@ -405,3 +405,109 @@ describe('execute: faults on the member access paths', () => {
     }
   });
 });
+
+describe('execute: field and method types', () => {
+  it.each([
+    { descriptor: 'B', input: 255, output: -1 },
+    { descriptor: 'C', input: -1, output: 65535 },
+    { descriptor: 'S', input: 65535, output: -1 },
+    { descriptor: 'Z', input: 2, output: 0 },
+  ])(
+    'narrows a $descriptor field and return value using JVM int semantics',
+    ({ descriptor, input, output }) => {
+      const pool = new ConstantPoolBuilder();
+      const field = pool.fieldref(SYNTHETIC_CLASS_NAME, 'value', descriptor);
+      const method = pool.methodref(
+        SYNTHETIC_CLASS_NAME,
+        'identity',
+        `(${descriptor})${descriptor}`,
+      );
+      const constant = pool.integer(input);
+      const result = run({
+        pool,
+        fields: [{ ...VALUE_FIELD, descriptor }],
+        methods: [
+          CONSTRUCTOR,
+          {
+            name: 'identity',
+            descriptor: `(${descriptor})${descriptor}`,
+            code: [0x1a, 0xac],
+          },
+        ],
+        code: [
+          ...allocate(pool),
+          0x59,
+          0x12,
+          constant,
+          0xb5,
+          ...u2(field),
+          0xb4,
+          ...u2(field),
+          0xb8,
+          ...u2(method),
+          0xac,
+        ],
+      });
+
+      expect(expectCompleted(result).returnValue).toBe(output);
+      const returned = run({
+        pool,
+        methods: [
+          { name: 'identity', descriptor: `(${descriptor})${descriptor}`, code: [0x1a, 0xac] },
+        ],
+        code: [0x12, constant, 0xb8, ...u2(method), 0xac],
+      });
+      expect(expectCompleted(returned).returnValue).toBe(output);
+    },
+  );
+
+  it.each(['J', 'F', 'D', 'broken'])(
+    'refuses to model an instance field with unsupported descriptor %s as an int',
+    (descriptor) => {
+      const pool = new ConstantPoolBuilder();
+      const result = run({
+        pool,
+        fields: [{ ...VALUE_FIELD, descriptor }],
+        methods: [CONSTRUCTOR],
+        code: [...allocate(pool), 0x57, 0x03, 0xac],
+      });
+
+      expect(expectVmError(result)).toMatchObject({
+        kind: 'unsupported-field',
+        target: `${SYNTHETIC_CLASS_NAME}.value:${descriptor}`,
+      });
+    },
+  );
+
+  it.each([
+    { descriptor: 'I', value: 0x01 },
+    { descriptor: `L${SYNTHETIC_CLASS_NAME};`, value: 0x03 },
+  ])('rejects the wrong value kind for a $descriptor field', ({ descriptor, value }) => {
+    const pool = new ConstantPoolBuilder();
+    const field = pool.fieldref(SYNTHETIC_CLASS_NAME, 'value', descriptor);
+    const result = run({
+      pool,
+      fields: [{ ...VALUE_FIELD, descriptor }],
+      methods: [CONSTRUCTOR],
+      code: [...allocate(pool), value, 0xb5, ...u2(field), 0x03, 0xac],
+    });
+
+    expect(expectVmError(result)).toMatchObject({ kind: 'invalid-state' });
+  });
+
+  it('rejects null for the intrinsic Object constructor', () => {
+    const pool = new ConstantPoolBuilder();
+    const constructor = pool.methodref('java/lang/Object', '<init>', '()V');
+    const result = run({ pool, code: [0x01, 0xb7, ...u2(constructor), 0x03, 0xac] });
+
+    expect(expectVmError(result)).toMatchObject({ kind: 'null-reference', offset: 1 });
+  });
+
+  it('does not treat another Object constructor descriptor as the intrinsic no-arg constructor', () => {
+    const pool = new ConstantPoolBuilder();
+    const constructor = pool.methodref('java/lang/Object', '<init>', '(I)V');
+    const result = run({ pool, code: [0x01, 0x03, 0xb7, ...u2(constructor), 0x03, 0xac] });
+
+    expect(expectVmError(result)).toMatchObject({ kind: 'unsupported-call' });
+  });
+});

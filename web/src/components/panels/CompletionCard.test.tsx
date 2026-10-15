@@ -1,10 +1,12 @@
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
 import type { RunSummary } from '../../services/views/program-view';
+import type { HeapObject } from '../../core/interpreter';
 
 import { heapAt, runSummary, terminalStep } from '../__fixtures__/bubble-sort-run';
 import { CompletionCard } from './CompletionCard';
+import { HEAP_OBJECTS_PER_PAGE } from './HeapObjectList';
 
 const SUMMARY: RunSummary = {
   resultName: 'result',
@@ -15,6 +17,23 @@ const SUMMARY: RunSummary = {
 };
 
 describe('CompletionCard', () => {
+  it('also bounds the objects shown after a large allocation run completes', () => {
+    const heap: readonly HeapObject[] = Array.from({ length: 5_000 }, () => ({
+      kind: 'int-array',
+      length: 0,
+      elements: [],
+    }));
+    render(<CompletionCard summary={SUMMARY} heap={heap} />);
+
+    expect(screen.getAllByTestId('heap-array')).toHaveLength(HEAP_OBJECTS_PER_PAGE);
+    fireEvent.click(screen.getByRole('button', { name: 'Next heap objects' }));
+    expect(screen.getAllByTestId('heap-array')).toHaveLength(HEAP_OBJECTS_PER_PAGE);
+    expect(screen.getAllByTestId('heap-array')[0]).toHaveAttribute(
+      'data-handle',
+      String(HEAP_OBJECTS_PER_PAGE),
+    );
+  });
+
   it('leads with the value the program computed', () => {
     render(<CompletionCard summary={SUMMARY} />);
 

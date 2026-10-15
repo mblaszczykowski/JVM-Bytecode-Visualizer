@@ -66,15 +66,19 @@ export function Toolbar({
   panelSwitch,
   shortcuts,
 }: ToolbarProps) {
+  const expandedActions = onWriteJava !== undefined;
+
   return (
     <header className="shrink-0 border-b border-line px-3.5 py-2">
       <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 gap-y-2 md:grid-cols-[auto_minmax(0,1fr)_auto]">
-        <h1 className="text-brand col-start-1 col-end-2 row-start-1 min-w-0 truncate font-semibold tracking-[-0.02em] text-fg">
+        <h1
+          className={`text-brand col-start-1 row-start-1 min-w-0 truncate font-semibold tracking-[-0.02em] text-fg ${expandedActions ? 'col-end-3 md:col-end-2' : 'col-end-2'}`}
+        >
           {appName}
         </h1>
 
         <div
-          className={`row-start-2 flex min-w-0 md:col-start-2 md:col-end-3 md:row-start-1 ${
+          className={`${expandedActions ? 'row-start-3' : 'row-start-2'} flex min-w-0 md:col-start-2 md:col-end-3 md:row-start-1 ${
             panelSwitch === undefined ? 'col-start-1 col-end-3' : 'col-start-1 col-end-2'
           }`}
         >
@@ -87,7 +91,10 @@ export function Toolbar({
         </div>
 
         {panelSwitch === undefined ? null : (
-          <div data-testid="panel-switch" className="col-start-2 col-end-3 row-start-2 md:hidden">
+          <div
+            data-testid="panel-switch"
+            className={`col-start-2 col-end-3 ${expandedActions ? 'row-start-3' : 'row-start-2'} md:hidden`}
+          >
             <SegmentedControl label="Visible panel" className="w-full p-1">
               {PANEL_NAMES.map(({ id, label }) => (
                 <Segment
@@ -105,7 +112,9 @@ export function Toolbar({
           </div>
         )}
 
-        <div className="col-start-2 col-end-3 row-start-1 flex items-center gap-1.5 md:col-start-3 md:col-end-4">
+        <div
+          className={`${expandedActions ? 'col-start-1 row-start-2 flex-wrap' : 'col-start-2 row-start-1'} col-end-3 flex min-w-0 items-center gap-1.5 md:col-start-3 md:col-end-4 md:row-start-1 md:flex-nowrap`}
+        >
           <Button
             data-testid="toolbar-glossary"
             onClick={() => {

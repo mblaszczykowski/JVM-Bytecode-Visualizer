@@ -176,4 +176,36 @@ describe('useExamplePreviews', () => {
 
     expect([...result.current.keys()]).toEqual(['gcd']);
   });
+
+  it('aborts a preview download when the screen goes away', () => {
+    let signal: AbortSignal | null | undefined;
+    vi.stubGlobal('fetch', (_input: unknown, init?: RequestInit) => {
+      signal = init?.signal;
+      return new Promise<Response>(() => undefined);
+    });
+    const entries = [FACTORIAL];
+
+    const { unmount } = renderHook(() => useExamplePreviews(entries, inlineRunner));
+    expect(signal?.aborted).toBe(false);
+    unmount();
+
+    expect(signal?.aborted).toBe(true);
+  });
+
+  it('clears previews when the catalogue is replaced by an empty one', async () => {
+    stubFetch(exampleRoutes());
+    const entries: readonly ExampleEntry[] = [FACTORIAL];
+    const { result, rerender } = renderHook(
+      ({ entries }: { entries: readonly ExampleEntry[] }) =>
+        useExamplePreviews(entries, inlineRunner),
+      { initialProps: { entries } },
+    );
+    await waitFor(() => {
+      expect(result.current.size).toBe(1);
+    });
+
+    rerender({ entries: NO_ENTRIES });
+
+    expect(result.current.size).toBe(0);
+  });
 });

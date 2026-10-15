@@ -37,15 +37,20 @@ function buildArcs(instructions: readonly Instruction[]): readonly Arc[] {
 }
 
 function maxOverlap(arcs: readonly Arc[], rowCount: number): number {
-  const coverage = new Array<number>(rowCount).fill(0);
+  const changes = new Int32Array(rowCount + 1);
   for (const arc of arcs) {
     const first = Math.min(arc.fromIndex, arc.toIndex);
     const last = Math.max(arc.fromIndex, arc.toIndex);
-    for (let row = first; row <= last; row++) {
-      coverage[row] = (coverage[row] ?? 0) + 1;
-    }
+    changes[first] = (changes[first] ?? 0) + 1;
+    changes[last + 1] = (changes[last + 1] ?? 0) - 1;
   }
-  return coverage.reduce((highest, value) => Math.max(highest, value), 0);
+  let coverage = 0;
+  let highest = 0;
+  for (const change of changes) {
+    coverage += change;
+    highest = Math.max(highest, coverage);
+  }
+  return highest;
 }
 
 export function BranchGutter({ instructions, currentIndex, hoveredIndex }: BranchGutterProps) {

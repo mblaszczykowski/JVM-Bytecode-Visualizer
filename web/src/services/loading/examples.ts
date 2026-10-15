@@ -74,8 +74,8 @@ export async function fetchExampleManifest(): Promise<ExampleManifest> {
   return parsed.data;
 }
 
-export function fetchExampleClass(entry: ExampleEntry): Promise<ArrayBuffer> {
-  return fetchBinary(exampleUrl(entry.classFile));
+export function fetchExampleClass(entry: ExampleEntry, signal?: AbortSignal): Promise<ArrayBuffer> {
+  return fetchBinary(exampleUrl(entry.classFile), signal);
 }
 
 export async function fetchExampleResources(
@@ -94,14 +94,6 @@ export function shortTitleOf(entry: ExampleEntry): string {
   return head === undefined ? entry.title : head.trim();
 }
 
-function abortRejection(signal: AbortSignal, reason: () => string): Promise<never> {
-  return new Promise((_, reject) => {
-    signal.addEventListener('abort', () => {
-      reject(new Error(reason()));
-    });
-  });
-}
-
 async function request<T>(
   url: string,
   read: (response: Response) => Promise<T>,
@@ -114,13 +106,26 @@ async function request<T>(
   const stop =
     signal === undefined ? controller.signal : AbortSignal.any([signal, controller.signal]);
   const stopped = (): string => (controller.signal.aborted ? TIMED_OUT : CANCELLED);
+  let rejectStopped: () => void = () => undefined;
+  const aborted = new Promise<never>((_, reject) => {
+    rejectStopped = () => {
+      reject(new Error(stopped()));
+    };
+  });
+  stop.addEventListener('abort', rejectStopped, { once: true });
 
   try {
-    const response = await fetch(url, { signal: stop });
-    if (!response.ok) {
-      throw new ExampleLoadError({ kind: 'http', url, status: response.status });
+    const download = async (): Promise<T> => {
+      const response = await fetch(url, { signal: stop });
+      if (!response.ok) {
+        throw new ExampleLoadError({ kind: 'http', url, status: response.status });
+      }
+      return read(response);
+    };
+    if (stop.aborted) {
+      throw new Error(stopped());
     }
-    return await Promise.race([read(response), abortRejection(stop, stopped)]);
+    return await Promise.race([download(), aborted]);
   } catch (error) {
     if (error instanceof ExampleLoadError) {
       throw error;
@@ -132,6 +137,7 @@ async function request<T>(
     });
   } finally {
     clearTimeout(timer);
+    stop.removeEventListener('abort', rejectStopped);
   }
 }
 

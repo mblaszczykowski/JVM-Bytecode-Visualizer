@@ -6,6 +6,7 @@ import {
   EXAMPLE_TIMEOUT_MS,
   exampleUrl,
   fetchExampleManifest,
+  fetchExampleClass,
   fetchExampleResources,
   isExampleLoadError,
   MANIFEST_FILE,
@@ -196,6 +197,29 @@ describe('the routes a test serves the examples over', () => {
 });
 
 describe('fetchExampleResources', () => {
+  it('rejects an already cancelled download without fetching', async () => {
+    const fetch = vi.fn();
+    vi.stubGlobal('fetch', fetch);
+
+    const error = await detailOf(() => fetchExampleClass(factorialEntry(), AbortSignal.abort()));
+
+    expect(error.detail).toMatchObject({ kind: 'network', reason: 'the download was cancelled' });
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('bounds a fetch that ignores cancellation', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('fetch', () => new Promise<Response>(() => undefined));
+
+    const pending = detailOf(() => fetchExampleClass(factorialEntry()));
+    await vi.advanceTimersByTimeAsync(EXAMPLE_TIMEOUT_MS);
+
+    expect((await pending).detail).toMatchObject({
+      kind: 'network',
+      reason: 'no answer within 10 s',
+    });
+  });
+
   it('downloads the class file and its source', async () => {
     stubFetch(exampleRoutes());
     const entry = factorialEntry();

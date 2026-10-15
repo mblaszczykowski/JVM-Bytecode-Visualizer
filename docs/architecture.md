@@ -61,26 +61,27 @@ stripped out.
 
 ### What a long run costs
 
-A 500,000-step run, measured on V8:
+Snapshot batches carry stable per-run IDs for frames, heap layouts and objects, console output and
+external pools. Only newly observed versions are sent. The receiver resolves those IDs back to
+shared objects, so a large unchanged array is sent once even when a run spans many batches. The
+protocol tests exercise a 200,000-element array across three batches and compare reconstructed
+BubbleSort and Collatz histories with direct execution. Deserialization still runs on the receiving
+thread; batches of 2,000 keep it split into tasks the browser can interleave with painting.
 
-|                                                |          |
-| ---------------------------------------------- | -------- |
-| `execute()` itself                             | 404 ms   |
-| Serializing the history into one `postMessage` | 1,443 ms |
-| Deserializing it on the receiving side         | 2,591 ms |
-| Heap held by the history in the worker         | 274 MB   |
-| Heap held by the same history after transfer   | ~610 MB  |
+The UI step ceiling retains a conservative baseline from measurements of the earlier raw-snapshot
+protocol: 274 MiB in the worker and about 610 MiB after transfer for a 500,000-step run. Those are
+historical sizing inputs, not measurements of the current versioned transport. Allowing a worker
+history and two received histories gives about 3,133 bytes per step in
+`affordableStepLimit()` in `web/src/services/loading/app-state.ts`. The ceiling is an eighth of
+`navigator.deviceMemory` divided by that estimate, clamped to 20,000 below and 500,000 above.
+The recording budget remains necessary: program shapes differ, and changed arrays and frames still
+need new versions. Timeline write detection also accounts for the executed instruction, so it works
+with shared histories and separately cloned snapshots.
 
-Deserialization lands on the receiving thread. Posting the history as one message would move a
-404 ms block off the main thread and put a 2,591 ms one back on it. Batches of 2,000 split that cost
-into tasks the browser can interleave with painting: on the built application in Chromium the
-longest main-thread stall falls from 403 ms to about 120 ms, and the run takes roughly three times
-as long end to end. The transferred copy is unfrozen and 2.2× the size of the one in the worker.
-
-Those two heap figures are 575 and 1,279 bytes a step, read by `affordableStepLimit()` in
-`web/src/services/loading/app-state.ts`. The peak of a re-run holds three histories, the worker's
-copy and two transferred ones, so 3,133 bytes a step. The ceiling is an eighth of
-`navigator.deviceMemory` divided by that, clamped to the 20,000 default below and 500,000 above.
+The history budget also charges console text, including preserved prefixes of a line built by
+repeated `print` calls. Empty arrays cost at least one heap element, so zero-length allocations
+cannot evade the allocation budget. Both the live heap panel and completion view show at most
+32 objects per page, with 128 cells per array page; an active read or write selects both pages.
 
 ## Frame lifecycle
 
@@ -140,12 +141,16 @@ recorded before the failure.
 
 ## The compile service
 
-An optional Spring Boot 3 / Java 21 service whose only job is turning source into bytes. The
+An optional Spring Boot 4 / Java 21 service whose only job is turning source into bytes. The
 pipeline is `CompileController` → `CompileService` → `SourceValidator` → `ForkedCompiler`, and the
 compilation itself happens one process further out. Its responses are committed as fixtures under
 `server/src/test/resources/contract/`, one JSON document per case holding the status, the headers
 that matter and the body. The server's tests assert it produces them and the web client's tests
 parse them, so the two ends of the contract are checked against the same bytes.
+
+The browser aborts its compile request when the editor closes, a different program is loaded or
+the application unmounts. The child compilation still has its server-side deadline; cancelling a
+fetch does not promise to stop javac immediately.
 
 ### One child JVM per compilation
 
@@ -179,10 +184,9 @@ compile.
 
 ### Hardening
 
-The service compiles and never executes user code, so there is no sandbox to get wrong. What remains
-is javac's own resource appetite and the ordinary exposure of a public endpoint: the child process
-above, the size caps and the rate limit ordered ahead of the controller in `WebConfig`, and two
-javac options.
+The service parses untrusted source and never loads or executes the resulting classes. The child
+process limits javac's resource use; the size caps and rate limit run ahead of the controller in
+`WebConfig`. Two javac options limit what compilation itself can load.
 
 `-proc:none` closes annotation processing, the one path that runs foreign code inside javac.
 `AnnotationProcessingDisabledTest` puts a marker processor on javac's annotation processor path and
@@ -192,7 +196,9 @@ unset, javac falls back to the working directory; emptied, the only types a sour
 platform classes.
 
 `SourceNames` finds the public top-level type in a single linear scan that skips comments and
-literals. The regular expression it replaced recursed once per repetition of a modifier list, and
+literals. Unicode escapes are translated before scanning; identifiers use Unicode code points, and line
+comments end on either CR or LF. Comments inside annotations do not consume the following type.
+The regular expression it replaced recursed once per repetition of a modifier list, and
 `"public " + "final ".repeat(3000)` raised a `StackOverflowError` no `@RestControllerAdvice` can
 catch.
 
@@ -211,3 +217,8 @@ are measured per file (`perFile: true`), and neither covers `components/`, `hook
 which are held by their own tests and by the Playwright suite instead. The server has its own gate,
 in `server/pom.xml`: JaCoCo checks `api`, `compiler`, `config` and `service` per package at 0.85 line
 and 0.75 branch coverage.
+
+The web workflow audits npm dependencies, and changes to the root Vitest configuration or Node
+version file run its quality gate. The server workflow also audits the resolved runtime dependencies against OSV and builds and
+smoke-tests the production container through health and compilation requests. Dependabot checks
+JavaScript, Maven, Actions and Docker dependencies weekly.

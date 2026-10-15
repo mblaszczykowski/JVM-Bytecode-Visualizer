@@ -164,3 +164,25 @@ describe('parseMethodDescriptor: property test', () => {
     );
   });
 });
+
+describe('descriptor constraints from JVMS §4.2.1 and §4.3.3', () => {
+  it.each(['Lfoo.bar;', 'Lfoo[bar;', 'L/foo;', 'Lfoo/;', 'Lfoo//bar;'])(
+    'rejects invalid internal class name %s',
+    (descriptor) => {
+      expect(expectClassFileError(() => parseFieldDescriptor(descriptor)).kind).toBe(
+        'malformed-descriptor',
+      );
+    },
+  );
+
+  it('counts long and double parameters as two slots and arrays as one', () => {
+    expect(parseMethodDescriptor(`(${'J'.repeat(127)}I)V`).params).toHaveLength(128);
+    expect(parseMethodDescriptor(`(${'[D'.repeat(255)})V`).params).toHaveLength(255);
+    expect(expectClassFileError(() => parseMethodDescriptor(`(${'D'.repeat(128)})V`)).kind).toBe(
+      'malformed-descriptor',
+    );
+    expect(expectClassFileError(() => parseMethodDescriptor(`(${'I'.repeat(256)})V`)).kind).toBe(
+      'malformed-descriptor',
+    );
+  });
+});

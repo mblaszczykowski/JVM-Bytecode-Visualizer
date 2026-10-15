@@ -119,6 +119,15 @@ export function setPc(frame: Frame, pc: number): void {
 }
 
 export function push(frame: Frame, value: number, kind: ValueKind): void {
+  if (frame.operandStack.length >= frame.method.code.maxStack) {
+    throw new VmFault(
+      {
+        kind: 'invalid-state',
+        message: `operand stack exceeds max_stack = ${String(frame.method.code.maxStack)}`,
+      },
+      { offset: frame.currentPc, methodName: frame.method.name },
+    );
+  }
   frame.operandStack.push(value);
   frame.operandKinds.push(kind);
   frame.operandOrigins.push(frame.clock.step);

@@ -433,6 +433,29 @@ function stallingRunner(settled: number, cancellable = true): ProgramRunner {
 }
 
 describe('giving up on a run', () => {
+  it('stops the active run when the application is unmounted', async () => {
+    stubFetch(exampleRoutes());
+    let signal: AbortSignal | undefined;
+    const stalled = stallingRunner(0);
+    const runner: ProgramRunner = {
+      cancellable: true,
+      run(command, options) {
+        if (command.maxSteps !== PREVIEW_MAX_STEPS) {
+          signal = options?.signal;
+        }
+        return stalled.run(command, options);
+      },
+    };
+    const { unmount } = render(<App programRunner={runner} />);
+    fireEvent.click(await findExampleOption('Factorial'));
+    await screen.findByRole('button', { name: 'Cancel' });
+    expect(signal?.aborted).toBe(false);
+
+    unmount();
+
+    expect(signal?.aborted).toBe(true);
+  });
+
   it('says how far a long run has got, and offers to end it', async () => {
     stubFetch(exampleRoutes());
     renderApp({ programRunner: stallingRunner(0) });
@@ -1108,6 +1131,9 @@ describe('the compile editor', () => {
 
     fireEvent.keyDown(document.body, { key: 'Escape' });
     expect(screen.queryByTestId('compile-editor')).not.toBeInTheDocument();
+
+    const request = vi.mocked(fetch).mock.calls.find(([url]) => url === COMPILE_URL);
+    expect(request?.[1]?.signal?.aborted).toBe(true);
 
     await held.land(diagnosticsResponse("';' expected"));
 

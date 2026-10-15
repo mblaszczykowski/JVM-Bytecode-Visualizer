@@ -1,6 +1,7 @@
 import { execute, type ExecutionResult, type Snapshot } from '../../core/interpreter';
 import {
   runOptionsOf,
+  SnapshotDecoder,
   withHistory,
   type RunCommand,
   type RunEvent,
@@ -106,6 +107,7 @@ export function workerRunner(
 
       return new Promise<ExecutionResult>((resolve, reject) => {
         const snapshots: Snapshot[] = [];
+        const decoder = new SnapshotDecoder();
         let reported = 0;
         let answered = false;
 
@@ -145,8 +147,14 @@ export function workerRunner(
           armWatchdog();
           switch (data.kind) {
             case 'snapshots':
-              for (const snapshot of data.snapshots) {
-                snapshots.push(snapshot);
+              try {
+                for (const snapshot of decoder.decode(data)) {
+                  snapshots.push(snapshot);
+                }
+              } catch (error) {
+                release();
+                reject(error instanceof Error ? error : new Error(String(error)));
+                return;
               }
               if (snapshots.length - reported >= STEPS_PER_REPORT) {
                 reported = snapshots.length;
@@ -175,8 +183,13 @@ export function workerRunner(
         };
 
         options?.signal?.addEventListener('abort', abandon, { once: true });
-        worker.postMessage(command);
         armWatchdog();
+        try {
+          worker.postMessage(command);
+        } catch (error) {
+          release();
+          reject(error instanceof Error ? error : new Error(String(error)));
+        }
       });
     },
   };

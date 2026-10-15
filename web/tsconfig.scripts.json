@@ -27,6 +27,7 @@
   "include": [
     "eslint.config.js",
     "scripts/**/*.mjs",
+    "scripts/**/*.ts",
     "fixtures/**/*.mjs",
     "fixtures/**/*.ts",
     "corpus/**/*.mjs"

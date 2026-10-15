@@ -1,7 +1,8 @@
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
 import type { ExternalValue, HeapObject } from '../../core/interpreter';
+import { frameOf as syntheticFrame } from '../../core/interpreter/__fixtures__/snapshots';
 
 import {
   arrayAt,
@@ -12,6 +13,7 @@ import {
   terminalStep,
 } from '../__fixtures__/bubble-sort-run';
 import { HeapPanel } from './HeapPanel';
+import { HEAP_OBJECTS_PER_PAGE } from './HeapObjectList';
 
 const loadStep = firstStepOf('iaload');
 const storeStep = firstStepOf('iastore', { after: 40 });
@@ -31,6 +33,56 @@ function renderAt(step: number) {
 }
 
 describe('HeapPanel', () => {
+  it('bounds thousands of heap objects and lets pages be browsed', () => {
+    const heap: readonly HeapObject[] = Array.from({ length: 5_000 }, () => ({
+      kind: 'int-array',
+      length: 0,
+      elements: [],
+    }));
+    render(<HeapPanel heap={heap} />);
+
+    expect(screen.getAllByTestId('heap-array')).toHaveLength(HEAP_OBJECTS_PER_PAGE);
+    expect(screen.getAllByTestId('heap-array')[0]).toHaveAttribute('data-handle', '0');
+    expect(screen.getByRole('button', { name: 'Previous heap objects' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Next heap objects' }));
+    expect(screen.getAllByTestId('heap-array')).toHaveLength(HEAP_OBJECTS_PER_PAGE);
+    expect(screen.getAllByTestId('heap-array')[0]).toHaveAttribute(
+      'data-handle',
+      String(HEAP_OBJECTS_PER_PAGE),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Previous heap objects' }));
+    expect(screen.getAllByTestId('heap-array')[0]).toHaveAttribute('data-handle', '0');
+  });
+
+  it('follows a read from a far heap handle and keeps that page afterward', () => {
+    const heap: HeapObject[] = Array.from({ length: 5_000 }, () => ({
+      kind: 'int-array',
+      length: 0,
+      elements: [],
+    }));
+    heap[4_999] = { kind: 'int-array', length: 1, elements: [42] };
+    const frame = syntheticFrame({
+      methodName: 'main',
+      methodDescriptor: '()V',
+      pc: 0,
+      operandStack: [4_999, 0],
+      operandKinds: ['ref', 'int'],
+      locals: [],
+      localNames: [],
+    });
+    const { rerender } = render(<HeapPanel heap={heap} />);
+
+    rerender(<HeapPanel heap={heap} frame={frame} mnemonic="iaload" />);
+
+    expect(screen.getAllByTestId('heap-array').length).toBeLessThanOrEqual(HEAP_OBJECTS_PER_PAGE);
+    expect(screen.getByTestId('heap-cell')).toHaveTextContent('42');
+    expect(screen.getByTestId('heap-cell')).toHaveAttribute('data-current', 'true');
+    expect(screen.getByRole('button', { name: 'Next heap objects' })).toBeDisabled();
+
+    rerender(<HeapPanel heap={heap} />);
+    expect(screen.getByTestId('heap-cell')).toHaveTextContent('42');
+  });
+
   it('renders the allocated array as labelled cells', () => {
     renderAt(loadStep);
 

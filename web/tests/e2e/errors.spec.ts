@@ -42,3 +42,17 @@ test('an unsupported instruction stops the run but keeps the history playable', 
   await page.getByRole('slider', { name: 'Execution history position' }).fill('35');
   await expect(page.getByTestId('current-instruction')).toContainText('i2l');
 });
+
+test('the same file can be opened again after stepping through it', async ({ page }) => {
+  await page.goto('/');
+  const input = fileInput(page);
+  await input.setInputFiles(fixturePath('Counter.class'));
+  await expect(page.getByTestId('step-counter')).toHaveText(/^step 1 \/ \d+$/);
+  await page.getByRole('button', { name: 'Step forward', exact: true }).click();
+  await expect(page.getByTestId('step-counter')).toHaveText(/^step 2 \/ \d+$/);
+
+  await expect(input).toHaveValue('');
+  await input.setInputFiles(fixturePath('Counter.class'));
+
+  await expect(page.getByTestId('step-counter')).toHaveText(/^step 1 \/ \d+$/);
+});

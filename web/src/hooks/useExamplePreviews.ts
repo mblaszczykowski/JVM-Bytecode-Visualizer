@@ -13,6 +13,12 @@ export function useExamplePreviews(
   runner: ProgramRunner,
 ): ReadonlyMap<string, RunPreview> {
   const [previews, setPreviews] = useState<ReadonlyMap<string, RunPreview>>(NONE);
+  const [tracked, setTracked] = useState({ entries, runner });
+
+  if (entries !== tracked.entries || runner !== tracked.runner) {
+    setTracked({ entries, runner });
+    setPreviews(NONE);
+  }
 
   useEffect(() => {
     if (entries.length === 0) {
@@ -23,7 +29,7 @@ export function useExamplePreviews(
 
     const measure = async (entry: ExampleEntry): Promise<RunPreview | undefined> => {
       try {
-        return await previewProgram(parseClassFile(await fetchExampleClass(entry)), {
+        return await previewProgram(parseClassFile(await fetchExampleClass(entry, signal)), {
           runner,
           signal,
         });

@@ -4,7 +4,7 @@ updates:
   - package-ecosystem: npm
     directory: /
     schedule:
-      interval: monthly
+      interval: weekly
     open-pull-requests-limit: 5
     groups:
       dev-dependencies:
@@ -17,7 +17,7 @@ updates:
   - package-ecosystem: maven
     directory: /server
     schedule:
-      interval: monthly
+      interval: weekly
     open-pull-requests-limit: 5
     groups:
       spring:
@@ -28,7 +28,12 @@ updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: monthly
+      interval: weekly
     groups:
       actions:
         patterns: ['*']
+
+  - package-ecosystem: docker
+    directory: /server
+    schedule:
+      interval: weekly

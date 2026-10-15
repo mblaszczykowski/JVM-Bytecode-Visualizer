@@ -872,3 +872,41 @@ describe('parseClassFile: robustness property test', () => {
     );
   });
 });
+
+describe('parseClassFile: consumed attribute bodies', () => {
+  it.each(['Code', 'LineNumberTable', 'LocalVariableTable'])(
+    'rejects trailing bytes inside a known %s attribute',
+    (name) => {
+      const nested = name === 'Code' ? [] : attribute(6, [...u2(0), 0xff]);
+      const body = [
+        ...u2(1),
+        ...u2(0),
+        ...u4(1),
+        0xb1,
+        ...u2(0),
+        ...u2(name === 'Code' ? 0 : 1),
+        ...nested,
+        ...(name === 'Code' ? [0xff] : []),
+      ];
+      const buffer = buildClassFile({
+        constantPoolCount: 7,
+        constantPool: [
+          utf8Entry('Synth'),
+          classEntry(1),
+          utf8Entry('m'),
+          utf8Entry('()V'),
+          utf8Entry('Code'),
+          utf8Entry(name),
+        ],
+        thisClass: 2,
+        superClass: 0,
+        methods: [member(0x0008, 3, 4, [attribute(5, body)])],
+      });
+
+      expect(expectClassFileError(() => parseClassFile(buffer))).toMatchObject({
+        kind: 'malformed-structure',
+        reason: `1 byte(s) after the end of the ${name} attribute`,
+      });
+    },
+  );
+});

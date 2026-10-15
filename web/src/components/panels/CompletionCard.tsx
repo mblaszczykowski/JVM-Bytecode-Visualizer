@@ -1,7 +1,7 @@
 import { NO_EXTERNALS, NO_HEAP, type ExternalValue, type HeapObject } from '../../core/interpreter';
 import type { RunSummary } from '../../services/views/program-view';
 
-import { HeapArrayRow, HeapInstanceRow } from './HeapRows';
+import { HeapObjectList } from './HeapObjectList';
 import { Panel } from './Panel';
 import { PANEL_INSET } from '../ui/rhythm';
 
@@ -66,21 +66,11 @@ export function CompletionCard({
         {heap.length === 0 ? null : (
           <div className="mt-2.5 rounded-row bg-raised px-3 py-2.5">
             <p className="pb-2 text-meta text-fg-3">Heap as the run left it</p>
-            <ol className="scroll-slim flex max-h-[150px] flex-col gap-3 overflow-y-auto">
-              {heap.map((object, handle) =>
-                object.kind === 'int-array' ? (
-                  <HeapArrayRow key={handle} array={object} handle={handle} />
-                ) : (
-                  <HeapInstanceRow
-                    key={handle}
-                    instance={object}
-                    handle={handle}
-                    heap={heap}
-                    externals={externals}
-                  />
-                ),
-              )}
-            </ol>
+            <HeapObjectList
+              heap={heap}
+              externals={externals}
+              className="scroll-slim flex max-h-[150px] flex-col gap-3 overflow-y-auto"
+            />
           </div>
         )}
 

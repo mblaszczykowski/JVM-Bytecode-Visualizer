@@ -53,8 +53,8 @@ export function compileApiBaseUrl(): string | undefined {
   return CONFIGURED_BASE_URL;
 }
 
-export async function checkHealth(baseUrl: string): Promise<boolean> {
-  const attempt = await send(`${baseUrl}/actuator/health`, HEALTH_TIMEOUT_MS);
+export async function checkHealth(baseUrl: string, signal?: AbortSignal): Promise<boolean> {
+  const attempt = await send(`${baseUrl}/actuator/health`, HEALTH_TIMEOUT_MS, undefined, signal);
   if (attempt.kind === 'failed') {
     return false;
   }
@@ -63,12 +63,21 @@ export async function checkHealth(baseUrl: string): Promise<boolean> {
   return attempt.response.ok;
 }
 
-export async function compile(baseUrl: string, source: string): Promise<CompileResult> {
-  const attempt = await send(`${baseUrl}/api/compile`, COMPILE_TIMEOUT_MS, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ source }),
-  });
+export async function compile(
+  baseUrl: string,
+  source: string,
+  signal?: AbortSignal,
+): Promise<CompileResult> {
+  const attempt = await send(
+    `${baseUrl}/api/compile`,
+    COMPILE_TIMEOUT_MS,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source }),
+    },
+    signal,
+  );
   if (attempt.kind === 'failed') {
     return { kind: 'unavailable', reason: attempt.reason };
   }
@@ -170,33 +179,55 @@ type Attempt =
     }
   | { readonly kind: 'failed'; readonly reason: UnavailableReason };
 
-async function send(url: string, timeoutMs: number, init?: RequestInit): Promise<Attempt> {
+async function send(
+  url: string,
+  timeoutMs: number,
+  init?: RequestInit,
+  signal?: AbortSignal,
+): Promise<Attempt> {
   const controller = new AbortController();
+  const stop =
+    signal === undefined ? controller.signal : AbortSignal.any([controller.signal, signal]);
   const timer = setTimeout(() => {
     controller.abort();
   }, timeoutMs);
   const reasonFor = (error: unknown): UnavailableReason =>
-    controller.signal.aborted
-      ? { kind: 'timeout', ms: timeoutMs }
-      : { kind: 'network', reason: reasonOf(error) };
+    signal?.aborted === true
+      ? { kind: 'network', reason: 'The request was cancelled.' }
+      : controller.signal.aborted
+        ? { kind: 'timeout', ms: timeoutMs }
+        : { kind: 'network', reason: reasonOf(error) };
+  let expire: () => void = () => undefined;
+  const expired = new Promise<UnavailableReason>((resolve) => {
+    expire = () => {
+      resolve(reasonFor(new Error('The request was aborted.')));
+    };
+  });
+  stop.addEventListener('abort', expire, { once: true });
+  const done = (): void => {
+    clearTimeout(timer);
+    stop.removeEventListener('abort', expire);
+  };
 
   try {
-    const response = await fetch(url, { ...init, signal: controller.signal });
+    if (stop.aborted) {
+      throw new Error('The request was aborted.');
+    }
+    const response = await Promise.race([
+      fetch(url, { ...init, signal: stop }),
+      expired.then(() => {
+        throw new Error('The request was aborted.');
+      }),
+    ]);
     return {
       kind: 'response',
       response,
       reasonFor,
-      expired: new Promise<UnavailableReason>((resolve) => {
-        controller.signal.addEventListener('abort', () => {
-          resolve({ kind: 'timeout', ms: timeoutMs });
-        });
-      }),
-      done: () => {
-        clearTimeout(timer);
-      },
+      expired,
+      done,
     };
   } catch (error) {
-    clearTimeout(timer);
+    done();
     return { kind: 'failed', reason: reasonFor(error) };
   }
 }

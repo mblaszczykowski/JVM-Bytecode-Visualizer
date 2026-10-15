@@ -3,7 +3,10 @@ import {
   execute,
   type ExecuteOptions,
   type ExecutionResult,
+  type ExternalValue,
+  type HeapObject,
   type Snapshot,
+  type StackFrame,
 } from '../core/interpreter';
 
 export const SNAPSHOTS_PER_MESSAGE = 2_000;
@@ -18,10 +21,118 @@ export interface RunCommand {
 type WithoutHistory<T> = T extends unknown ? Omit<T, 'snapshots'> : never;
 export type RunResultWithoutHistory = WithoutHistory<ExecutionResult>;
 
+type StreamedSnapshot = Omit<Snapshot, 'callStack' | 'heap' | 'consoleOutput' | 'externals'> & {
+  readonly callStack: readonly number[];
+  readonly heap: number;
+  readonly consoleOutput: number;
+  readonly externals: number;
+};
+
+export interface SnapshotBatch {
+  readonly kind: 'snapshots';
+  readonly snapshots: readonly StreamedSnapshot[];
+  readonly frames: readonly StackFrame[];
+  readonly heaps: readonly (readonly number[])[];
+  readonly objects: readonly HeapObject[];
+  readonly consoleOutputs: readonly (readonly string[])[];
+  readonly externalPools: readonly (readonly ExternalValue[])[];
+}
+
 export type RunEvent =
-  | { readonly kind: 'snapshots'; readonly snapshots: readonly Snapshot[] }
+  | SnapshotBatch
   | { readonly kind: 'done'; readonly result: RunResultWithoutHistory }
   | { readonly kind: 'failed'; readonly error: Error };
+
+class VersionEncoder<T extends object> {
+  private readonly versions = new WeakMap<T, number>();
+  private count = 0;
+  private additions: T[] = [];
+
+  id(value: T): number {
+    const previous = this.versions.get(value);
+    if (previous !== undefined) {
+      return previous;
+    }
+    const id = this.count++;
+    this.versions.set(value, id);
+    this.additions.push(value);
+    return id;
+  }
+
+  take(): readonly T[] {
+    const additions = this.additions;
+    this.additions = [];
+    return additions;
+  }
+}
+
+export class SnapshotEncoder {
+  private readonly frames = new VersionEncoder<StackFrame>();
+  private readonly heaps = new VersionEncoder<readonly HeapObject[]>();
+  private readonly objects = new VersionEncoder<HeapObject>();
+  private readonly consoleOutputs = new VersionEncoder<readonly string[]>();
+  private readonly externalPools = new VersionEncoder<readonly ExternalValue[]>();
+
+  encode(snapshots: readonly Snapshot[]): SnapshotBatch {
+    const encoded = snapshots.map((snapshot) => ({
+      ...snapshot,
+      callStack: snapshot.callStack.map((frame) => this.frames.id(frame)),
+      heap: this.heaps.id(snapshot.heap),
+      consoleOutput: this.consoleOutputs.id(snapshot.consoleOutput),
+      externals: this.externalPools.id(snapshot.externals),
+    }));
+    const heaps = this.heaps.take().map((heap) => heap.map((object) => this.objects.id(object)));
+    return {
+      kind: 'snapshots',
+      snapshots: encoded,
+      frames: this.frames.take(),
+      heaps,
+      objects: this.objects.take(),
+      consoleOutputs: this.consoleOutputs.take(),
+      externalPools: this.externalPools.take(),
+    };
+  }
+}
+
+function append<T>(target: T[], additions: readonly T[]): void {
+  for (const value of additions) {
+    target.push(value);
+  }
+}
+
+function versionAt<T>(versions: readonly T[], id: number): T {
+  const version = versions[id];
+  if (version === undefined) {
+    throw new Error(`The worker referenced an unknown snapshot version: ${String(id)}.`);
+  }
+  return version;
+}
+
+export class SnapshotDecoder {
+  private readonly frames: StackFrame[] = [];
+  private readonly objects: HeapObject[] = [];
+  private readonly heaps: (readonly HeapObject[])[] = [];
+  private readonly consoleOutputs: (readonly string[])[] = [];
+  private readonly externalPools: (readonly ExternalValue[])[] = [];
+
+  decode(batch: SnapshotBatch): readonly Snapshot[] {
+    append(this.frames, batch.frames);
+    append(this.objects, batch.objects);
+    append(
+      this.heaps,
+      batch.heaps.map((heap) => heap.map((id) => versionAt(this.objects, id))),
+    );
+    append(this.consoleOutputs, batch.consoleOutputs);
+    append(this.externalPools, batch.externalPools);
+    return batch.snapshots.map((snapshot) => ({
+      ...snapshot,
+      callStack: snapshot.callStack.map((id) => versionAt(this.frames, id)),
+      heap: versionAt(this.heaps, snapshot.heap),
+      consoleOutput: versionAt(this.consoleOutputs, snapshot.consoleOutput),
+      externals: versionAt(this.externalPools, snapshot.externals),
+    }));
+  }
+}
 
 export function withHistory(
   result: RunResultWithoutHistory,
@@ -65,8 +176,9 @@ export function runAndStream(command: RunCommand, post: (event: RunEvent) => voi
   }
 
   const { snapshots } = result;
+  const encoder = new SnapshotEncoder();
   for (let from = 0; from < snapshots.length; from += SNAPSHOTS_PER_MESSAGE) {
-    post({ kind: 'snapshots', snapshots: snapshots.slice(from, from + SNAPSHOTS_PER_MESSAGE) });
+    post(encoder.encode(snapshots.slice(from, from + SNAPSHOTS_PER_MESSAGE)));
   }
   post({ kind: 'done', result: withoutHistory(result) });
 }

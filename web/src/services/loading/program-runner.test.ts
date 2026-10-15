@@ -5,6 +5,7 @@ import { execute, type ExecutionResult, type Snapshot } from '../../core/interpr
 import { snapshotOf } from '../../core/interpreter/__fixtures__/snapshots';
 import {
   runAndStream,
+  SnapshotEncoder,
   SNAPSHOTS_PER_MESSAGE,
   withHistory,
   type RunCommand,
@@ -35,6 +36,7 @@ class FakeWorker implements RunWorker {
   onerror: ((event: ErrorEvent) => void) | null = null;
   readonly commands: RunCommand[] = [];
   terminations = 0;
+  readonly encoder = new SnapshotEncoder();
 
   postMessage(command: RunCommand): void {
     this.commands.push(command);
@@ -48,6 +50,10 @@ class FakeWorker implements RunWorker {
     this.onmessage?.(new MessageEvent('message', { data: event }));
   }
 
+  emitSnapshots(snapshots: readonly Snapshot[]): void {
+    this.emit(structuredClone(this.encoder.encode(snapshots)));
+  }
+
   run(): void {
     for (const command of this.commands) {
       runAndStream(command, (event) => {
@@ -58,10 +64,7 @@ class FakeWorker implements RunWorker {
 
   stream(result: ExecutionResult): void {
     for (let from = 0; from < result.snapshots.length; from += SNAPSHOTS_PER_MESSAGE) {
-      this.emit({
-        kind: 'snapshots',
-        snapshots: result.snapshots.slice(from, from + SNAPSHOTS_PER_MESSAGE),
-      });
+      this.emitSnapshots(result.snapshots.slice(from, from + SNAPSHOTS_PER_MESSAGE));
     }
     this.emit({ kind: 'done', result: withHistory(result, []) });
   }
@@ -93,6 +96,46 @@ describe('running on this thread', () => {
 });
 
 describe('running in a worker', () => {
+  it('rejects an invalid snapshot version and releases the worker', async () => {
+    const worker = new FakeWorker();
+    const runner = workerRunner(() => worker);
+    const pending = runner.run(commandFor(gcd()));
+    const batch = worker.encoder.encode(fakeHistory(1));
+
+    worker.emit({
+      ...batch,
+      snapshots: batch.snapshots.map((snapshot) => ({ ...snapshot, heap: 99 })),
+    });
+
+    await expect(pending).rejects.toThrow('unknown snapshot version');
+    expect(worker.terminations).toBe(1);
+  });
+
+  it('releases the worker and cancellation handler if posting the command throws', async () => {
+    vi.useFakeTimers();
+    try {
+      const worker = new FakeWorker();
+      const controller = new AbortController();
+      vi.spyOn(worker, 'postMessage').mockImplementation(() => {
+        throw new DOMException('Could not clone the command', 'DataCloneError');
+      });
+      const runner = workerRunner(() => worker);
+
+      await expect(runner.run(commandFor(gcd()), { signal: controller.signal })).rejects.toThrow(
+        'Could not clone the command',
+      );
+      controller.abort();
+
+      expect(worker.terminations).toBe(1);
+      expect(worker.onmessage).toBeNull();
+      expect(worker.onerror).toBeNull();
+      expect(vi.getTimerCount()).toBe(0);
+      expect(runner.cancellable).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('reassembles the batches the worker streams into the history the interpreter produced', async () => {
     const classFile = gcd();
     const worker = new FakeWorker();
@@ -125,7 +168,7 @@ describe('running in a worker', () => {
     const runner = workerRunner(() => worker);
 
     const pending = runner.run(commandFor(gcd()), { signal: controller.signal });
-    worker.emit({ kind: 'snapshots', snapshots: fakeHistory(10) });
+    worker.emitSnapshots(fakeHistory(10));
     controller.abort();
 
     await expect(pending).rejects.toSatisfy(isRunCancelled);
@@ -159,7 +202,7 @@ describe('running in a worker', () => {
       const pending = runner.run(commandFor(gcd()));
       for (let batch = 0; batch < 3; batch += 1) {
         await vi.advanceTimersByTimeAsync(900);
-        worker.emit({ kind: 'snapshots', snapshots: fakeHistory(10) });
+        worker.emitSnapshots(fakeHistory(10));
       }
       worker.emit({ kind: 'done', result: { kind: 'completed' } });
 
@@ -200,7 +243,7 @@ describe('a worker that dies with the run in it', () => {
     const runner = workerRunner(() => worker);
 
     const pending = runner.run(commandFor(gcd()));
-    worker.emit({ kind: 'snapshots', snapshots: fakeHistory(10) });
+    worker.emitSnapshots(fakeHistory(10));
     worker.fail();
 
     await expect(pending).rejects.toSatisfy(isRunAbandoned);
@@ -215,7 +258,7 @@ describe('a worker that dies with the run in it', () => {
     const runner = workerRunner(() => (spawns++ === 0 ? first : second));
 
     const failed = runner.run(commandFor(gcd()));
-    first.emit({ kind: 'snapshots', snapshots: fakeHistory(10) });
+    first.emitSnapshots(fakeHistory(10));
     first.fail();
     await expect(failed).rejects.toThrow('failed part-way through');
 

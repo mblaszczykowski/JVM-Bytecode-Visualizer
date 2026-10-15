@@ -12,7 +12,8 @@ export function useCompilerHealth(
       return;
     }
     let active = true;
-    void checkHealth(baseUrl).then(
+    const controller = new AbortController();
+    void checkHealth(baseUrl, controller.signal).then(
       (healthy) => {
         if (active) {
           dispatch({ kind: 'compiler-checked', healthy });
@@ -26,6 +27,7 @@ export function useCompilerHealth(
     );
     return () => {
       active = false;
+      controller.abort();
     };
   }, [baseUrl, dispatch]);
 }

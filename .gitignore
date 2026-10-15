@@ -28,3 +28,6 @@ web/corpus/.cache/
 
 # Scratch space, never published
 .local/
+
+# Python build tooling
+__pycache__/

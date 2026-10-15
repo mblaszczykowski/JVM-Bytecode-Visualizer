@@ -3,7 +3,6 @@ package dev.jvmvisualizer.compileservice.config;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.time.Clock;
@@ -19,6 +18,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.mock.web.MockFilterChain;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 
 class RateLimitFilterTest {
 
@@ -176,6 +177,34 @@ class RateLimitFilterTest {
     }
 
     @Test
+    void equivalentSpellingsShareOneRateLimitWindowWithoutDns() throws Exception {
+        RecordingResolverProvider.reset();
+        List<List<String>> spellings = List.of(
+                List.of("2001:db8::a", "2001:0DB8:0:0:0:0:0:000a", "[2001:db8::A]:443"),
+                List.of("203.0.113.7", "203.000.113.007", "::ffff:203.0.113.7"));
+
+        for (List<String> variants : spellings) {
+            RateLimitFilter filter = filter(true);
+            for (int i = 0; i < LIMIT; i++) {
+                assertThat(call(filter, "10.0.0.1", variants.get(i)).getStatus()).isEqualTo(HttpStatus.OK.value());
+            }
+            assertThat(call(filter, "10.0.0.1", variants.get(0)).getStatus())
+                    .isEqualTo(HttpStatus.TOO_MANY_REQUESTS.value());
+        }
+        assertThat(RecordingResolverProvider.namesLookedUp()).isEmpty();
+    }
+
+    @Test
+    void anEmptyTrustedEntryFallsBackToTheRemoteAddress() throws Exception {
+        RateLimitFilter filter = filter(true);
+        for (int i = 0; i < LIMIT; i++) {
+            call(filter, "10.0.0.1");
+        }
+        assertThat(call(filter, "10.0.0.1", "203.0.113.7,").getStatus())
+                .isEqualTo(HttpStatus.TOO_MANY_REQUESTS.value());
+    }
+
+    @Test
     void fallsBackToTheRemoteAddressWhenTheRequestNeverTraversedTheTrustedProxies() throws Exception {
         RateLimitFilter filter = filter(true, 2);
 
@@ -270,7 +299,7 @@ class RateLimitFilterTest {
 
     private RateLimitFilter filter(boolean trustForwardedFor, int trustedProxyHops) {
         return new RateLimitFilter(new CompileProperties.RateLimit(LIMIT, trustForwardedFor, trustedProxyHops),
-                new ObjectMapper(), clock);
+                JsonMapper.builder().build(), clock);
     }
 
     private MockHttpServletResponse call(RateLimitFilter filter, String remoteAddress) throws Exception {

@@ -77,3 +77,17 @@ export function ifloorDiv(dividend: number, divisor: number): number {
 export function ifloorMod(dividend: number, divisor: number): number {
   return isub(dividend, imul(ifloorDiv(dividend, divisor), divisor));
 }
+export function narrowInt(value: number, descriptor: string): number {
+  switch (descriptor) {
+    case 'B':
+      return i2b(value);
+    case 'C':
+      return i2c(value);
+    case 'S':
+      return i2s(value);
+    case 'Z':
+      return value & 1;
+    default:
+      return value;
+  }
+}

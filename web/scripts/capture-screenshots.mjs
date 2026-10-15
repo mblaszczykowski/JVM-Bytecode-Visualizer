@@ -4,7 +4,7 @@ import { mkdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { chromium } from '@playwright/test';
+import { chromium, expect } from '@playwright/test';
 
 const WEB_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const OUTPUT_DIR = resolve(WEB_DIR, '..', 'docs', 'screenshots');
@@ -27,6 +27,11 @@ const SHOTS = [
     async go(page) {
       await page.goto(`${BASE_URL}/`);
       await page.getByTestId('welcome-example').first().waitFor();
+      await expect(
+        page.locator(
+          '[data-testid="welcome-example"]:not(:has([data-testid="welcome-sparkline-bar"]))',
+        ),
+      ).toHaveCount(0);
     },
   },
   {
@@ -66,9 +71,10 @@ const SHOTS = [
     theme: 'dark',
     async go(page) {
       await page.goto(`${BASE_URL}/`);
-      const notAClass = join(WEB_DIR, 'tests', 'e2e', 'fixtures', 'not-a-class.txt');
-      await page.locator('input[type="file"]').first().setInputFiles(notAClass);
+      const unsupported = join(WEB_DIR, 'tests', 'e2e', 'fixtures', 'UnsupportedInstruction.class');
+      await page.locator('input[type="file"]').first().setInputFiles(unsupported);
       await page.getByTestId('error-banner').waitFor();
+      await page.getByTestId('step-counter').waitFor();
     },
   },
 ];
@@ -124,11 +130,30 @@ async function main() {
         });
         const page = await context.newPage();
         await shot.go(page);
+        await page.evaluate('document.fonts.ready');
         await page.waitForTimeout(600);
         const path = join(OUTPUT_DIR, shot.file);
         await page.screenshot({ path });
         console.log(`  ${shot.file} (${shot.theme})`);
         await context.close();
+      }
+
+      const social = await browser.newContext({
+        viewport: { width: 1200, height: 750 },
+        deviceScaleFactor: 1,
+        colorScheme: 'dark',
+        reducedMotion: 'reduce',
+      });
+      try {
+        const page = await social.newPage();
+        await page.goto(`${BASE_URL}/#/factorial/19`);
+        await expectStep(page, 'step 19 / 40');
+        await page.evaluate('document.fonts.ready');
+        await page.waitForTimeout(600);
+        await page.screenshot({ path: join(WEB_DIR, 'public', 'og-image.jpg'), quality: 85 });
+        console.log('  og-image.jpg (dark, 1200×750)');
+      } finally {
+        await social.close();
       }
     } finally {
       await browser.close();

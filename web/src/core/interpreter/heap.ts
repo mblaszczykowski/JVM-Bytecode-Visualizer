@@ -1,5 +1,6 @@
 import type { RecordingBudget } from './budget';
 import { VmFault } from './errors';
+import { narrowInt } from './int32';
 import type { HeapObject, ValueKind } from './types';
 
 export const NULL_REFERENCE = -1;
@@ -95,7 +96,14 @@ export class Heap {
   ): void {
     const cell = this.instanceCellAt(reference, name);
     const field = this.fieldIn(cell, name, descriptor);
-    field.value = value;
+    const referenceField = descriptor.startsWith('L') || descriptor.startsWith('[');
+    if ((kind === 'int') === referenceField) {
+      throw new VmFault({
+        kind: 'invalid-state',
+        message: `field ${name} of type ${descriptor} cannot hold ${kind === 'int' ? 'an int' : 'a reference'}`,
+      });
+    }
+    field.value = narrowInt(value, descriptor);
     field.kind = kind;
     cell.version += 1;
     this.revision += 1;
@@ -129,7 +137,7 @@ export class Heap {
     if (length < 0) {
       throw new VmFault({ kind: 'negative-array-size', size: length });
     }
-    const held = this.liveElements + length;
+    const held = this.liveElements + Math.max(length, 1);
     if (held > MAX_HEAP_ELEMENTS) {
       throw outOfMemory(held, MAX_HEAP_ELEMENTS);
     }

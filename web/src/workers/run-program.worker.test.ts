@@ -4,7 +4,7 @@ import { parseClassFile } from '../core/classfile';
 import { execute } from '../core/interpreter';
 import { readExampleBytes } from '../services/__fixtures__/example-files';
 
-import { withHistory, type RunCommand, type RunEvent } from './run-protocol';
+import { SnapshotDecoder, withHistory, type RunCommand, type RunEvent } from './run-protocol';
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -32,8 +32,9 @@ describe('the run worker', () => {
     if (done?.kind !== 'done') {
       throw new Error('the worker did not finish the run');
     }
+    const decoder = new SnapshotDecoder();
     const snapshots = posted.flatMap((event) =>
-      event.kind === 'snapshots' ? [...event.snapshots] : [],
+      event.kind === 'snapshots' ? decoder.decode(structuredClone(event)) : [],
     );
     expect(withHistory(done.result, snapshots)).toEqual(
       execute(classFile, { entryMethod: 'main', maxSteps: 20_000 }),

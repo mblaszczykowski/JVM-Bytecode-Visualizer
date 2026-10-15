@@ -299,7 +299,7 @@ it is meant to be unambiguous and parseable one character at a time.
 | `C`        | `char`            |                                                   |
 | `D`        | `double`          | two local variable slots                          |
 | `F`        | `float`           |                                                   |
-| `I`        | `int`             | the only type this interpreter executes           |
+| `I`        | `int`             | also represents byte, char, short and boolean     |
 | `J`        | `long`            | `L` was taken; two local variable slots           |
 | `S`        | `short`           |                                                   |
 | `Z`        | `boolean`         | `B` was taken                                     |
@@ -324,7 +324,8 @@ needed and no ambiguity arises. `(II)Z` is two parameters; `(I)IZ` is not a vali
 
 The parser implements the whole grammar, which is what lets the application read a descriptor it
 cannot execute. `parameterKinds` in the interpreter then decides whether a call is one the machine
-can make: `int` and reference types pass, and anything else stops the run at the call with
+can make: the integer family (`int`, `byte`, `char`, `short`, `boolean`) and reference types pass;
+`long`, `float` and `double` stop the run at the call with
 `Unsupported call:` and the method it names. A method declared `(J)J` is therefore listed,
 disassembled and readable, and calling it stops the run.
 

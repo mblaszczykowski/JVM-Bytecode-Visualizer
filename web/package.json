@@ -45,7 +45,7 @@
     "@types/react": "18.3.31",
     "@types/react-dom": "18.3.7",
     "@vitejs/plugin-react": "4.7.0",
-    "@vitest/coverage-v8": "4.1.10",
+    "@vitest/coverage-v8": "4.1.11",
     "babel-plugin-react-compiler": "1.0.0",
     "eslint": "9.39.5",
     "eslint-config-prettier": "10.1.8",
@@ -54,11 +54,11 @@
     "fast-check": "4.9.0",
     "globals": "17.9.0",
     "jsdom": "26.1.0",
-    "mermaid": "11.16.1",
+    "mermaid": "12.2.0",
     "tailwindcss": "4.3.3",
     "typescript": "5.9.3",
     "typescript-eslint": "8.55.0",
     "vite": "6.4.3",
-    "vitest": "4.1.10"
+    "vitest": "4.1.11"
   }
 }

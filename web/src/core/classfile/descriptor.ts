@@ -50,9 +50,18 @@ export function parseMethodDescriptor(descriptor: string): MethodDescriptor {
   }
 
   const params: JvmType[] = [];
+  let parameterSlots = 0;
   let position = 1;
   while (position < descriptor.length && descriptor[position] !== ')') {
     const parsed = parseFieldType(descriptor, position);
+    parameterSlots +=
+      parsed.type.kind === 'primitive' &&
+      (parsed.type.name === 'long' || parsed.type.name === 'double')
+        ? 2
+        : 1;
+    if (parameterSlots > 255) {
+      throw malformed(descriptor, position, 'method parameters exceed the maximum of 255 slots');
+    }
     params.push(parsed.type);
     position = parsed.next;
   }
@@ -144,6 +153,9 @@ function parseComponentType(descriptor: string, position: number): ParsedType<Jv
     const className = descriptor.slice(position + 1, end);
     if (className.length === 0) {
       throw malformed(descriptor, position, 'empty class name in an "L;" descriptor');
+    }
+    if (/[.[]/.test(className) || className.split('/').some((part) => part.length === 0)) {
+      throw malformed(descriptor, position, 'invalid internal class name in an object descriptor');
     }
     return { type: { kind: 'class', className }, next: end + 1 };
   }

@@ -7,6 +7,7 @@ import {
   callTarget,
   classNameAt,
   describeConstant,
+  fieldKind,
   parameterKinds,
   resolveMemberReference,
   resolveMethodref,
@@ -193,6 +194,7 @@ describe('parameterKinds', () => {
   it.each([
     { descriptor: '()V', kinds: [] },
     { descriptor: '(II)I', kinds: ['int', 'int'] },
+    { descriptor: '(BCSZ)Z', kinds: ['int', 'int', 'int', 'int'] },
     { descriptor: '([Ljava/lang/String;)V', kinds: ['ref'] },
     { descriptor: '(Ljava/lang/String;I)Ljava/lang/String;', kinds: ['ref', 'int'] },
     { descriptor: '(I[I)[I', kinds: ['int', 'ref'] },
@@ -203,13 +205,25 @@ describe('parameterKinds', () => {
   it.each([
     { case: 'a long parameter', descriptor: '(J)V' },
     { case: 'a double parameter', descriptor: '(D)V' },
-    { case: 'a byte parameter, which the frame has no kind for', descriptor: '(B)V' },
     { case: 'a long return type', descriptor: '()J' },
-    { case: 'a boolean return type', descriptor: '()Z' },
     { case: 'a descriptor without a parameter list', descriptor: 'I' },
     { case: 'an unknown type character', descriptor: '(Q)V' },
     { case: 'an unterminated class name', descriptor: '(Ljava/lang/String)V' },
   ])('refuses $case', ({ descriptor }) => {
     expect(parameterKinds(descriptor)).toBeUndefined();
+  });
+});
+
+describe('fieldKind', () => {
+  it.each(['B', 'C', 'I', 'S', 'Z'])('uses an int slot for %s', (descriptor) => {
+    expect(fieldKind(descriptor)).toBe('int');
+  });
+
+  it.each(['[I', 'Ljava/lang/String;'])('uses a reference slot for %s', (descriptor) => {
+    expect(fieldKind(descriptor)).toBe('ref');
+  });
+
+  it.each(['J', 'F', 'D', 'V', '', 'L;'])('refuses unsupported field type %s', (descriptor) => {
+    expect(fieldKind(descriptor)).toBeUndefined();
   });
 });

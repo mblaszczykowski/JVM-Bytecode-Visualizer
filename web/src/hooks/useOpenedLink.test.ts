@@ -1,4 +1,5 @@
 import { renderHook } from '@testing-library/react';
+import { StrictMode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { ExampleEntry } from '../services/loading/manifest';
@@ -73,6 +74,31 @@ describe('useOpenedLink', () => {
 
   it('loads the first example when it is embedded with no link to follow', () => {
     const { selectExample } = renderLink('/', { ...NOTHING_LOADED, embedded: true });
+
+    expect(selectExample).toHaveBeenCalledExactlyOnceWith('factorial');
+  });
+
+  it('opens an embedded example once when effects are replayed in Strict Mode', () => {
+    window.history.replaceState(null, '', '/');
+    const selectExample = vi.fn();
+    renderHook(
+      () =>
+        useOpenedLink({
+          ...NOTHING_LOADED,
+          embedded: true,
+          selectExample,
+          seekTo: vi.fn(),
+        }),
+      { wrapper: StrictMode },
+    );
+
+    expect(selectExample).toHaveBeenCalledExactlyOnceWith('factorial');
+  });
+
+  it('does not reopen the embedded example when the manifest is refreshed', () => {
+    const { rerender, selectExample } = renderLink('/', { ...NOTHING_LOADED, embedded: true });
+
+    rerender({ ...NOTHING_LOADED, embedded: true, examples: [...EXAMPLES] });
 
     expect(selectExample).toHaveBeenCalledExactlyOnceWith('factorial');
   });

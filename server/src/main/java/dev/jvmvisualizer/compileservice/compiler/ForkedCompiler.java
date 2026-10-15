@@ -1,6 +1,5 @@
 package dev.jvmvisualizer.compileservice.compiler;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.lang.ProcessBuilder.Redirect;
@@ -27,6 +26,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 
 public class ForkedCompiler implements SourceCompiler, AutoCloseable {
 
@@ -57,7 +59,7 @@ public class ForkedCompiler implements SourceCompiler, AutoCloseable {
     private final ThreadPoolExecutor pool;
     private final ScheduledExecutorService watchdog;
     private final Set<Process> running = ConcurrentHashMap.newKeySet();
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper = JsonMapper.builder().build();
     private volatile boolean closed;
 
     public ForkedCompiler(Duration timeout, int maxConcurrentCompilations) {
@@ -167,7 +169,7 @@ public class ForkedCompiler implements SourceCompiler, AutoCloseable {
     private void writeRequest(Process process, SourceUnit unit) {
         try (OutputStream stdin = process.getOutputStream()) {
             objectMapper.writeValue(stdin, CompilerProcessProtocol.Request.of(unit));
-        } catch (IOException e) {
+        } catch (IOException | JacksonException e) {
             log.debug("could not hand the source to the compiler process", e);
         }
     }
@@ -178,7 +180,7 @@ public class ForkedCompiler implements SourceCompiler, AutoCloseable {
         }
         try {
             return objectMapper.readValue(payload, CompilerProcessProtocol.Payload.class).toResult();
-        } catch (IOException | IllegalArgumentException e) {
+        } catch (JacksonException | IllegalArgumentException e) {
             log.error("compiler process wrote {} bytes that are not a result document", payload.length, e);
             return null;
         }

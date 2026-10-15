@@ -115,9 +115,9 @@ export function CompileEditor({
             {isCompiling ? 'Compiling…' : 'Compile'}
           </Button>
           <span className="text-label text-fg-3">
-            Static methods called from <span className="font-mono">main</span>: ints, int arrays,{' '}
+            One loaded class: integer values, int arrays and its own objects. Selected{' '}
             <span className="font-mono">Math</span> and{' '}
-            <span className="font-mono">System.out</span>, nothing else.
+            <span className="font-mono">System.out</span> calls also run.
           </span>
         </div>
       </div>

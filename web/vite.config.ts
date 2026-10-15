@@ -1,15 +1,21 @@
 /// <reference types="vitest/config" />
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
-import { defineConfig } from 'vite';
+import { defineConfig, loadEnv } from 'vite';
+
+import { siteMetadata } from './scripts/site-metadata';
 
 const reactCompiler: [string, { readonly target: string }] = [
   'babel-plugin-react-compiler',
   { target: '18' },
 ];
 
-export default defineConfig({
-  plugins: [react({ babel: { plugins: [reactCompiler] } }), tailwindcss()],
+export default defineConfig(({ mode }) => ({
+  plugins: [
+    react({ babel: { plugins: [reactCompiler] } }),
+    tailwindcss(),
+    siteMetadata({ ...process.env, ...loadEnv(mode, process.cwd(), 'VITE_') }),
+  ],
   worker: { format: 'es' },
   build: {
     sourcemap: 'hidden',
@@ -62,4 +68,4 @@ export default defineConfig({
       },
     },
   },
-});
+}));

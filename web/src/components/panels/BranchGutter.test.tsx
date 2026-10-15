@@ -68,4 +68,22 @@ describe('BranchGutter', () => {
       screen.getAllByTestId('branch-arc').map((arc) => arc.getAttribute('data-from-index')),
     ).toEqual(['1', '3']);
   });
+
+  it('keeps the current arc readable in a large method with long overlapping branches', () => {
+    const count = 20_000;
+    const instructions: Instruction[] = Array.from({ length: count }, (_, offset) => ({
+      offset,
+      opcode: 0xa7,
+      mnemonic: 'goto',
+      operands: [count - offset],
+      branchTarget: count,
+    }));
+    instructions.push({ offset: count, opcode: 0xb1, mnemonic: 'return', operands: [] });
+
+    render(<BranchGutter instructions={instructions} currentIndex={1} />);
+
+    expect(screen.getAllByTestId('branch-arc')).toHaveLength(1);
+    expect(screen.getByTestId('branch-arc')).toHaveAttribute('data-from-index', '1');
+    expect(screen.getByTestId('branch-arc')).toHaveAttribute('data-to-index', String(count));
+  });
 });

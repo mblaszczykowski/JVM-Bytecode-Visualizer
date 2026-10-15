@@ -1,9 +1,9 @@
 # syntax=docker/dockerfile:1
 
 # Pinned by digest, like the Maven wrapper's checksum, so a moved tag cannot change the build.
-# Resolved from maven:3.9-eclipse-temurin-21 on 2026-08-14; both pins are refreshed with
+# Resolved from maven:3.9-eclipse-temurin-21 on 2026-10-15; both pins are refreshed with
 # `docker buildx imagetools inspect <tag>`.
-FROM maven:3.9-eclipse-temurin-21@sha256:c07f7ccfb8ca6c9fa29ee523f00afa7d2ca6132c92f8652c4aebb5ee3491f502 AS build
+FROM maven:3.9-eclipse-temurin-21@sha256:99e61abcff91a9b1333463bd8451fb18495d6eba9250ac66a338b518f8278320 AS build
 WORKDIR /workspace
 COPY pom.xml .
 RUN mvn -B -ntp dependency:go-offline
@@ -22,8 +22,8 @@ RUN mkdir -p /workspace/app \
 
 # The runtime image must be a JDK: the service compiles Java on demand, and without the
 # jdk.compiler module ToolProvider.getSystemJavaCompiler() returns null and every request fails.
-# Resolved from eclipse-temurin:21-jdk-jammy on 2026-08-14.
-FROM eclipse-temurin:21-jdk-jammy@sha256:55fb9bf738f5d9b4a6c01b39337e3070d3e27370dd3c478fd1d5d3cd2233c6d8 AS runtime
+# Resolved from eclipse-temurin:21-jdk-jammy on 2026-10-15.
+FROM eclipse-temurin:21-jdk-jammy@sha256:e0c60c487345d1dc9d0fc7b6f0496f3cc941e5132e09296cc17a6decc71b902b AS runtime
 
 # curl is for the HEALTHCHECK below, which is what `docker run` uses locally. Fly ignores it and
 # probes /actuator/health itself through fly.toml's [[http_service.checks]].

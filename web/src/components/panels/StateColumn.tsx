@@ -55,7 +55,13 @@ function describeLocals(
 ): readonly string[] {
   return frame.locals.flatMap((value, slot) => {
     const kind = frame.localKinds[slot];
-    if (value === undefined || kind === undefined || previous?.locals[slot] === value) {
+    if (
+      value === undefined ||
+      kind === undefined ||
+      (previous?.locals[slot] === value &&
+        previous.localKinds[slot] === kind &&
+        previous.localNames[slot] === frame.localNames[slot])
+    ) {
       return [];
     }
     const name = frame.localNames[slot] ?? `slot ${String(slot)}`;
@@ -252,7 +258,7 @@ export function StateColumn({
       ) : (
         <>
           <div className={SECTION}>
-            <CallStackPanel frames={frames} />
+            <CallStackPanel frames={frames} heap={heap} externals={externals} />
           </div>
           <Hairline className={SEAM} />
           <div className={SECTION}>

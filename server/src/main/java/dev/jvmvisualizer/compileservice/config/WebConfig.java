@@ -1,8 +1,5 @@
 package dev.jvmvisualizer.compileservice.config;
 
-import com.fasterxml.jackson.core.JsonFactory;
-import com.fasterxml.jackson.core.StreamReadConstraints;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.jvmvisualizer.compileservice.api.dto.ErrorResponse;
 import dev.jvmvisualizer.compileservice.compiler.ForkedCompiler;
 import dev.jvmvisualizer.compileservice.compiler.SourceCompiler;
@@ -14,7 +11,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.time.Clock;
 import java.util.List;
-import org.springframework.boot.autoconfigure.jackson.Jackson2ObjectMapperBuilderCustomizer;
+import org.springframework.boot.jackson.autoconfigure.JsonFactoryBuilderCustomizer;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -28,6 +25,8 @@ import org.springframework.web.cors.DefaultCorsProcessor;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import org.springframework.web.filter.CorsFilter;
 import org.springframework.web.filter.OncePerRequestFilter;
+import tools.jackson.core.StreamReadConstraints;
+import tools.jackson.databind.ObjectMapper;
 
 @Configuration(proxyBeanMethods = false)
 class WebConfig {
@@ -108,12 +107,10 @@ class WebConfig {
     }
 
     @Bean
-    Jackson2ObjectMapperBuilderCustomizer boundedStringLength() {
+    JsonFactoryBuilderCustomizer boundedStringLength() {
         int maxStringLength = Math.toIntExact(properties.maxSourceSize().toBytes()) + SOURCE_FIELD_HEADROOM;
-        return builder -> builder.factory(JsonFactory.builder()
-                .streamReadConstraints(StreamReadConstraints.builder()
-                        .maxStringLength(maxStringLength)
-                        .build())
+        return builder -> builder.streamReadConstraints(StreamReadConstraints.builder()
+                .maxStringLength(maxStringLength)
                 .build());
     }
 

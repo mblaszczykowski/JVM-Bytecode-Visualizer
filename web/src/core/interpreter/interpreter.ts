@@ -57,11 +57,13 @@ import {
   isub,
   iushr,
   ixor,
+  narrowInt,
 } from './int32';
 import {
   callTarget,
   classNameAt,
   describeConstant,
+  fieldKind,
   parameterKinds,
   resolveMemberReference,
   resolveMethodref,
@@ -153,12 +155,22 @@ export function execute(classFile: ClassFile, options: ExecuteOptions = {}): Exe
       setPc(frame, fetched.nextOffset);
       step(machine, frame, fetched.instruction);
     } catch (error) {
-      if (
-        isVmFault(error) &&
-        error.location === undefined &&
-        dispatchThrow(machine, error.detail)
-      ) {
-        continue;
+      try {
+        if (
+          isVmFault(error) &&
+          error.location === undefined &&
+          dispatchThrow(machine, error.detail)
+        ) {
+          continue;
+        }
+      } catch (dispatchError) {
+        const handlerFrame = machine.callStack.at(-1) ?? frame;
+        return failedRun(
+          dispatchError,
+          snapshots,
+          handlerFrame.currentPc,
+          handlerFrame.method.name,
+        );
       }
       return failedRun(error, snapshots, offset, frame.method.name);
     }
@@ -696,13 +708,13 @@ function step(machine: Machine, frame: Frame, instruction: Instruction): void {
       throwFromStack(machine, frame);
       break;
     case Op.ireturn:
-      returnFromFrame(machine, { value: pop(frame, 'int'), kind: 'int' });
+      returnFromFrame(machine, frame, { value: pop(frame, 'int'), kind: 'int' });
       break;
     case Op.areturn:
-      returnFromFrame(machine, popReference(frame));
+      returnFromFrame(machine, frame, popReference(frame));
       break;
     case Op.return:
-      returnFromFrame(machine, undefined);
+      returnFromFrame(machine, frame, undefined);
       break;
 
     default:
@@ -851,7 +863,25 @@ function externalAt(machine: Machine, reference: StackValue): ExternalValue | un
   return reference.kind === 'external' ? machine.externals.at(reference.value) : undefined;
 }
 
-function returnFromFrame(machine: Machine, returned: StackValue | undefined): void {
+function returnFromFrame(machine: Machine, frame: Frame, returned: StackValue | undefined): void {
+  const descriptor = frame.method.descriptor;
+  const returnDescriptor = descriptor.slice(descriptor.lastIndexOf(')') + 1);
+  const expected = returnDescriptor === 'V' ? undefined : fieldKind(returnDescriptor);
+  const matches =
+    returned === undefined
+      ? returnDescriptor === 'V'
+      : expected === 'int'
+        ? returned.kind === 'int'
+        : expected === 'ref' && returned.kind !== 'int';
+  if (!matches) {
+    throw new VmFault({
+      kind: 'invalid-state',
+      message: `return instruction does not match method descriptor ${descriptor}`,
+    });
+  }
+  if (returned?.kind === 'int') {
+    returned = { value: narrowInt(returned.value, returnDescriptor), kind: 'int' };
+  }
   machine.callStack.pop();
   if (returned === undefined) {
     return;
@@ -907,7 +937,15 @@ function allocateInstance(machine: Machine, frame: Frame, poolIndex: number): vo
   }
   machine.instanceFields ??= machine.classFile.fields
     .filter((field) => !isStatic(field.accessFlags))
-    .map((field) => ({ name: field.name, descriptor: field.descriptor }));
+    .map((field) => {
+      if (fieldKind(field.descriptor) === undefined) {
+        throw new VmFault({
+          kind: 'unsupported-field',
+          target: memberKey(className, field.name, field.descriptor),
+        });
+      }
+      return { name: field.name, descriptor: field.descriptor };
+    });
   push(frame, machine.heap.allocateInstance(className, machine.instanceFields), 'ref');
 }
 
@@ -936,7 +974,10 @@ function fieldReference(machine: Machine, poolIndex: number): MethodReference {
     ConstantTag.Fieldref,
     'Fieldref',
   );
-  if (reference.className !== machine.classFile.thisClassName) {
+  if (
+    reference.className !== machine.classFile.thisClassName ||
+    fieldKind(reference.descriptor) === undefined
+  ) {
     throw new VmFault({
       kind: 'unsupported-field',
       target: memberKey(reference.className, reference.name, reference.descriptor),
@@ -948,8 +989,14 @@ function fieldReference(machine: Machine, poolIndex: number): MethodReference {
 function invokeSpecial(machine: Machine, frame: Frame, poolIndex: number): void {
   const reference = resolveMethodref(machine.classFile.constantPool, poolIndex);
 
-  if (reference.className === OBJECT_CLASS && reference.name === CONSTRUCTOR) {
-    pop(frame, 'ref');
+  if (
+    reference.className === OBJECT_CLASS &&
+    reference.name === CONSTRUCTOR &&
+    reference.descriptor === '()V'
+  ) {
+    if (pop(frame, 'ref') === NULL_REFERENCE) {
+      throw new VmFault({ kind: 'null-reference' });
+    }
     return;
   }
   if (reference.className !== machine.classFile.thisClassName) {
@@ -976,7 +1023,11 @@ function invokeVirtual(machine: Machine, frame: Frame, poolIndex: number): void 
   }
 
   const args = popArguments(machine, frame, method.parameters);
-  const receiver = machine.externals.at(pop(frame, 'external'));
+  const receiverReference = popReference(frame);
+  if (receiverReference.value === NULL_REFERENCE) {
+    throw new VmFault({ kind: 'null-reference' });
+  }
+  const receiver = externalAt(machine, receiverReference);
   if (receiver?.className !== reference.className) {
     throw new VmFault({
       kind: 'unsupported-call',
