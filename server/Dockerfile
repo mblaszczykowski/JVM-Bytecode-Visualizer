@@ -23,7 +23,7 @@ RUN mkdir -p /workspace/app \
 # The runtime image must be a JDK: the service compiles Java on demand, and without the
 # jdk.compiler module ToolProvider.getSystemJavaCompiler() returns null and every request fails.
 # Resolved from eclipse-temurin:21-jdk-jammy on 2026-10-15.
-FROM eclipse-temurin:21-jdk-jammy@sha256:e0c60c487345d1dc9d0fc7b6f0496f3cc941e5132e09296cc17a6decc71b902b AS runtime
+FROM eclipse-temurin:22-jdk-jammy@sha256:d8e6ba486df17bf758888d2b1b608133d1eedca8daf69d3fc6bf78d8be81e07e AS runtime
 
 # curl is for the HEALTHCHECK below, which is what `docker run` uses locally. Fly ignores it and
 # probes /actuator/health itself through fly.toml's [[http_service.checks]].
